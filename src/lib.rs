@@ -3,14 +3,14 @@
 
 use ash::version::EntryV1_0;
 use ash::version::InstanceV1_0;
-use ash::vk::PhysicalDeviceType;
 use ash::{extensions::ext, vk};
-use tracing::info;
-use tracing::level_filters::LevelFilter;
+#[cfg(feature = "tracing")]
+use tracing::{info, level_filters::LevelFilter};
 
 pub use error::AscheError;
 
 /// Debug code for vulkan.
+#[cfg(feature = "tracing")]
 mod debug;
 /// Crate errors.
 mod error;
@@ -69,7 +69,10 @@ impl Default for InstanceDescriptor {
 pub struct Instance {
     _entry: ash::Entry,
     pub(crate) instance: ash::Instance,
+
+    #[cfg(feature = "tracing")]
     debug_util: ext::DebugUtils,
+    #[cfg(feature = "tracing")]
     debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
@@ -92,77 +95,124 @@ impl Instance {
         let instance_layers: Vec<*const i8> = vec![cstr!("VK_LAYER_KHRONOS_validation")];
         let instance_extensions: Vec<*const i8> = vec![ext::DebugUtils::name().as_ptr()];
 
-        let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-            .message_severity(vulkan_log_level())
-            .message_type(
-                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
-            )
-            .pfn_user_callback(Some(debug::debug_utils_callback));
+        #[cfg(feature = "tracing")]
+        {
+            let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                .message_severity(vulkan_log_level())
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+                )
+                .pfn_user_callback(Some(debug::debug_utils_callback));
 
-        let create_info = vk::InstanceCreateInfo::builder()
-            .push_next(&mut debug_create_info)
-            .application_info(&app_info)
-            .enabled_layer_names(&instance_layers)
-            .enabled_extension_names(&instance_extensions);
+            let create_info = vk::InstanceCreateInfo::builder()
+                .push_next(&mut debug_create_info)
+                .application_info(&app_info)
+                .enabled_layer_names(&instance_layers)
+                .enabled_extension_names(&instance_extensions);
 
-        let instance = unsafe { entry.create_instance(&create_info, None)? };
+            let instance = unsafe { entry.create_instance(&create_info, None)? };
 
-        let debug_utils = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+            let debug_utils = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+            let utils_messenger =
+                unsafe { debug_utils.create_debug_utils_messenger(&debug_create_info, None)? };
 
-        let utils_messenger =
-            unsafe { debug_utils.create_debug_utils_messenger(&debug_create_info, None)? };
+            Ok(Self {
+                _entry: entry,
+                instance,
+                debug_util: debug_utils,
+                debug_messenger: utils_messenger,
+            })
+        }
 
-        Ok(Self {
-            _entry: entry,
-            instance,
-            debug_util: debug_utils,
-            debug_messenger: utils_messenger,
-        })
+        #[cfg(not(feature = "tracing"))]
+        {
+            let create_info = vk::InstanceCreateInfo::builder()
+                .application_info(&app_info)
+                .enabled_layer_names(&instance_layers)
+                .enabled_extension_names(&instance_extensions);
+
+            let instance = unsafe { entry.create_instance(&create_info, None)? };
+
+            Ok(Self {
+                _entry: entry,
+                instance,
+            })
+        }
     }
 
     /// Creates a new `Device` from this `Instance`.
-    pub fn create_device(&self, device_type: PhysicalDeviceType) -> Result<Device> {
-        // Create the physical device
-        let (physical_device, physical_device_properties) = {
+    pub fn create_device(&self, device_type: vk::PhysicalDeviceType) -> Result<Device> {
+        #[cfg(feature = "tracing")]
+        {
+            // Create the physical device
             let phys_devs = unsafe { self.instance.enumerate_physical_devices()? };
 
             let mut chosen = None;
-            for device in phys_devs {
-                let properties = unsafe { self.instance.get_physical_device_properties(device) };
-
-                if properties.device_type == device_type {
-                    chosen = Some((device, properties))
-                }
-            }
+            self.find_device(device_type, phys_devs, &mut chosen);
 
             if let Some((physical_device, physical_device_properties)) = chosen {
-                (physical_device, physical_device_properties)
-            } else {
-                return Err(AscheError::DeviceAcquireError);
-            }
-        };
-        let name = String::from(
-            unsafe { std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr()) }
-                .to_str()?,
-        );
-        info!(
-            "Selected device: {} ({:?})",
-            name, physical_device_properties.device_type
-        );
+                let name = String::from(
+                    unsafe {
+                        std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr())
+                    }
+                    .to_str()?,
+                );
+                info!(
+                    "Selected device: {} ({:?})",
+                    name, physical_device_properties.device_type
+                );
 
-        Ok(Device {
-            _physical_device: physical_device,
-        })
+                Ok(Device {
+                    _physical_device: physical_device,
+                })
+            } else {
+                Err(AscheError::DeviceAcquireError)
+            }
+        }
+
+        #[cfg(not(feature = "tracing"))]
+        {
+            // Create the physical device
+            let phys_devs = unsafe { self.instance.enumerate_physical_devices()? };
+
+            let mut chosen = None;
+            self.find_device(device_type, phys_devs, &mut chosen);
+
+            if let Some((physical_device, _physical_device_properties)) = chosen {
+                Ok(Device {
+                    _physical_device: physical_device,
+                })
+            } else {
+                Err(AscheError::DeviceAcquireError)
+            }
+        }
+    }
+
+    fn find_device(
+        &self,
+        device_type: vk::PhysicalDeviceType,
+        phys_devs: Vec<vk::PhysicalDevice>,
+        chosen: &mut Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)>,
+    ) {
+        for device in phys_devs {
+            let properties = unsafe { self.instance.get_physical_device_properties(device) };
+
+            if properties.device_type == device_type {
+                *chosen = Some((device, properties))
+            }
+        }
     }
 }
 
 impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
+            #[cfg(feature = "tracing")]
             self.debug_util
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
+
             self.instance.destroy_instance(None)
         };
     }
@@ -173,6 +223,7 @@ pub struct Device {
     _physical_device: vk::PhysicalDevice,
 }
 
+#[cfg(feature = "tracing")]
 fn vulkan_log_level() -> vk::DebugUtilsMessageSeverityFlagsEXT {
     match tracing::level_filters::STATIC_MAX_LEVEL {
         LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),

@@ -4,11 +4,14 @@ version = "0.1.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 edition = "2018"
 
+[features]
+default = ["tracing"]
+
 [dependencies]
 ash = "0.31"
 parking_lot = "0.11"
 thiserror = "1.0"
-tracing = "0.1"
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0"
