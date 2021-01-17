@@ -1,0 +1,25 @@
+[package]
+name = "asche"
+version = "0.1.0"
+authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
+edition = "2018"
+
+[dependencies]
+ash = "0.31"
+parking_lot = "0.11"
+thiserror = "1.0"
+tracing = "0.1"
+
+[dev-dependencies]
+anyhow = "1.0"
+tracing-subscriber = "0.2"
+winit = "0.23"
+vk-shader-macros = "0.2"
+
+[profile.bench]
+codegen-units = 1
+lto = "thin"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
