@@ -19,11 +19,15 @@ pub enum AscheError {
     #[error(transparent)]
     VkResult(#[from] ash::vk::Result),
 
-    /// The requested device type couldn't be acquired.
-    #[error("can't acquire requested device")]
-    DeviceAcquireError,
+    /// The requested device type couldn't be found.
+    #[error("can't find device with requested capabilities")]
+    RequestDeviceError,
+
+    /// Can't find a queue family.
+    #[error("can't find queue family: {0}")]
+    QueueFamilyNotFound(&'static str),
 
     /// An unspecified asche error.
-    #[error("unknown asche error")]
-    Unknown,
+    #[error("{0}")]
+    Unspecified(String),
 }
