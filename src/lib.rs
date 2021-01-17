@@ -1,6 +1,8 @@
 #![warn(missing_docs)]
 //! Provides an abstraction layer above ash to easier use vulkan in rust with minimal dependencies.
 
+use std::sync::Arc;
+
 use ash::version::EntryV1_0;
 use ash::version::InstanceV1_0;
 use ash::{extensions::ext, vk};
@@ -45,8 +47,8 @@ impl From<VulkanVersion> for u32 {
     }
 }
 
-/// Describes how the instance should be configured.
-pub struct InstanceDescriptor {
+/// Describes how the adapter should be configured.
+pub struct AdapterDescriptor {
     /// Name of the application.
     pub app_name: String,
     /// Version of the application. Use `ash::vk::make_version()` to create the version number.
@@ -55,7 +57,7 @@ pub struct InstanceDescriptor {
     pub vulkan_version: VulkanVersion,
 }
 
-impl Default for InstanceDescriptor {
+impl Default for AdapterDescriptor {
     fn default() -> Self {
         Self {
             app_name: "Undefined".to_string(),
@@ -65,10 +67,92 @@ impl Default for InstanceDescriptor {
     }
 }
 
-/// Abstracts a Vulkan instance.
-pub struct Instance {
+/// Handles the creation of graphic and compute devices. Can be dropped once a `Device` is created.
+pub struct Adapter {
+    instance: Arc<Instance>,
+}
+
+impl Adapter {
+    /// Creates a new `Adapter`.
+    pub fn new(descriptor: &AdapterDescriptor) -> Result<Self> {
+        let instance = Arc::new(Instance::new(descriptor)?);
+        Ok(Self { instance })
+    }
+
+    /// Creates a new `Device` from this `Adapter`.
+    pub fn request_device(&self, device_type: vk::PhysicalDeviceType) -> Result<Device> {
+        #[cfg(feature = "tracing")]
+        {
+            // Create the physical device
+            let phys_devs = unsafe { self.instance.internal.enumerate_physical_devices()? };
+
+            let mut chosen = None;
+            self.find_device(device_type, phys_devs, &mut chosen);
+
+            if let Some((physical_device, physical_device_properties)) = chosen {
+                let name = String::from(
+                    unsafe {
+                        std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr())
+                    }
+                    .to_str()?,
+                );
+                info!(
+                    "Selected device: {} ({:?})",
+                    name, physical_device_properties.device_type
+                );
+
+                Ok(Device {
+                    _physical_device: physical_device,
+                    _instance: self.instance.clone(),
+                })
+            } else {
+                Err(AscheError::DeviceAcquireError)
+            }
+        }
+
+        #[cfg(not(feature = "tracing"))]
+        {
+            // Create the physical device
+            let phys_devs = unsafe { self.instance.internal.enumerate_physical_devices()? };
+
+            let mut chosen = None;
+            self.find_device(device_type, phys_devs, &mut chosen);
+
+            if let Some((physical_device, _physical_device_properties)) = chosen {
+                Ok(Device {
+                    _physical_device: physical_device,
+                    _instance: self.instance.clone(),
+                })
+            } else {
+                Err(AscheError::DeviceAcquireError)
+            }
+        }
+    }
+
+    fn find_device(
+        &self,
+        device_type: vk::PhysicalDeviceType,
+        phys_devs: Vec<vk::PhysicalDevice>,
+        chosen: &mut Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)>,
+    ) {
+        for device in phys_devs {
+            let properties = unsafe {
+                self.instance
+                    .internal
+                    .get_physical_device_properties(device)
+            };
+
+            if properties.device_type == device_type {
+                *chosen = Some((device, properties))
+            }
+        }
+    }
+}
+
+/// Wraps the Vulkan instance.
+struct Instance {
     _entry: ash::Entry,
-    pub(crate) instance: ash::Instance,
+    pub(crate) internal: ash::Instance,
 
     #[cfg(feature = "tracing")]
     debug_util: ext::DebugUtils,
@@ -78,7 +162,7 @@ pub struct Instance {
 
 impl Instance {
     /// Creates a new `Instance`.
-    pub fn new(descriptor: &InstanceDescriptor) -> Result<Self> {
+    pub fn new(descriptor: &AdapterDescriptor) -> Result<Self> {
         let entry = ash::Entry::new()?;
 
         let engine_name = std::ffi::CString::new("asche")?;
@@ -120,12 +204,11 @@ impl Instance {
 
             Ok(Self {
                 _entry: entry,
-                instance,
+                internal: instance,
                 debug_util: debug_utils,
                 debug_messenger: utils_messenger,
             })
         }
-
         #[cfg(not(feature = "tracing"))]
         {
             let create_info = vk::InstanceCreateInfo::builder()
@@ -137,71 +220,8 @@ impl Instance {
 
             Ok(Self {
                 _entry: entry,
-                instance,
+                internal: instance,
             })
-        }
-    }
-
-    /// Creates a new `Device` from this `Instance`.
-    pub fn create_device(&self, device_type: vk::PhysicalDeviceType) -> Result<Device> {
-        #[cfg(feature = "tracing")]
-        {
-            // Create the physical device
-            let phys_devs = unsafe { self.instance.enumerate_physical_devices()? };
-
-            let mut chosen = None;
-            self.find_device(device_type, phys_devs, &mut chosen);
-
-            if let Some((physical_device, physical_device_properties)) = chosen {
-                let name = String::from(
-                    unsafe {
-                        std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr())
-                    }
-                    .to_str()?,
-                );
-                info!(
-                    "Selected device: {} ({:?})",
-                    name, physical_device_properties.device_type
-                );
-
-                Ok(Device {
-                    _physical_device: physical_device,
-                })
-            } else {
-                Err(AscheError::DeviceAcquireError)
-            }
-        }
-
-        #[cfg(not(feature = "tracing"))]
-        {
-            // Create the physical device
-            let phys_devs = unsafe { self.instance.enumerate_physical_devices()? };
-
-            let mut chosen = None;
-            self.find_device(device_type, phys_devs, &mut chosen);
-
-            if let Some((physical_device, _physical_device_properties)) = chosen {
-                Ok(Device {
-                    _physical_device: physical_device,
-                })
-            } else {
-                Err(AscheError::DeviceAcquireError)
-            }
-        }
-    }
-
-    fn find_device(
-        &self,
-        device_type: vk::PhysicalDeviceType,
-        phys_devs: Vec<vk::PhysicalDevice>,
-        chosen: &mut Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)>,
-    ) {
-        for device in phys_devs {
-            let properties = unsafe { self.instance.get_physical_device_properties(device) };
-
-            if properties.device_type == device_type {
-                *chosen = Some((device, properties))
-            }
         }
     }
 }
@@ -213,7 +233,7 @@ impl Drop for Instance {
             self.debug_util
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
 
-            self.instance.destroy_instance(None)
+            self.internal.destroy_instance(None)
         };
     }
 }
@@ -221,6 +241,7 @@ impl Drop for Instance {
 /// Abstracts a Vulkan device.
 pub struct Device {
     _physical_device: vk::PhysicalDevice,
+    _instance: Arc<Instance>,
 }
 
 #[cfg(feature = "tracing")]
