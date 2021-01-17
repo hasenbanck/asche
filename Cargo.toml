@@ -2,6 +2,12 @@
 name = "asche"
 version = "0.1.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
+description = "Provides an abstraction layer above ash to easier use vulkan in rust with minimal dependencies"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/hasenbanck/asche"
+categories = ["graphics"]
+keywords = ["vulkan", "ash"]
 edition = "2018"
 
 [features]

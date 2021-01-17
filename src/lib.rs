@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-//! Provides an abstraction layer above ash to easier use vulkan in rust with minimal dependencies.
+//! Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
 
 use std::sync::Arc;
 
@@ -163,6 +163,8 @@ impl Adapter {
         }
     }
 
+    /// Creates a new logical device. Returns the logical device and three separate queues with the
+    /// types vk::QueueFlags::GRAPHICS, vk::QueueFlags::TRANSFER and vk::QueueFlags::COMPUTE.
     fn create_logical_device(
         &self,
         physical_device: vk::PhysicalDevice,
