@@ -13,16 +13,16 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
 
     match message_severity {
         vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
-            error!("VK-{} - {:?}", ty, message)
+            error!("{} - {:?}", ty, message)
         }
         vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
-            warn!("VK-{} - {:?}", ty, message)
+            warn!("{} - {:?}", ty, message)
         }
         vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
-            info!("VK-{} - {:?}", ty, message)
+            info!("{} - {:?}", ty, message)
         }
         vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
-            debug!("VK-{} - {:?}", ty, message)
+            debug!("{} - {:?}", ty, message)
         }
         _ => {
             let severity = format!("{:?}", message_severity);
