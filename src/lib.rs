@@ -1,6 +1,7 @@
 #![warn(missing_docs)]
 //! Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
 
+use std::os::raw::c_char;
 use std::sync::Arc;
 
 use ash::version::InstanceV1_0;
@@ -24,7 +25,7 @@ type Result<T> = std::result::Result<T, AscheError>;
 #[macro_export]
 macro_rules! cstr {
     ($s:expr) => {
-        concat!($s, "\0") as *const str as *const ::std::os::raw::c_char
+        concat!($s, "\0") as *const str as *const c_char
     };
 }
 
@@ -376,7 +377,7 @@ impl Adapter {
 struct Instance {
     _entry: ash::Entry,
     pub(crate) internal: ash::Instance,
-    layers: Vec<*const i8>,
+    layers: Vec<*const c_char>,
 
     #[cfg(feature = "tracing")]
     debug_util: ext::DebugUtils,
@@ -400,8 +401,9 @@ impl Instance {
             .api_version(vk::make_version(1, 2, 0));
 
         // Activate all needed instance layers and extensions.
-        let layers: Vec<*const i8> = vec![cstr!("VK_LAYER_KHRONOS_validation")];
-        let extensions: Vec<*const i8> = vec![ext::DebugUtils::name().as_ptr()];
+        // TODO we need to test if the validation layer is actually available at runtime!
+        let layers: Vec<*const c_char> = vec![cstr!("VK_LAYER_KHRONOS_validation")];
+        let extensions: Vec<*const c_char> = vec![ext::DebugUtils::name().as_ptr()];
 
         #[cfg(feature = "tracing")]
         {
