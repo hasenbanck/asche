@@ -14,7 +14,7 @@ use tracing::{error, info, level_filters::LevelFilter, warn};
 
 pub use error::AscheError;
 
-/// Debug code for vulkan.
+/// Debug code for Vulkan.
 #[cfg(feature = "tracing")]
 mod debug;
 /// Crate errors.
@@ -118,7 +118,7 @@ impl Adapter {
         #[cfg(feature = "tracing")]
         {
             // Create the physical device
-            let phys_devs = unsafe { self.instance.internal.enumerate_physical_devices()? };
+            let phys_devs = unsafe { self.instance.inner.enumerate_physical_devices()? };
 
             let mut chosen = None;
             self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
@@ -138,6 +138,8 @@ impl Adapter {
                 let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
+                // TODO create the queue abstraction
+
                 info!("Created logical device and queues");
 
                 Ok(Device {
@@ -155,7 +157,7 @@ impl Adapter {
         #[cfg(not(feature = "tracing"))]
         {
             // Create the physical device
-            let phys_devs = unsafe { self.instance.internal.enumerate_physical_devices()? };
+            let phys_devs = unsafe { self.instance.inner.enumerate_physical_devices()? };
 
             let mut chosen = None;
             self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
@@ -184,11 +186,7 @@ impl Adapter {
         chosen: &mut Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)>,
     ) {
         for device in phys_devs {
-            let properties = unsafe {
-                self.instance
-                    .internal
-                    .get_physical_device_properties(device)
-            };
+            let properties = unsafe { self.instance.inner.get_physical_device_properties(device) };
 
             if properties.device_type == device_type {
                 *chosen = Some((device, properties))
@@ -205,7 +203,7 @@ impl Adapter {
     ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
         let queue_family_properties = unsafe {
             self.instance
-                .internal
+                .inner
                 .get_physical_device_queue_family_properties(physical_device)
         };
 
@@ -264,7 +262,7 @@ impl Adapter {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.instance
-                    .internal
+                    .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -291,7 +289,7 @@ impl Adapter {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.instance
-                    .internal
+                    .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -318,7 +316,7 @@ impl Adapter {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.instance
-                    .internal
+                    .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -339,7 +337,7 @@ impl Adapter {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.instance
-                    .internal
+                    .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -368,7 +366,7 @@ impl Adapter {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.instance
-                    .internal
+                    .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -442,7 +440,7 @@ impl Adapter {
 /// Wraps the Vulkan instance.
 struct RawInstance {
     _entry: ash::Entry,
-    pub(crate) internal: ash::Instance,
+    pub(crate) inner: ash::Instance,
     layers: Vec<&'static CStr>,
     #[cfg(feature = "tracing")]
     debug_messenger: Option<DebugMessenger>,
@@ -616,7 +614,7 @@ impl RawInstance {
 
             Ok(Self {
                 _entry: entry,
-                internal: instance,
+                inner: instance,
                 layers,
                 debug_messenger,
             })
@@ -625,7 +623,7 @@ impl RawInstance {
         {
             Ok(Self {
                 _entry: entry,
-                internal: instance,
+                inner: instance,
                 layers,
             })
         }
@@ -645,7 +643,7 @@ impl Drop for RawInstance {
                 }
                 None => {}
             }
-            self.internal.destroy_instance(None)
+            self.inner.destroy_instance(None)
         };
     }
 }
