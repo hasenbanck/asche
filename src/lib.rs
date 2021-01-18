@@ -59,12 +59,43 @@ pub struct AdapterDescriptor {
     pub vulkan_version: VulkanVersion,
 }
 
+/// Defines the priorities of the queues.
+pub struct QueuePriorityDescriptor {
+    /// Priority of the graphics queue.
+    pub graphics: f32,
+    /// Priority of the transfer queue.
+    pub transfer: f32,
+    /// Priority of the compute queue.
+    pub compute: f32,
+}
+
 impl Default for AdapterDescriptor {
     fn default() -> Self {
         Self {
             app_name: "Undefined".to_string(),
             app_version: vk::make_version(0, 0, 0),
             vulkan_version: VulkanVersion::V1,
+        }
+    }
+}
+
+/// Describes how the device should be configured.
+pub struct DeviceDescriptor {
+    /// The device type that is requested.
+    pub device_type: vk::PhysicalDeviceType,
+    /// The priorities of the queues.
+    pub queue_priority: QueuePriorityDescriptor,
+}
+
+impl Default for DeviceDescriptor {
+    fn default() -> Self {
+        Self {
+            device_type: vk::PhysicalDeviceType::DISCRETE_GPU,
+            queue_priority: QueuePriorityDescriptor {
+                graphics: 1.0,
+                transfer: 1.0,
+                compute: 1.0,
+            },
         }
     }
 }
@@ -82,14 +113,14 @@ impl Adapter {
     }
 
     /// Creates a new `Device` from this `Adapter`.
-    pub fn request_device(&self, device_type: vk::PhysicalDeviceType) -> Result<Device> {
+    pub fn request_device(&self, descriptor: &DeviceDescriptor) -> Result<Device> {
         #[cfg(feature = "tracing")]
         {
             // Create the physical device
             let phys_devs = unsafe { self.instance.internal.enumerate_physical_devices()? };
 
             let mut chosen = None;
-            self.find_physical_device(device_type, phys_devs, &mut chosen);
+            self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
 
             if let Some((physical_device, physical_device_properties)) = chosen {
                 let name = String::from(
@@ -104,7 +135,7 @@ impl Adapter {
                 );
 
                 let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
-                    self.create_logical_device(physical_device)?;
+                    self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
                 info!("Created logical device and queues");
 
@@ -126,11 +157,11 @@ impl Adapter {
             let phys_devs = unsafe { self.instance.internal.enumerate_physical_devices()? };
 
             let mut chosen = None;
-            self.find_physical_device(device_type, phys_devs, &mut chosen);
+            self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
 
             if let Some((physical_device, _physical_device_properties)) = chosen {
                 let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
-                    self.create_logical_device(physical_device)?;
+                    self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
                 Ok(Device {
                     _instance: self.instance.clone(),
@@ -169,6 +200,7 @@ impl Adapter {
     fn create_logical_device(
         &self,
         physical_device: vk::PhysicalDevice,
+        priorities: &QueuePriorityDescriptor,
     ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
         let queue_family_properties = unsafe {
             self.instance
@@ -176,6 +208,30 @@ impl Adapter {
                 .get_physical_device_queue_family_properties(physical_device)
         };
 
+        let graphics_queue_family_id =
+            self.find_queue_family(vk::QueueFlags::GRAPHICS, &queue_family_properties)?;
+        let transfer_queue_family_id =
+            self.find_queue_family(vk::QueueFlags::TRANSFER, &queue_family_properties)?;
+        let compute_queue_family_id =
+            self.find_queue_family(vk::QueueFlags::COMPUTE, &queue_family_properties)?;
+
+        self.create_queues(
+            physical_device,
+            priorities,
+            graphics_queue_family_id,
+            transfer_queue_family_id,
+            compute_queue_family_id,
+        )
+    }
+
+    fn create_queues(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        priorities: &QueuePriorityDescriptor,
+        graphics_queue_family_id: u32,
+        transfer_queue_family_id: u32,
+        compute_queue_family_id: u32,
+    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
         let str_pointers = self
             .instance
             .layers
@@ -186,16 +242,8 @@ impl Adapter {
             })
             .collect::<Vec<_>>();
 
-        let graphics_queue_family_id =
-            self.find_queue_family(vk::QueueFlags::GRAPHICS, &queue_family_properties)?;
-        let transfer_queue_family_id =
-            self.find_queue_family(vk::QueueFlags::TRANSFER, &queue_family_properties)?;
-        let compute_queue_family_id =
-            self.find_queue_family(vk::QueueFlags::COMPUTE, &queue_family_properties)?;
-
         // If some queue families point to the same ID, we need to create only one
-        // `vk::DeviceQueueCreateInfo` for them. The following if cases match all cases.
-        // TODO Why does gfx-rs doesn't do this?
+        // `vk::DeviceQueueCreateInfo` for them.
         if graphics_queue_family_id == transfer_queue_family_id
             && transfer_queue_family_id != compute_queue_family_id
         {
@@ -203,11 +251,11 @@ impl Adapter {
             let queue_infos = [
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[1.0f32, 1.0f32])
+                    .queue_priorities(&[priorities.graphics, priorities.transfer])
                     .build(),
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(compute_queue_family_id)
-                    .queue_priorities(&[0.0f32])
+                    .queue_priorities(&[priorities.compute])
                     .build(),
             ];
             let device_create_info = vk::DeviceCreateInfo::builder()
@@ -230,11 +278,11 @@ impl Adapter {
             let queue_infos = [
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[1.0f32])
+                    .queue_priorities(&[priorities.graphics])
                     .build(),
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&[1.0f32, 0.0f32])
+                    .queue_priorities(&[priorities.transfer, priorities.compute])
                     .build(),
             ];
             let device_create_info = vk::DeviceCreateInfo::builder()
@@ -257,11 +305,11 @@ impl Adapter {
             let queue_infos = [
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[1.0f32, 0.0f32])
+                    .queue_priorities(&[priorities.graphics, priorities.compute])
                     .build(),
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&[1.0f32])
+                    .queue_priorities(&[priorities.transfer])
                     .build(),
             ];
             let device_create_info = vk::DeviceCreateInfo::builder()
@@ -283,7 +331,7 @@ impl Adapter {
             // Case: G=T=C
             let queue_infos = [vk::DeviceQueueCreateInfo::builder()
                 .queue_family_index(graphics_queue_family_id)
-                .queue_priorities(&[1.0f32, 1.0f32, 0.0f32])
+                .queue_priorities(&[priorities.graphics, priorities.transfer, priorities.compute])
                 .build()];
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_infos)
@@ -303,15 +351,15 @@ impl Adapter {
             let queue_infos = [
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[1.0f32])
+                    .queue_priorities(&[priorities.graphics])
                     .build(),
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&[1.0f32])
+                    .queue_priorities(&[priorities.transfer])
                     .build(),
                 vk::DeviceQueueCreateInfo::builder()
                     .queue_family_index(compute_queue_family_id)
-                    .queue_priorities(&[0.0f32])
+                    .queue_priorities(&[priorities.compute])
                     .build(),
             ];
             let device_create_info = vk::DeviceCreateInfo::builder()

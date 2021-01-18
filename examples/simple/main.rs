@@ -1,5 +1,6 @@
 use anyhow::Result;
-use ash::vk;
+
+use asche::DeviceDescriptor;
 
 fn main() -> Result<()> {
     // Log level is based on RUST_LOG env var.
@@ -10,6 +11,8 @@ fn main() -> Result<()> {
         app_version: ash::vk::make_version(0, 1, 0),
         vulkan_version: asche::VulkanVersion::V1,
     })?;
-    let _device = instance.request_device(vk::PhysicalDeviceType::DISCRETE_GPU)?;
+    let _device = instance.request_device(&DeviceDescriptor {
+        ..Default::default()
+    })?;
     Ok(())
 }
