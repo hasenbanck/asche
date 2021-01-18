@@ -4,10 +4,11 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
+#[cfg(feature = "tracing")]
+use ash::extensions::ext;
 use ash::version::InstanceV1_0;
 use ash::version::{DeviceV1_0, EntryV1_0};
-use ash::vk::Queue;
-use ash::{extensions::ext, vk};
+use ash::vk;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, level_filters::LevelFilter, warn};
 
@@ -201,7 +202,7 @@ impl Adapter {
         &self,
         physical_device: vk::PhysicalDevice,
         priorities: &QueuePriorityDescriptor,
-    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
+    ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
         let queue_family_properties = unsafe {
             self.instance
                 .internal
@@ -231,7 +232,7 @@ impl Adapter {
         graphics_queue_family_id: u32,
         transfer_queue_family_id: u32,
         compute_queue_family_id: u32,
-    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
+    ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
         let str_pointers = self
             .instance
             .layers
@@ -508,9 +509,12 @@ impl RawInstance {
                 extensions.push(ash::extensions::mvk::MacOSSurface::name());
             }
 
-            extensions.push(ext::DebugUtils::name());
-            if cfg!(debug_assertions) {
-                extensions.push(ext::DebugReport::name());
+            #[cfg(feature = "tracing")]
+            {
+                extensions.push(ext::DebugUtils::name());
+                if cfg!(debug_assertions) {
+                    extensions.push(ext::DebugReport::name());
+                }
             }
 
             extensions.push(vk::KhrGetPhysicalDeviceProperties2Fn::name());
