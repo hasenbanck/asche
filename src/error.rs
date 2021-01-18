@@ -18,7 +18,7 @@ pub enum AscheError {
     RequestDeviceError,
 
     /// Can't find a queue family.
-    QueueFamilyNotFound(&'static str),
+    QueueFamilyNotFound(String),
 
     /// An unspecified asche error.
     Unspecified(String),

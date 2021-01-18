@@ -375,9 +375,15 @@ impl Adapter {
             Ok(id)
         } else {
             match target_family {
-                vk::QueueFlags::GRAPHICS => Err(AscheError::QueueFamilyNotFound("graphic")),
-                vk::QueueFlags::TRANSFER => Err(AscheError::QueueFamilyNotFound("transfer")),
-                vk::QueueFlags::COMPUTE => Err(AscheError::QueueFamilyNotFound("compute")),
+                vk::QueueFlags::GRAPHICS => {
+                    Err(AscheError::QueueFamilyNotFound("graphic".to_string()))
+                }
+                vk::QueueFlags::TRANSFER => {
+                    Err(AscheError::QueueFamilyNotFound("transfer".to_string()))
+                }
+                vk::QueueFlags::COMPUTE => {
+                    Err(AscheError::QueueFamilyNotFound("compute".to_string()))
+                }
                 _ => panic!("Unhandled vk::QueueFlags value"),
             }
         }
