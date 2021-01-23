@@ -15,7 +15,7 @@ default = ["tracing"]
 
 [dependencies]
 ash = "0.31"
-parking_lot = { version = "0.11", optional = true }
+raw-window-handle = "0.3.3"
 tracing = { version = "0.1", default-features = false, features = ["std", "max_level_trace", "release_max_level_info"], optional = true }
 
 [dev-dependencies]

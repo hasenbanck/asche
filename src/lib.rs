@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 #[cfg(feature = "tracing")]
 use ash::extensions::ext;
-use ash::version::InstanceV1_0;
-use ash::version::{DeviceV1_0, EntryV1_0};
+use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
+use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, level_filters::LevelFilter, warn};
 
@@ -50,8 +50,8 @@ impl From<VulkanVersion> for u32 {
     }
 }
 
-/// Describes how the adapter should be configured.
-pub struct AdapterDescriptor {
+/// Describes how the instance should be configured.
+pub struct InstanceDescriptor {
     /// Name of the application.
     pub app_name: String,
     /// Version of the application. Use `ash::vk::make_version()` to create the version number.
@@ -70,7 +70,7 @@ pub struct QueuePriorityDescriptor {
     pub compute: f32,
 }
 
-impl Default for AdapterDescriptor {
+impl Default for InstanceDescriptor {
     fn default() -> Self {
         Self {
             app_name: "Undefined".to_string(),
@@ -102,26 +102,28 @@ impl Default for DeviceDescriptor {
 }
 
 /// Handles the creation of graphic and compute devices. Can be dropped once a `Device` is created.
-pub struct Adapter {
-    instance: Arc<RawInstance>,
-}
+#[repr(transparent)]
+pub struct Instance(Arc<RawInstance>);
 
-impl Adapter {
-    /// Creates a new `Adapter`.
-    pub fn new(descriptor: &AdapterDescriptor) -> Result<Self> {
-        let instance = Arc::new(RawInstance::new(descriptor)?);
-        Ok(Self { instance })
+impl Instance {
+    /// Creates a new `Instance`.
+    pub fn new(
+        handle: &raw_window_handle::RawWindowHandle,
+        descriptor: &InstanceDescriptor,
+    ) -> Result<Self> {
+        let instance = Arc::new(RawInstance::new(handle, descriptor)?);
+        Ok(Self(instance))
     }
 
-    /// Creates a new `Device` from this `Adapter`.
+    /// Creates a new `Device` from this `Instance`.
     pub fn request_device(&self, descriptor: &DeviceDescriptor) -> Result<Device> {
         #[cfg(feature = "tracing")]
         {
             // Create the physical device
-            let phys_devs = unsafe { self.instance.inner.enumerate_physical_devices()? };
+            let physical_devices = unsafe { self.0.inner.enumerate_physical_devices()? };
 
             let mut chosen = None;
-            self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
+            self.find_physical_device(descriptor.device_type, physical_devices, &mut chosen);
 
             if let Some((physical_device, physical_device_properties)) = chosen {
                 let name = String::from(
@@ -139,11 +141,10 @@ impl Adapter {
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
                 // TODO create the queue abstraction
-
                 info!("Created logical device and queues");
 
                 Ok(Device {
-                    _instance: self.instance.clone(),
+                    _instance: self.0.clone(),
                     logical_device,
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
@@ -157,7 +158,7 @@ impl Adapter {
         #[cfg(not(feature = "tracing"))]
         {
             // Create the physical device
-            let phys_devs = unsafe { self.instance.inner.enumerate_physical_devices()? };
+            let phys_devs = unsafe { self.0.inner.enumerate_physical_devices()? };
 
             let mut chosen = None;
             self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
@@ -167,7 +168,7 @@ impl Adapter {
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
                 Ok(Device {
-                    _instance: self.instance.clone(),
+                    _instance: self.0.clone(),
                     logical_device,
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
@@ -182,11 +183,11 @@ impl Adapter {
     fn find_physical_device(
         &self,
         device_type: vk::PhysicalDeviceType,
-        phys_devs: Vec<vk::PhysicalDevice>,
+        physical_devices: Vec<vk::PhysicalDevice>,
         chosen: &mut Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)>,
     ) {
-        for device in phys_devs {
-            let properties = unsafe { self.instance.inner.get_physical_device_properties(device) };
+        for device in physical_devices {
+            let properties = unsafe { self.0.inner.get_physical_device_properties(device) };
 
             if properties.device_type == device_type {
                 *chosen = Some((device, properties))
@@ -202,17 +203,26 @@ impl Adapter {
         priorities: &QueuePriorityDescriptor,
     ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
         let queue_family_properties = unsafe {
-            self.instance
+            self.0
                 .inner
                 .get_physical_device_queue_family_properties(physical_device)
         };
 
-        let graphics_queue_family_id =
-            self.find_queue_family(vk::QueueFlags::GRAPHICS, &queue_family_properties)?;
-        let transfer_queue_family_id =
-            self.find_queue_family(vk::QueueFlags::TRANSFER, &queue_family_properties)?;
-        let compute_queue_family_id =
-            self.find_queue_family(vk::QueueFlags::COMPUTE, &queue_family_properties)?;
+        let graphics_queue_family_id = self.find_queue_family(
+            physical_device,
+            vk::QueueFlags::GRAPHICS,
+            &queue_family_properties,
+        )?;
+        let transfer_queue_family_id = self.find_queue_family(
+            physical_device,
+            vk::QueueFlags::TRANSFER,
+            &queue_family_properties,
+        )?;
+        let compute_queue_family_id = self.find_queue_family(
+            physical_device,
+            vk::QueueFlags::COMPUTE,
+            &queue_family_properties,
+        )?;
 
         self.create_queues(
             physical_device,
@@ -232,7 +242,7 @@ impl Adapter {
         compute_queue_family_id: u32,
     ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
         let str_pointers = self
-            .instance
+            .0
             .layers
             .iter()
             .map(|&s| {
@@ -261,7 +271,7 @@ impl Adapter {
                 .queue_create_infos(&queue_infos)
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
-                self.instance
+                self.0
                     .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
@@ -288,7 +298,7 @@ impl Adapter {
                 .queue_create_infos(&queue_infos)
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
-                self.instance
+                self.0
                     .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
@@ -315,7 +325,7 @@ impl Adapter {
                 .queue_create_infos(&queue_infos)
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
-                self.instance
+                self.0
                     .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
@@ -336,7 +346,7 @@ impl Adapter {
                 .queue_create_infos(&queue_infos)
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
-                self.instance
+                self.0
                     .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
@@ -365,7 +375,7 @@ impl Adapter {
                 .queue_create_infos(&queue_infos)
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
-                self.instance
+                self.0
                     .inner
                     .create_device(physical_device, &device_create_info, None)?
             };
@@ -379,6 +389,7 @@ impl Adapter {
 
     fn find_queue_family(
         &self,
+        physical_device: vk::PhysicalDevice,
         target_family: vk::QueueFlags,
         queue_family_properties: &[vk::QueueFamilyProperties],
     ) -> Result<u32> {
@@ -388,6 +399,13 @@ impl Adapter {
                 vk::QueueFlags::GRAPHICS => {
                     if family.queue_count > 0
                         && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                        && unsafe {
+                            self.0.surface.get_physical_device_surface_support(
+                                physical_device,
+                                id as u32,
+                                self.0.surface_khr,
+                            )?
+                        }
                     {
                         queue_id = Some(id as u32);
                     }
@@ -441,6 +459,8 @@ impl Adapter {
 struct RawInstance {
     _entry: ash::Entry,
     pub(crate) inner: ash::Instance,
+    pub(crate) surface_khr: vk::SurfaceKHR,
+    pub(crate) surface: ash::extensions::khr::Surface,
     layers: Vec<&'static CStr>,
     #[cfg(feature = "tracing")]
     debug_messenger: Option<DebugMessenger>,
@@ -454,7 +474,10 @@ enum DebugMessenger {
 
 impl RawInstance {
     /// Creates a new `Instance`.
-    pub fn new(descriptor: &AdapterDescriptor) -> Result<Self> {
+    pub fn new(
+        handle: &raw_window_handle::RawWindowHandle,
+        descriptor: &InstanceDescriptor,
+    ) -> Result<Self> {
         let entry = ash::Entry::new()?;
 
         let engine_name = std::ffi::CString::new("asche")?;
@@ -482,140 +505,22 @@ impl RawInstance {
             AscheError::Unspecified(format!("Unable to enumerate instance layers: {:?}", e))
         })?;
 
-        // Check our extensions against the available extensions
-        let extensions = {
-            let mut extensions: Vec<&'static CStr> = Vec::new();
-            extensions.push(ash::extensions::khr::Surface::name());
-
-            // Platform-specific WSI extensions
-            if cfg!(all(
-                unix,
-                not(target_os = "android"),
-                not(target_os = "macos")
-            )) {
-                extensions.push(ash::extensions::khr::XlibSurface::name());
-                extensions.push(ash::extensions::khr::XcbSurface::name());
-                extensions.push(ash::extensions::khr::WaylandSurface::name());
-            }
-            if cfg!(target_os = "android") {
-                extensions.push(ash::extensions::khr::AndroidSurface::name());
-            }
-            if cfg!(target_os = "windows") {
-                extensions.push(ash::extensions::khr::Win32Surface::name());
-            }
-            if cfg!(target_os = "macos") {
-                extensions.push(ash::extensions::mvk::MacOSSurface::name());
-            }
-
-            #[cfg(feature = "tracing")]
-            {
-                extensions.push(ext::DebugUtils::name());
-                if cfg!(debug_assertions) {
-                    extensions.push(ext::DebugReport::name());
-                }
-            }
-
-            extensions.push(vk::KhrGetPhysicalDeviceProperties2Fn::name());
-
-            // Only keep available extensions.
-            extensions.retain(|&ext| {
-                let found = instance_extensions.iter().any(|inst_ext| unsafe {
-                    CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext
-                });
-                if found {
-                    true
-                } else {
-                    #[cfg(feature = "tracing")]
-                    warn!("Unable to find extension: {}", ext.to_string_lossy());
-                    false
-                }
-            });
-            extensions
-        };
-
-        // Check requested layers against the available layers
-        let layers = {
-            let mut layers: Vec<&'static CStr> = Vec::new();
-            if cfg!(debug_assertions) {
-                layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
-            }
-
-            // Only keep available layers.
-            layers.retain(|&layer| {
-                let found = instance_layers.iter().any(|inst_layer| unsafe {
-                    CStr::from_ptr(inst_layer.layer_name.as_ptr()) == layer
-                });
-                if found {
-                    true
-                } else {
-                    #[cfg(feature = "tracing")]
-                    warn!("Unable to find layer: {}", layer.to_string_lossy());
-                    false
-                }
-            });
-            layers
-        };
-
-        let instance = {
-            let str_pointers = layers
-                .iter()
-                .chain(extensions.iter())
-                .map(|&s| {
-                    // Safe because `layers` and `extensions` entries have static lifetime.
-                    s.as_ptr()
-                })
-                .collect::<Vec<_>>();
-
-            let create_info = vk::InstanceCreateInfo::builder()
-                .flags(vk::InstanceCreateFlags::empty())
-                .application_info(&app_info)
-                .enabled_layer_names(&str_pointers[..layers.len()])
-                .enabled_extension_names(&str_pointers[layers.len()..]);
-
-            unsafe { entry.create_instance(&create_info, None) }.map_err(|e| {
-                #[cfg(feature = "tracing")]
-                error!("Unable to create Vulkan instance: {:?}", e);
-                AscheError::Unspecified(format!("Unable to create Vulkan instance: {:?}", e))
-            })?
-        };
+        let extensions = Self::create_extensions(&instance_extensions);
+        let layers = Self::create_layers(instance_layers);
+        let instance = Self::create_instance(&entry, &app_info, &extensions, &layers)?;
+        let (surface_khr, surface) = Self::create_surface(&entry, &instance, &handle)?;
 
         #[cfg(feature = "tracing")]
         {
-            let debug_messenger = {
-                // Make sure VK_EXT_debug_utils is available.
-                let debug_utils = instance_extensions.iter().any(|props| unsafe {
-                    CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugUtils::name()
-                });
-
-                let debug_report = cfg!(debug_assertions)
-                    && instance_extensions.iter().any(|props| unsafe {
-                        CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugReport::name()
-                    });
-
-                if debug_utils {
-                    let ext = ext::DebugUtils::new(&entry, &instance);
-                    let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                        .message_severity(vulkan_log_level())
-                        .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-                        .pfn_user_callback(Some(debug::debug_utils_callback));
-                    let handle = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
-                    Some(DebugMessenger::Utils(ext, handle))
-                } else if debug_report {
-                    let ext = ext::DebugReport::new(&entry, &instance);
-                    let info = vk::DebugReportCallbackCreateInfoEXT::builder()
-                        .flags(vulkan_report_flags())
-                        .pfn_callback(Some(debug::debug_report_callback));
-                    let handle = unsafe { ext.create_debug_report_callback(&info, None) }.unwrap();
-                    Some(DebugMessenger::Report(ext, handle))
-                } else {
-                    None
-                }
-            };
+            let debug_messenger =
+                Self::create_debug_messenger(&entry, instance_extensions, &instance);
 
             Ok(Self {
                 _entry: entry,
                 inner: instance,
                 layers,
+                surface_khr,
+                surface,
                 debug_messenger,
             })
         }
@@ -625,7 +530,233 @@ impl RawInstance {
                 _entry: entry,
                 inner: instance,
                 layers,
+                surface_khr,
+                surface,
             })
+        }
+    }
+
+    #[cfg(feature = "tracing")]
+    fn create_debug_messenger(
+        entry: &ash::Entry,
+        instance_extensions: Vec<vk::ExtensionProperties>,
+        instance: &ash::Instance,
+    ) -> Option<DebugMessenger> {
+        let debug_messenger = {
+            // Make sure VK_EXT_debug_utils is available.
+            let debug_utils = instance_extensions.iter().any(|props| unsafe {
+                CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugUtils::name()
+            });
+
+            let debug_report = cfg!(debug_assertions)
+                && instance_extensions.iter().any(|props| unsafe {
+                    CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugReport::name()
+                });
+
+            if debug_utils {
+                let ext = ext::DebugUtils::new(entry, instance);
+                let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                    .message_severity(Self::vulkan_log_level())
+                    .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+                    .pfn_user_callback(Some(debug::debug_utils_callback));
+                let handle = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
+                Some(DebugMessenger::Utils(ext, handle))
+            } else if debug_report {
+                let ext = ext::DebugReport::new(entry, instance);
+                let info = vk::DebugReportCallbackCreateInfoEXT::builder()
+                    .flags(Self::vulkan_report_flags())
+                    .pfn_callback(Some(debug::debug_report_callback));
+                let handle = unsafe { ext.create_debug_report_callback(&info, None) }.unwrap();
+                Some(DebugMessenger::Report(ext, handle))
+            } else {
+                None
+            }
+        };
+        debug_messenger
+    }
+
+    #[cfg(feature = "tracing")]
+    fn vulkan_log_level() -> vk::DebugUtilsMessageSeverityFlagsEXT {
+        match tracing::level_filters::STATIC_MAX_LEVEL {
+            LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
+            LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+            LevelFilter::WARN => {
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+            }
+            LevelFilter::INFO => {
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+            }
+            LevelFilter::DEBUG => {
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+            }
+            LevelFilter::TRACE => vk::DebugUtilsMessageSeverityFlagsEXT::all(),
+        }
+    }
+
+    #[cfg(feature = "tracing")]
+    fn vulkan_report_flags() -> vk::DebugReportFlagsEXT {
+        match tracing::level_filters::STATIC_MAX_LEVEL {
+            LevelFilter::OFF => vk::DebugReportFlagsEXT::empty(),
+            LevelFilter::ERROR => vk::DebugReportFlagsEXT::ERROR,
+            LevelFilter::WARN => {
+                vk::DebugReportFlagsEXT::ERROR
+                    | vk::DebugReportFlagsEXT::WARNING
+                    | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
+            }
+            LevelFilter::INFO => {
+                vk::DebugReportFlagsEXT::ERROR
+                    | vk::DebugReportFlagsEXT::WARNING
+                    | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
+                    | vk::DebugReportFlagsEXT::INFORMATION
+            }
+            LevelFilter::DEBUG => {
+                vk::DebugReportFlagsEXT::ERROR
+                    | vk::DebugReportFlagsEXT::WARNING
+                    | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
+                    | vk::DebugReportFlagsEXT::INFORMATION
+                    | vk::DebugReportFlagsEXT::DEBUG
+            }
+            LevelFilter::TRACE => vk::DebugReportFlagsEXT::all(),
+        }
+    }
+
+    fn create_instance(
+        entry: &ash::Entry,
+        app_info: &vk::ApplicationInfoBuilder,
+        extensions: &[&CStr],
+        layers: &[&CStr],
+    ) -> Result<ash::Instance> {
+        let str_pointers = layers
+            .iter()
+            .chain(extensions.iter())
+            .map(|&s| {
+                // Safe because `layers` and `extensions` entries have static lifetime.
+                s.as_ptr()
+            })
+            .collect::<Vec<_>>();
+
+        let create_info = vk::InstanceCreateInfo::builder()
+            .flags(vk::InstanceCreateFlags::empty())
+            .application_info(&app_info)
+            .enabled_layer_names(&str_pointers[..layers.len()])
+            .enabled_extension_names(&str_pointers[layers.len()..]);
+
+        Ok(
+            unsafe { entry.create_instance(&create_info, None) }.map_err(|e| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create Vulkan instance: {:?}", e);
+                AscheError::Unspecified(format!("Unable to create Vulkan instance: {:?}", e))
+            })?,
+        )
+    }
+
+    fn create_layers(instance_layers: Vec<vk::LayerProperties>) -> Vec<&'static CStr> {
+        let mut layers: Vec<&'static CStr> = Vec::new();
+        if cfg!(debug_assertions) {
+            layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
+        }
+
+        // Only keep available layers.
+        layers.retain(|&layer| {
+            let found = instance_layers.iter().any(|inst_layer| unsafe {
+                CStr::from_ptr(inst_layer.layer_name.as_ptr()) == layer
+            });
+            if found {
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                warn!("Unable to find layer: {}", layer.to_string_lossy());
+                false
+            }
+        });
+
+        layers
+    }
+
+    fn create_extensions(instance_extensions: &[vk::ExtensionProperties]) -> Vec<&CStr> {
+        let mut extensions: Vec<&'static CStr> = Vec::new();
+        extensions.push(ash::extensions::khr::Surface::name());
+
+        // Platform-specific WSI extensions
+        if cfg!(all(
+            unix,
+            not(target_os = "android"),
+            not(target_os = "macos")
+        )) {
+            extensions.push(ash::extensions::khr::XlibSurface::name());
+            extensions.push(ash::extensions::khr::XcbSurface::name());
+            extensions.push(ash::extensions::khr::WaylandSurface::name());
+        }
+        if cfg!(target_os = "android") {
+            extensions.push(ash::extensions::khr::AndroidSurface::name());
+        }
+        if cfg!(target_os = "windows") {
+            extensions.push(ash::extensions::khr::Win32Surface::name());
+        }
+        if cfg!(target_os = "macos") {
+            extensions.push(ash::extensions::mvk::MacOSSurface::name());
+        }
+
+        #[cfg(feature = "tracing")]
+        {
+            extensions.push(ext::DebugUtils::name());
+            if cfg!(debug_assertions) {
+                extensions.push(ext::DebugReport::name());
+            }
+        }
+
+        extensions.push(vk::KhrGetPhysicalDeviceProperties2Fn::name());
+
+        // Only keep available extensions.
+        extensions.retain(|&ext| {
+            let found = instance_extensions
+                .iter()
+                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext });
+            if found {
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                warn!("Unable to find extension: {}", ext.to_string_lossy());
+                false
+            }
+        });
+
+        extensions
+    }
+
+    fn create_surface(
+        entry: &ash::Entry,
+        instance: &ash::Instance,
+        handle: &RawWindowHandle,
+    ) -> Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
+        match handle {
+            #[cfg(windows)]
+            RawWindowHandle::Windows(h) => {
+                let create_info = vk::Win32SurfaceCreateInfoKHR::builder()
+                    .hwnd(h.hwnd)
+                    .hinstance(h.hinstance);
+
+                let win32_surface = ash::extensions::khr::Win32Surface::new(entry, instance);
+                let surface_khr =
+                    unsafe { win32_surface.create_win32_surface(&create_info, None) }?;
+                let surface = ash::extensions::khr::Surface::new(entry, instance);
+                Ok((surface_khr, surface))
+            }
+            #[cfg(unix)]
+            RawWindowHandle::Xlib(_) => {}
+            #[cfg(unix)]
+            RawWindowHandle::Xcb(_) => {}
+            #[cfg(unix)]
+            RawWindowHandle::Wayland(_) => {}
+            _ => {
+                panic!("Surface creation only supported for windows and unix")
+            }
         }
     }
 }
@@ -636,14 +767,15 @@ impl Drop for RawInstance {
             #[cfg(feature = "tracing")]
             match self.debug_messenger {
                 Some(DebugMessenger::Utils(ref ext, callback)) => {
-                    ext.destroy_debug_utils_messenger(callback, None)
+                    ext.destroy_debug_utils_messenger(callback, None);
                 }
                 Some(DebugMessenger::Report(ref ext, callback)) => {
-                    ext.destroy_debug_report_callback(callback, None)
+                    ext.destroy_debug_report_callback(callback, None);
                 }
                 None => {}
             }
-            self.inner.destroy_instance(None)
+            self.surface.destroy_surface(self.surface_khr, None);
+            self.inner.destroy_instance(None);
         };
     }
 }
@@ -660,56 +792,5 @@ pub struct Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe { self.logical_device.destroy_device(None) };
-    }
-}
-
-#[cfg(feature = "tracing")]
-fn vulkan_log_level() -> vk::DebugUtilsMessageSeverityFlagsEXT {
-    match tracing::level_filters::STATIC_MAX_LEVEL {
-        LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
-        LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        LevelFilter::WARN => {
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-        }
-        LevelFilter::INFO => {
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-        }
-        LevelFilter::DEBUG => {
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-        }
-        LevelFilter::TRACE => vk::DebugUtilsMessageSeverityFlagsEXT::all(),
-    }
-}
-
-#[cfg(feature = "tracing")]
-fn vulkan_report_flags() -> vk::DebugReportFlagsEXT {
-    match tracing::level_filters::STATIC_MAX_LEVEL {
-        LevelFilter::OFF => vk::DebugReportFlagsEXT::empty(),
-        LevelFilter::ERROR => vk::DebugReportFlagsEXT::ERROR,
-        LevelFilter::WARN => {
-            vk::DebugReportFlagsEXT::ERROR
-                | vk::DebugReportFlagsEXT::WARNING
-                | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-        }
-        LevelFilter::INFO => {
-            vk::DebugReportFlagsEXT::ERROR
-                | vk::DebugReportFlagsEXT::WARNING
-                | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-                | vk::DebugReportFlagsEXT::INFORMATION
-        }
-        LevelFilter::DEBUG => {
-            vk::DebugReportFlagsEXT::ERROR
-                | vk::DebugReportFlagsEXT::WARNING
-                | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-                | vk::DebugReportFlagsEXT::INFORMATION
-                | vk::DebugReportFlagsEXT::DEBUG
-        }
-        LevelFilter::TRACE => vk::DebugReportFlagsEXT::all(),
     }
 }
