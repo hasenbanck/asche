@@ -143,6 +143,8 @@ impl Adapter {
                 // TODO create the queue abstraction
                 info!("Created logical device and queues");
 
+                self.log_surface_info(physical_device);
+
                 Ok(Device {
                     _context: self.0.clone(),
                     logical_device,
@@ -178,6 +180,67 @@ impl Adapter {
                 Err(AscheError::RequestDeviceError)
             }
         }
+    }
+
+    #[cfg(feature = "tracing")]
+    fn log_surface_info(&self, physical_device: vk::PhysicalDevice) -> Result<()> {
+        let capabilities = unsafe {
+            self.0
+                .surface
+                .get_physical_device_surface_capabilities(physical_device, self.0.surface_khr)
+        }?;
+        let present_modes = unsafe {
+            self.0
+                .surface
+                .get_physical_device_surface_present_modes(physical_device, self.0.surface_khr)
+        }?;
+        let formats = unsafe {
+            self.0
+                .surface
+                .get_physical_device_surface_formats(physical_device, self.0.surface_khr)
+        }?;
+
+        info!("Available surface capabilities:");
+        info!("\tmin_image_count: {}", capabilities.min_image_count);
+        info!("\tmax_image_count: {}", capabilities.max_image_count);
+        info!(
+            "\tmax_image_array_layers: {}",
+            capabilities.max_image_array_layers
+        );
+        info!(
+            "\tcurrent_extent: {}x{}",
+            capabilities.current_extent.width, capabilities.current_extent.height
+        );
+        info!(
+            "\tmin_image_extent: {}x{}",
+            capabilities.min_image_extent.width, capabilities.min_image_extent.height
+        );
+        info!(
+            "\tmax_image_extent: {}x{}",
+            capabilities.max_image_extent.width, capabilities.max_image_extent.height
+        );
+        info!(
+            "\tsupported_transforms: {:?}",
+            capabilities.supported_transforms
+        );
+        info!("\tcurrent_transform: {:?}", capabilities.current_transform);
+        info!(
+            "\tsupported_composite_alpha: {:?}",
+            capabilities.supported_composite_alpha
+        );
+        info!(
+            "\tsupported_usage_flags: {:?}",
+            capabilities.supported_usage_flags
+        );
+
+        info!("Available surface presentation modes: {:?}", present_modes);
+
+        info!("Available surface formats:");
+        formats.iter().for_each(|format| {
+            info!("\t{:?} ({:?})", format.format, format.color_space);
+        });
+
+        Ok(())
     }
 
     fn find_physical_device(
@@ -517,7 +580,7 @@ impl AshContext {
 
             Ok(Self {
                 _entry: entry,
-                instance: instance,
+                instance,
                 layers,
                 surface_khr,
                 surface,
