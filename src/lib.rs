@@ -51,7 +51,7 @@ impl From<VulkanVersion> for u32 {
 }
 
 /// Describes how the instance should be configured.
-pub struct InstanceDescriptor {
+pub struct AdapterDescriptor {
     /// Name of the application.
     pub app_name: String,
     /// Version of the application. Use `ash::vk::make_version()` to create the version number.
@@ -70,7 +70,7 @@ pub struct QueuePriorityDescriptor {
     pub compute: f32,
 }
 
-impl Default for InstanceDescriptor {
+impl Default for AdapterDescriptor {
     fn default() -> Self {
         Self {
             app_name: "Undefined".to_string(),
@@ -101,26 +101,26 @@ impl Default for DeviceDescriptor {
     }
 }
 
-/// Handles the creation of graphic and compute devices. Can be dropped once a `Device` is created.
+/// Handles the creation of devices. Can be dropped once a `Device` is created.
 #[repr(transparent)]
-pub struct Instance(Arc<RawInstance>);
+pub struct Adapter(Arc<AshContext>);
 
-impl Instance {
-    /// Creates a new `Instance`.
+impl Adapter {
+    /// Creates a new `Adapter`.
     pub fn new(
         handle: &raw_window_handle::RawWindowHandle,
-        descriptor: &InstanceDescriptor,
+        descriptor: &AdapterDescriptor,
     ) -> Result<Self> {
-        let instance = Arc::new(RawInstance::new(handle, descriptor)?);
+        let instance = Arc::new(AshContext::new(handle, descriptor)?);
         Ok(Self(instance))
     }
 
-    /// Creates a new `Device` from this `Instance`.
+    /// Creates a new `Device` from this `Adapter`.
     pub fn request_device(&self, descriptor: &DeviceDescriptor) -> Result<Device> {
         #[cfg(feature = "tracing")]
         {
             // Create the physical device
-            let physical_devices = unsafe { self.0.inner.enumerate_physical_devices()? };
+            let physical_devices = unsafe { self.0.instance.enumerate_physical_devices()? };
 
             let mut chosen = None;
             self.find_physical_device(descriptor.device_type, physical_devices, &mut chosen);
@@ -144,7 +144,7 @@ impl Instance {
                 info!("Created logical device and queues");
 
                 Ok(Device {
-                    _instance: self.0.clone(),
+                    _context: self.0.clone(),
                     logical_device,
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
@@ -158,7 +158,7 @@ impl Instance {
         #[cfg(not(feature = "tracing"))]
         {
             // Create the physical device
-            let phys_devs = unsafe { self.0.inner.enumerate_physical_devices()? };
+            let phys_devs = unsafe { self.0.instance.enumerate_physical_devices()? };
 
             let mut chosen = None;
             self.find_physical_device(descriptor.device_type, phys_devs, &mut chosen);
@@ -168,7 +168,7 @@ impl Instance {
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
                 Ok(Device {
-                    _instance: self.0.clone(),
+                    _context: self.0.clone(),
                     logical_device,
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
@@ -187,7 +187,7 @@ impl Instance {
         chosen: &mut Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)>,
     ) {
         for device in physical_devices {
-            let properties = unsafe { self.0.inner.get_physical_device_properties(device) };
+            let properties = unsafe { self.0.instance.get_physical_device_properties(device) };
 
             if properties.device_type == device_type {
                 *chosen = Some((device, properties))
@@ -204,7 +204,7 @@ impl Instance {
     ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
         let queue_family_properties = unsafe {
             self.0
-                .inner
+                .instance
                 .get_physical_device_queue_family_properties(physical_device)
         };
 
@@ -272,7 +272,7 @@ impl Instance {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.0
-                    .inner
+                    .instance
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -299,7 +299,7 @@ impl Instance {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.0
-                    .inner
+                    .instance
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -326,7 +326,7 @@ impl Instance {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.0
-                    .inner
+                    .instance
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -347,7 +347,7 @@ impl Instance {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.0
-                    .inner
+                    .instance
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -376,7 +376,7 @@ impl Instance {
                 .enabled_layer_names(&str_pointers);
             let logical_device = unsafe {
                 self.0
-                    .inner
+                    .instance
                     .create_device(physical_device, &device_create_info, None)?
             };
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
@@ -455,10 +455,10 @@ impl Instance {
     }
 }
 
-/// Wraps the Vulkan instance.
-struct RawInstance {
+/// Wraps some ash structures globally used.
+struct AshContext {
     _entry: ash::Entry,
-    pub(crate) inner: ash::Instance,
+    pub(crate) instance: ash::Instance,
     pub(crate) surface_khr: vk::SurfaceKHR,
     pub(crate) surface: ash::extensions::khr::Surface,
     layers: Vec<&'static CStr>,
@@ -472,11 +472,11 @@ enum DebugMessenger {
     Report(ext::DebugReport, vk::DebugReportCallbackEXT),
 }
 
-impl RawInstance {
+impl AshContext {
     /// Creates a new `Instance`.
     pub fn new(
         handle: &raw_window_handle::RawWindowHandle,
-        descriptor: &InstanceDescriptor,
+        descriptor: &AdapterDescriptor,
     ) -> Result<Self> {
         let entry = ash::Entry::new()?;
 
@@ -517,7 +517,7 @@ impl RawInstance {
 
             Ok(Self {
                 _entry: entry,
-                inner: instance,
+                instance: instance,
                 layers,
                 surface_khr,
                 surface,
@@ -528,7 +528,7 @@ impl RawInstance {
         {
             Ok(Self {
                 _entry: entry,
-                inner: instance,
+                instance: instance,
                 layers,
                 surface_khr,
                 surface,
@@ -761,7 +761,7 @@ impl RawInstance {
     }
 }
 
-impl Drop for RawInstance {
+impl Drop for AshContext {
     fn drop(&mut self) {
         unsafe {
             #[cfg(feature = "tracing")]
@@ -775,14 +775,14 @@ impl Drop for RawInstance {
                 None => {}
             }
             self.surface.destroy_surface(self.surface_khr, None);
-            self.inner.destroy_instance(None);
+            self.instance.destroy_instance(None);
         };
     }
 }
 
 /// Abstracts a Vulkan device.
 pub struct Device {
-    _instance: Arc<RawInstance>,
+    _context: Arc<AshContext>,
     logical_device: ash::Device,
     _graphics_queue: vk::Queue,
     _transfer_queue: vk::Queue,
