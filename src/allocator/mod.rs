@@ -2,7 +2,7 @@
 //!
 //! ## Setting up the memory allocator
 //!
-//! ```rust
+//! ```ignore
 //! use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 //! use ash::vk;
 //! use asche::allocator::{Allocator, AllocatorDescriptor};
@@ -16,7 +16,7 @@
 //!
 //! ## Simple allocation example
 //!
-//! ```rust
+//! ```ignore
 //! use ash::vk;
 //! use asche::allocator::{AllocationDescriptor, MemoryLocation};
 //!
@@ -148,7 +148,7 @@ unsafe impl Send for SubAllocation {}
 
 impl SubAllocation {
     /// Returns the `vk::DeviceMemory` object that is backing this allocation.
-    /// This memory object can be shared with multiple other allocations and shouldn't be free'd (or allocated from)
+    /// This memory object can be shared with multiple other allocations and shouldn't be freed (or allocated from)
     /// without this library, because that will lead to undefined behavior.
     ///
     /// # Safety
@@ -206,6 +206,7 @@ impl SubAllocation {
         }
     }
 
+    /// Reports if sub allocation is unallocated.
     pub fn is_null(&self) -> bool {
         self.chunk_id.is_none()
     }
@@ -229,8 +230,11 @@ impl Default for SubAllocation {
 #[derive(PartialEq, Copy, Clone, Debug)]
 #[repr(u8)]
 pub(crate) enum AllocationType {
+    /// Free to use.
     Free,
+    /// Linear memory block (buffer / linear texture).
     Linear,
+    /// Nonlinear memory block (regular texture).
     NonLinear,
 }
 
@@ -548,6 +552,7 @@ pub struct Allocator {
 }
 
 impl Allocator {
+    /// Creates a new `Allocator`.
     pub fn new(desc: &AllocatorDescriptor) -> Self {
         let mem_props = unsafe {
             desc.instance
@@ -619,6 +624,7 @@ impl Allocator {
         }
     }
 
+    /// Allocates memory.
     pub fn allocate(&mut self, desc: &AllocationDescriptor) -> Result<SubAllocation> {
         let size = desc.requirements.size;
         let alignment = desc.requirements.alignment;
@@ -712,6 +718,7 @@ impl Allocator {
         }
     }
 
+    /// Free memory of a sub allocation.
     pub fn free(&mut self, sub_allocation: SubAllocation) -> Result<()> {
         #[cfg(feature = "tracing")]
         debug!(
@@ -728,6 +735,7 @@ impl Allocator {
         Ok(())
     }
 
+    /// Logs memory leaks as warnings.
     #[cfg(feature = "tracing")]
     pub fn report_memory_leaks(&self) {
         for (mem_type_i, mem_type) in self.memory_types.iter().enumerate() {
