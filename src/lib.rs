@@ -104,7 +104,6 @@ impl Default for DeviceDescriptor {
 }
 
 /// Handles the creation of devices. Can be dropped once a `Device` is created.
-#[repr(transparent)]
 pub struct Adapter(Arc<AshContext>);
 
 impl Adapter {
@@ -142,7 +141,6 @@ impl Adapter {
                 let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
-                // TODO create the queue abstraction
                 info!("Created logical device and queues");
 
                 self.log_surface_info(physical_device)?;
@@ -608,7 +606,6 @@ impl AshContext {
         instance: &ash::Instance,
     ) -> Option<DebugMessenger> {
         let debug_messenger = {
-            // Make sure VK_EXT_debug_utils is available.
             let debug_utils = instance_extensions.iter().any(|props| unsafe {
                 CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugUtils::name()
             });
@@ -816,7 +813,8 @@ impl AshContext {
             #[cfg(unix)]
             RawWindowHandle::Xlib(h) => {
                 let create_info = vk::XlibSurfaceCreateInfoKHR::builder()
-                .window(h.window);
+                .window(h.window)
+                .dpy(h.display as *mut vk::Display);
 
                 let xlib_surface = ash::extensions::khr::XlibSurface::new(entry, instance);
                 let surface_khr =
@@ -827,7 +825,8 @@ impl AshContext {
             #[cfg(unix)]
             RawWindowHandle::Xcb(h) => {
                 let create_info = vk::XcbSurfaceCreateInfoKHR::builder()
-                .window(h.window);
+                .window(h.window)
+                .connection(h.connection);
 
                 let xcb_surface = ash::extensions::khr::XcbSurface::new(entry, instance);
                 let surface_khr =
@@ -838,7 +837,8 @@ impl AshContext {
             #[cfg(unix)]
             RawWindowHandle::Wayland(h) => {
                 let create_info = vk::WaylandSurfaceCreateInfoKHR::builder()
-                .surface(h.surface);
+                .surface(h.surface)
+                .display(h.display);
 
                 let wayland_surface = ash::extensions::khr::WaylandSurface::new(entry, instance);
                 let surface_khr =
