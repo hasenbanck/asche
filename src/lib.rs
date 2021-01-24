@@ -14,6 +14,8 @@ use tracing::{error, info, level_filters::LevelFilter, warn};
 
 pub use error::AscheError;
 
+/// Memory allocator.
+pub mod allocator;
 /// Debug code for Vulkan.
 #[cfg(feature = "tracing")]
 mod debug;
@@ -143,7 +145,7 @@ impl Adapter {
                 // TODO create the queue abstraction
                 info!("Created logical device and queues");
 
-                self.log_surface_info(physical_device);
+                self.log_surface_info(physical_device)?;
 
                 Ok(Device {
                     _context: self.0.clone(),
