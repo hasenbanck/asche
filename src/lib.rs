@@ -814,11 +814,38 @@ impl AshContext {
                 Ok((surface_khr, surface))
             }
             #[cfg(unix)]
-            RawWindowHandle::Xlib(_) => {}
+            RawWindowHandle::Xlib(h) => {
+                let create_info = vk::XlibSurfaceCreateInfoKHR::builder()
+                .window(h.window);
+
+                let xlib_surface = ash::extensions::khr::XlibSurface::new(entry, instance);
+                let surface_khr =
+                unsafe { xlib_surface.create_xlib_surface(&create_info, None) }?;
+                let surface = ash::extensions::khr::Surface::new(entry, instance);
+                Ok((surface_khr, surface))
+            }
             #[cfg(unix)]
-            RawWindowHandle::Xcb(_) => {}
+            RawWindowHandle::Xcb(h) => {
+                let create_info = vk::XcbSurfaceCreateInfoKHR::builder()
+                .window(h.window);
+
+                let xcb_surface = ash::extensions::khr::XcbSurface::new(entry, instance);
+                let surface_khr =
+                unsafe { xcb_surface.create_xcb_surface(&create_info, None) }?;
+                let surface = ash::extensions::khr::Surface::new(entry, instance);
+                Ok((surface_khr, surface))
+            }
             #[cfg(unix)]
-            RawWindowHandle::Wayland(_) => {}
+            RawWindowHandle::Wayland(h) => {
+                let create_info = vk::WaylandSurfaceCreateInfoKHR::builder()
+                .surface(h.surface);
+
+                let wayland_surface = ash::extensions::khr::WaylandSurface::new(entry, instance);
+                let surface_khr =
+                unsafe { wayland_surface.create_wayland_surface(&create_info, None) }?;
+                let surface = ash::extensions::khr::Surface::new(entry, instance);
+                Ok((surface_khr, surface))
+            }
             _ => {
                 panic!("Surface creation only supported for windows and unix")
             }
