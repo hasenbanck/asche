@@ -8,7 +8,7 @@ pub enum AllocationError {
     /// No compatible memory type was found.
     NoCompatibleMemoryTypeFound,
     /// Invalid AllocationDescriptor.
-    InvalidAllocationCreateDesc,
+    InvalidAllocationDescriptor,
     /// An allocator implementation error.
     Internal(&'static str),
 }
@@ -25,7 +25,7 @@ impl std::fmt::Display for AllocationError {
             AllocationError::NoCompatibleMemoryTypeFound => {
                 write!(f, "no compatible memory type available")
             }
-            AllocationError::InvalidAllocationCreateDesc => {
+            AllocationError::InvalidAllocationDescriptor => {
                 write!(f, "invalid AllocationDescriptor")
             }
             AllocationError::Internal(message) => {

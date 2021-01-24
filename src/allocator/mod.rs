@@ -636,7 +636,7 @@ impl Allocator {
         );
 
         if size == 0 || !alignment.is_power_of_two() {
-            return Err(AllocationError::InvalidAllocationCreateDesc);
+            return Err(AllocationError::InvalidAllocationDescriptor);
         }
 
         let mem_loc_preferred_bits = match desc.location {
