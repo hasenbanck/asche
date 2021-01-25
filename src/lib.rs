@@ -530,9 +530,9 @@ struct AshContext {
 }
 
 #[cfg(feature = "tracing")]
-enum DebugMessenger {
-    Utils(ext::DebugUtils, vk::DebugUtilsMessengerEXT),
-    Report(ext::DebugReport, vk::DebugReportCallbackEXT),
+struct DebugMessenger {
+    pub(crate) ext: ext::DebugUtils,
+    pub(crate) callback: vk::DebugUtilsMessengerEXT,
 }
 
 impl AshContext {
@@ -610,27 +610,16 @@ impl AshContext {
                 CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugUtils::name()
             });
 
-            let debug_report = cfg!(debug_assertions)
-                && instance_extensions.iter().any(|props| unsafe {
-                    CStr::from_ptr(props.extension_name.as_ptr()) == ext::DebugReport::name()
-                });
-
             if debug_utils {
                 let ext = ext::DebugUtils::new(entry, instance);
                 let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
                     .message_severity(Self::vulkan_log_level())
                     .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
                     .pfn_user_callback(Some(debug::debug_utils_callback));
-                let handle = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
-                Some(DebugMessenger::Utils(ext, handle))
-            } else if debug_report {
-                let ext = ext::DebugReport::new(entry, instance);
-                let info = vk::DebugReportCallbackCreateInfoEXT::builder()
-                    .flags(Self::vulkan_report_flags())
-                    .pfn_callback(Some(debug::debug_report_callback));
-                let handle = unsafe { ext.create_debug_report_callback(&info, None) }.unwrap();
-                Some(DebugMessenger::Report(ext, handle))
+                let callback = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
+                Some(DebugMessenger { ext, callback })
             } else {
+                warn!("Unable to create Debug Utils");
                 None
             }
         };
@@ -658,33 +647,6 @@ impl AshContext {
                     | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
             }
             LevelFilter::TRACE => vk::DebugUtilsMessageSeverityFlagsEXT::all(),
-        }
-    }
-
-    #[cfg(feature = "tracing")]
-    fn vulkan_report_flags() -> vk::DebugReportFlagsEXT {
-        match tracing::level_filters::STATIC_MAX_LEVEL {
-            LevelFilter::OFF => vk::DebugReportFlagsEXT::empty(),
-            LevelFilter::ERROR => vk::DebugReportFlagsEXT::ERROR,
-            LevelFilter::WARN => {
-                vk::DebugReportFlagsEXT::ERROR
-                    | vk::DebugReportFlagsEXT::WARNING
-                    | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-            }
-            LevelFilter::INFO => {
-                vk::DebugReportFlagsEXT::ERROR
-                    | vk::DebugReportFlagsEXT::WARNING
-                    | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-                    | vk::DebugReportFlagsEXT::INFORMATION
-            }
-            LevelFilter::DEBUG => {
-                vk::DebugReportFlagsEXT::ERROR
-                    | vk::DebugReportFlagsEXT::WARNING
-                    | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-                    | vk::DebugReportFlagsEXT::INFORMATION
-                    | vk::DebugReportFlagsEXT::DEBUG
-            }
-            LevelFilter::TRACE => vk::DebugReportFlagsEXT::all(),
         }
     }
 
@@ -768,9 +730,6 @@ impl AshContext {
         #[cfg(feature = "tracing")]
         {
             extensions.push(ext::DebugUtils::name());
-            if cfg!(debug_assertions) {
-                extensions.push(ext::DebugReport::name());
-            }
         }
 
         extensions.push(vk::KhrGetPhysicalDeviceProperties2Fn::name());
@@ -813,36 +772,34 @@ impl AshContext {
             #[cfg(unix)]
             RawWindowHandle::Xlib(h) => {
                 let create_info = vk::XlibSurfaceCreateInfoKHR::builder()
-                .window(h.window)
-                .dpy(h.display as *mut vk::Display);
+                    .window(h.window)
+                    .dpy(h.display as *mut vk::Display);
 
                 let xlib_surface = ash::extensions::khr::XlibSurface::new(entry, instance);
-                let surface_khr =
-                unsafe { xlib_surface.create_xlib_surface(&create_info, None) }?;
+                let surface_khr = unsafe { xlib_surface.create_xlib_surface(&create_info, None) }?;
                 let surface = ash::extensions::khr::Surface::new(entry, instance);
                 Ok((surface_khr, surface))
             }
             #[cfg(unix)]
             RawWindowHandle::Xcb(h) => {
                 let create_info = vk::XcbSurfaceCreateInfoKHR::builder()
-                .window(h.window)
-                .connection(h.connection);
+                    .window(h.window)
+                    .connection(h.connection);
 
                 let xcb_surface = ash::extensions::khr::XcbSurface::new(entry, instance);
-                let surface_khr =
-                unsafe { xcb_surface.create_xcb_surface(&create_info, None) }?;
+                let surface_khr = unsafe { xcb_surface.create_xcb_surface(&create_info, None) }?;
                 let surface = ash::extensions::khr::Surface::new(entry, instance);
                 Ok((surface_khr, surface))
             }
             #[cfg(unix)]
             RawWindowHandle::Wayland(h) => {
                 let create_info = vk::WaylandSurfaceCreateInfoKHR::builder()
-                .surface(h.surface)
-                .display(h.display);
+                    .surface(h.surface)
+                    .display(h.display);
 
                 let wayland_surface = ash::extensions::khr::WaylandSurface::new(entry, instance);
                 let surface_khr =
-                unsafe { wayland_surface.create_wayland_surface(&create_info, None) }?;
+                    unsafe { wayland_surface.create_wayland_surface(&create_info, None) }?;
                 let surface = ash::extensions::khr::Surface::new(entry, instance);
                 Ok((surface_khr, surface))
             }
@@ -857,15 +814,12 @@ impl Drop for AshContext {
     fn drop(&mut self) {
         unsafe {
             #[cfg(feature = "tracing")]
-            match self.debug_messenger {
-                Some(DebugMessenger::Utils(ref ext, callback)) => {
-                    ext.destroy_debug_utils_messenger(callback, None);
-                }
-                Some(DebugMessenger::Report(ref ext, callback)) => {
-                    ext.destroy_debug_report_callback(callback, None);
-                }
-                None => {}
+            if let Some(messenger) = &self.debug_messenger {
+                messenger
+                    .ext
+                    .destroy_debug_utils_messenger(messenger.callback, None);
             }
+
             self.surface.destroy_surface(self.surface_khr, None);
             self.instance.destroy_instance(None);
         };
