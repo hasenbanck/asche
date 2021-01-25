@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 #[cfg(feature = "tracing")]
 use tracing::warn;
 
-use super::{AllocationError, AllocationType, Result, SubAllocation, SubAllocator};
+use super::{AllocationError, AllocationType, Result, SubAllocator};
 
 /// Allocates a dedicated blob of memory for the given resource.
 #[derive(Debug)]
@@ -51,8 +51,8 @@ impl SubAllocator for DedicatedBlockAllocator {
         Ok((0, dummy_id))
     }
 
-    fn free(&mut self, sub_allocation: SubAllocation) -> Result<()> {
-        if sub_allocation.chunk_id != NonZeroU64::new(1) {
+    fn free(&mut self, chunk_id: NonZeroU64) -> Result<()> {
+        if chunk_id != NonZeroU64::new(1).unwrap() {
             Err(AllocationError::Internal("chunk ID must be 1"))
         } else {
             self.allocated = 0;

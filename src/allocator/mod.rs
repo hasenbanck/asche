@@ -1,46 +1,7 @@
 //! This module is a hard copy of the [gpu-allocator](https://github.com/Traverse-Research/gpu-allocator) project.
-//!
-//! ## Setting up the memory allocator
-//!
-//! ```ignore
-//! use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
-//! use ash::vk;
-//! use asche::allocator::{Allocator, AllocatorDescriptor};
-//!
-//! let mut allocator = Allocator::new(&AllocatorDescriptor {
-//!     instance,
-//!     logical_device:device,
-//!     physical_device,
-//! });
-//! ```
-//!
-//! ## Simple allocation example
-//!
-//! ```ignore
-//! use ash::vk;
-//! use asche::allocator::{AllocationDescriptor, MemoryLocation};
-//!
-//! // Setup vulkan info
-//! let vk_info = vk::BufferCreateInfo::builder()
-//!     .size(512)
-//!     .usage(vk::BufferUsageFlags::STORAGE_BUFFER);
-//!
-//! let buffer = unsafe { device.create_buffer(&vk_info, None) }?;
-//! let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-//!
-//! let allocation = allocator
-//!     .allocate(&AllocationDescriptor {
-//!         name: "Example allocation",
-//!         requirements,
-//!         location: MemoryLocation::CpuToGpu,
-//!         linear: true,
-//!     })?;
-//!
-//! unsafe { device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())? };
-//!
-//! allocator.free(allocation)?;
-//! unsafe { device.destroy_buffer(buffer, None) };
-//! ```
+use std::ffi::c_void;
+use std::num::NonZeroU64;
+
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::vk;
 #[cfg(feature = "tracing")]
@@ -66,15 +27,11 @@ pub struct AllocationDescriptor {
     pub requirements: vk::MemoryRequirements,
     /// Location where the memory allocation should be stored.
     pub location: MemoryLocation,
-    /// If the resource is linear (buffer / linear texture) or a regular (tiled) texture.
-    pub linear: bool,
 }
 
 /// The location of the memory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MemoryLocation {
-    /// The allocated resource is stored at an unknown memory location. Let the driver decide what's the best location.
-    Unknown,
     /// Store the allocation in GPU only accessible memory. Typically this is the faster GPU resource and this should be
     /// where most of the allocations live.
     GpuOnly,
@@ -95,6 +52,7 @@ pub struct AllocatorDescriptor {
 }
 
 trait SubAllocator: std::fmt::Debug {
+    /// Create a new sub allocation. Returns the offset and the chunk ID of the sub allocation.
     fn allocate(
         &mut self,
         size: u64,
@@ -102,30 +60,26 @@ trait SubAllocator: std::fmt::Debug {
         allocation_type: AllocationType,
         granularity: u64,
         name: &'static str,
-    ) -> Result<(u64, std::num::NonZeroU64)>;
+    ) -> Result<(u64, NonZeroU64)>;
 
-    fn free(&mut self, sub_allocation: SubAllocation) -> Result<()>;
+    /// Free a sub allocation.
+    fn free(&mut self, chunk_id: NonZeroU64) -> Result<()>;
 
     /// Logs memory leaks as warnings.
     fn log_memory_leaks(&self, memory_type_index: usize, memory_block_index: usize);
 
-    #[must_use]
     fn supports_general_allocations(&self) -> bool;
 
-    #[must_use]
     fn size(&self) -> u64;
 
-    #[must_use]
     fn allocated(&self) -> u64;
 
     /// Reports how much memory is available in this sub allocator
-    #[must_use]
     fn available_memory(&self) -> u64 {
         self.size() - self.allocated()
     }
 
     /// Reports if the sub allocator is empty (having no allocations).
-    #[must_use]
     fn is_empty(&self) -> bool {
         self.allocated() == 0
     }
@@ -134,13 +88,13 @@ trait SubAllocator: std::fmt::Debug {
 /// A sub allocation.
 #[derive(Clone, Debug)]
 pub struct SubAllocation {
-    chunk_id: Option<std::num::NonZeroU64>,
+    chunk_id: Option<NonZeroU64>,
     memory_block_index: usize,
     memory_type_index: usize,
     device_memory: vk::DeviceMemory,
     offset: u64,
     size: u64,
-    mapped_ptr: Option<std::ptr::NonNull<std::ffi::c_void>>,
+    mapped_ptr: Option<std::ptr::NonNull<c_void>>,
     name: Option<&'static str>,
 }
 
@@ -227,6 +181,7 @@ impl Default for SubAllocation {
     }
 }
 
+/// Tracks the usage status of an allocation.
 #[derive(PartialEq, Copy, Clone, Debug)]
 #[repr(u8)]
 pub(crate) enum AllocationType {
@@ -242,7 +197,7 @@ pub(crate) enum AllocationType {
 struct MemoryBlock {
     device_memory: vk::DeviceMemory,
     size: u64,
-    mapped_ptr: *mut std::ffi::c_void,
+    mapped_ptr: *mut c_void,
     sub_allocator: Box<dyn SubAllocator>,
 }
 
@@ -282,10 +237,10 @@ impl MemoryBlock {
                     vk::MemoryMapFlags::empty(),
                 )
             }
-            .map_err(|_| {
-                unsafe { device.free_memory(device_memory, None) };
-                AllocationError::FailedToMap
-            })?
+                .map_err(|_| {
+                    unsafe { device.free_memory(device_memory, None) };
+                    AllocationError::FailedToMap
+                })?
         } else {
             std::ptr::null_mut()
         };
@@ -323,17 +278,16 @@ struct MemoryType {
     active_general_blocks: usize,
 }
 
-const DEFAULT_DEVICE_MEMORY_BLOCK_SIZE: u64 = 256 * 1024 * 1024;
-const DEFAULT_HOST_MEMORY_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
-
 impl MemoryType {
     fn allocate(
         &mut self,
         device: &ash::Device,
         desc: &AllocationDescriptor,
+        linear: bool,
+        dedicated: bool,
         granularity: u64,
     ) -> Result<SubAllocation> {
-        let allocation_type = if desc.linear {
+        let allocation_type = if linear {
             AllocationType::Linear
         } else {
             AllocationType::NonLinear
@@ -343,16 +297,18 @@ impl MemoryType {
             .memory_properties
             .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
         {
-            DEFAULT_HOST_MEMORY_BLOCK_SIZE
+            // Host memory block size = 64 MiB
+            64 * 1024 * 1024
         } else {
-            DEFAULT_DEVICE_MEMORY_BLOCK_SIZE
+            // Device memory block size = 256 MiB
+            256 * 1024 * 1024
         };
 
         let size = desc.requirements.size;
         let alignment = desc.requirements.alignment;
 
         // Create a dedicated block for large memory allocations
-        if size > memory_block_size {
+        if size > memory_block_size || dedicated {
             let mem_block =
                 MemoryBlock::new(device, size, self.memory_type_index, self.mappable, true)?;
 
@@ -412,12 +368,7 @@ impl MemoryType {
 
                 match allocation {
                     Ok((offset, chunk_id)) => {
-                        let mapped_ptr = if !mem_block.mapped_ptr.is_null() {
-                            let offset_ptr = unsafe { mem_block.mapped_ptr.add(offset as usize) };
-                            std::ptr::NonNull::new(offset_ptr)
-                        } else {
-                            None
-                        };
+                        let mapped_ptr = get_mapped_ptr(mem_block, offset);
                         return Ok(SubAllocation {
                             chunk_id: Some(chunk_id),
                             memory_block_index: mem_block_i,
@@ -475,16 +426,11 @@ impl MemoryType {
                         "allocation that must succeed failed",
                     )),
                     _ => Err(err),
-                }
+                };
             }
         };
 
-        let mapped_ptr = if !mem_block.mapped_ptr.is_null() {
-            let offset_ptr = unsafe { mem_block.mapped_ptr.add(offset as usize) };
-            std::ptr::NonNull::new(offset_ptr)
-        } else {
-            None
-        };
+        let mapped_ptr = get_mapped_ptr(mem_block, offset);
 
         Ok(SubAllocation {
             chunk_id: Some(chunk_id),
@@ -505,7 +451,11 @@ impl MemoryType {
             .as_mut()
             .ok_or(AllocationError::Internal("memory block must be Some"))?;
 
-        mem_block.sub_allocator.free(sub_allocation)?;
+        let chunk_id = sub_allocation
+            .chunk_id
+            .ok_or(AllocationError::Internal("chunk ID must be be Some"))?;
+
+        mem_block.sub_allocator.free(chunk_id)?;
 
         if mem_block.sub_allocator.is_empty() {
             if mem_block.sub_allocator.supports_general_allocations() {
@@ -525,6 +475,15 @@ impl MemoryType {
         }
 
         Ok(())
+    }
+}
+
+fn get_mapped_ptr(mem_block: &mut MemoryBlock, offset: u64) -> Option<std::ptr::NonNull<c_void>> {
+    if !mem_block.mapped_ptr.is_null() {
+        let offset_ptr = unsafe { mem_block.mapped_ptr.add(offset as usize) };
+        std::ptr::NonNull::new(offset_ptr)
+    } else {
+        None
     }
 }
 
@@ -562,37 +521,37 @@ impl Allocator {
         let memory_types = &mem_props.memory_types[..mem_props.memory_type_count as _];
 
         #[cfg(feature = "tracing")]
-        {
-            trace!("Memory type count: {}", mem_props.memory_type_count);
-            trace!("Memory heap count: {}", mem_props.memory_heap_count);
+            {
+                trace!("Memory type count: {}", mem_props.memory_type_count);
+                trace!("Memory heap count: {}", mem_props.memory_heap_count);
 
-            for (i, mem_type) in memory_types.iter().enumerate() {
-                let flags = mem_type.property_flags;
-                trace!(
-                    "Memory type[{}]: prop flags: 0x{:x}, heap[{}]",
-                    i,
-                    flags.as_raw(),
-                    mem_type.heap_index,
-                );
-            }
-            for i in 0..mem_props.memory_heap_count {
-                trace!(
-                    "Heap[{}] flags: 0x{:x}, size: {} MiB",
-                    i,
-                    mem_props.memory_heaps[i as usize].flags.as_raw(),
-                    mem_props.memory_heaps[i as usize].size / (1024 * 1024)
-                );
-            }
+                for (i, mem_type) in memory_types.iter().enumerate() {
+                    let flags = mem_type.property_flags;
+                    trace!(
+                        "Memory type[{}]: prop flags: 0x{:x}, heap[{}]",
+                        i,
+                        flags.as_raw(),
+                        mem_type.heap_index,
+                    );
+                }
+                for i in 0..mem_props.memory_heap_count {
+                    trace!(
+                        "Heap[{}] flags: 0x{:x}, size: {} MiB",
+                        i,
+                        mem_props.memory_heaps[i as usize].flags.as_raw(),
+                        mem_props.memory_heaps[i as usize].size / (1024 * 1024)
+                    );
+                }
 
-            let host_visible_not_coherent = memory_types.iter().any(|t| {
-                let flags = t.property_flags;
-                flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
-                    && !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT)
-            });
-            if host_visible_not_coherent {
-                warn!("There is a memory type that is host visible, but not host coherent.");
+                let host_visible_not_coherent = memory_types.iter().any(|t| {
+                    let flags = t.property_flags;
+                    flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+                        && !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT)
+                });
+                if host_visible_not_coherent {
+                    warn!("There is a memory type that is host visible, but not host coherent.");
+                }
             }
-        }
 
         let memory_types: Vec<MemoryType> = memory_types
             .iter()
@@ -624,8 +583,33 @@ impl Allocator {
         }
     }
 
-    /// Allocates memory.
-    pub fn allocate(&mut self, desc: &AllocationDescriptor) -> Result<SubAllocation> {
+    /// Allocates memory for a buffer.
+    // TODO https://www.asawicki.info/articles/VK_KHR_dedicated_allocation.php5
+    pub fn allocate_memory_for_buffer(
+        &mut self,
+        desc: &AllocationDescriptor,
+    ) -> Result<SubAllocation> {
+        // vkGetBufferMemoryRequirements2()
+        self.allocate_memory(desc, true, false)
+    }
+
+    /// Allocates memory for an image.
+    // TODO https://www.asawicki.info/articles/VK_KHR_dedicated_allocation.php5
+    pub fn allocate_memory_for_image(
+        &mut self,
+        desc: &AllocationDescriptor,
+    ) -> Result<SubAllocation> {
+        // vkGetImageMemoryRequirements2()
+        // TODO how to decide if an image is linear?
+        self.allocate_memory(desc, false, false)
+    }
+
+    fn allocate_memory(
+        &mut self,
+        desc: &AllocationDescriptor,
+        linear: bool,
+        dedicated: bool,
+    ) -> Result<SubAllocation> {
         let size = desc.requirements.size;
         let alignment = desc.requirements.alignment;
 
@@ -651,7 +635,6 @@ impl Allocator {
                     | vk::MemoryPropertyFlags::HOST_COHERENT
                     | vk::MemoryPropertyFlags::HOST_CACHED
             }
-            MemoryLocation::Unknown => vk::MemoryPropertyFlags::empty(),
         };
         let mut memory_type_index_opt = find_memory_type_index(
             &desc.requirements,
@@ -668,7 +651,6 @@ impl Allocator {
                 MemoryLocation::GpuToCpu => {
                     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
                 }
-                MemoryLocation::Unknown => vk::MemoryPropertyFlags::empty(),
             };
 
             memory_type_index_opt = find_memory_type_index(
@@ -686,6 +668,8 @@ impl Allocator {
         let sub_allocation = self.memory_types[memory_type_index].allocate(
             &self.device,
             desc,
+            linear,
+            dedicated,
             self.buffer_image_granularity,
         );
 
@@ -708,6 +692,8 @@ impl Allocator {
                 self.memory_types[memory_type_index].allocate(
                     &self.device,
                     desc,
+                    linear,
+                    dedicated,
                     self.buffer_image_granularity,
                 )
             } else {
@@ -737,7 +723,7 @@ impl Allocator {
 
     /// Logs memory leaks as warnings.
     #[cfg(feature = "tracing")]
-    pub fn report_memory_leaks(&self) {
+    fn log_memory_leaks(&self) {
         for (mem_type_i, mem_type) in self.memory_types.iter().enumerate() {
             for (block_i, mem_block) in mem_type.memory_blocks.iter().enumerate() {
                 if let Some(mem_block) = mem_block {
@@ -753,7 +739,7 @@ impl Allocator {
 impl Drop for Allocator {
     fn drop(&mut self) {
         #[cfg(feature = "tracing")]
-        self.report_memory_leaks();
+            self.log_memory_leaks();
 
         // Free all remaining memory blocks.
         for mem_type in self.memory_types.iter_mut() {

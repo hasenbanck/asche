@@ -4,7 +4,7 @@ use std::num::NonZeroU64;
 #[cfg(feature = "tracing")]
 use tracing::warn;
 
-use super::{AllocationError, AllocationType, Result, SubAllocation, SubAllocator};
+use super::{AllocationError, AllocationType, Result, SubAllocator};
 
 fn align_down(val: u64, alignment: u64) -> u64 {
     val & !(alignment - 1u64)
@@ -86,7 +86,7 @@ impl FreeListAllocator {
         }
     }
 
-    /// Generates a new unique chunk ID
+    /// Generates a new unique chunk ID.
     fn get_new_chunk_id(&mut self) -> Result<NonZeroU64> {
         if self.chunk_id_counter == std::u64::MAX {
             // End of chunk id counter reached, no more allocations are possible.
@@ -97,11 +97,11 @@ impl FreeListAllocator {
         self.chunk_id_counter += 1;
         NonZeroU64::new(id).ok_or(AllocationError::Internal("new chunk id was 0"))
     }
-    /// Finds the specified chunk_id in the list of free chunks and removes if from the list
+    /// Finds the specified chunk_id in the list of free chunks and removes if from the list.
     fn remove_id_from_free_list(&mut self, chunk_id: NonZeroU64) {
         self.free_chunks.remove(&chunk_id);
     }
-    /// Merges two adjacent chunks. Right chunk will be merged into the left chunk
+    /// Merges two adjacent chunks. Right chunk will be merged into the left chunk.
     fn merge_free_chunks(&mut self, chunk_left: NonZeroU64, chunk_right: NonZeroU64) -> Result<()> {
         // Gather data from right chunk and remove it.
         let (right_size, right_next) = {
@@ -273,11 +273,7 @@ impl SubAllocator for FreeListAllocator {
         Ok((best_offset, chunk_id))
     }
 
-    fn free(&mut self, sub_allocation: SubAllocation) -> Result<()> {
-        let chunk_id = sub_allocation
-            .chunk_id
-            .ok_or(AllocationError::Internal("chunk ID must be a valid value"))?;
-
+    fn free(&mut self, chunk_id: NonZeroU64) -> Result<()> {
         let (next_id, prev_id) = {
             let chunk = self
                 .chunks
