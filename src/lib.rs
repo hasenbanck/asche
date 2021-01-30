@@ -10,12 +10,12 @@ use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
 use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
-use tracing::{error, info, level_filters::LevelFilter, warn};
+use tracing::{debug, error, info, level_filters::LevelFilter, warn};
 
 pub use error::AscheError;
 
 /// Memory allocator.
-pub mod allocator;
+mod allocator;
 /// Debug code for Vulkan.
 #[cfg(feature = "tracing")]
 mod debug;
@@ -145,12 +145,21 @@ impl Adapter {
 
                 self.log_surface_info(physical_device)?;
 
+                let allocator = allocator::Allocator::new(
+                    self.0.instance.clone(),
+                    logical_device.clone(),
+                    physical_device,
+                );
+
+                debug!("Created the default memory allocator");
+
                 Ok(Device {
                     _context: self.0.clone(),
                     logical_device,
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
                     _compute_queue: compute_queue,
+                    allocator,
                 })
             } else {
                 Err(AscheError::RequestDeviceError)
@@ -169,12 +178,19 @@ impl Adapter {
                 let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
+                let allocator = allocator::Allocator::new(
+                    self.0.instance.clone(),
+                    logical_device.clone(),
+                    physical_device,
+                );
+
                 Ok(Device {
                     _context: self.0.clone(),
                     logical_device,
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
                     _compute_queue: compute_queue,
+                    allocator,
                 })
             } else {
                 Err(AscheError::RequestDeviceError)
@@ -833,6 +849,7 @@ pub struct Device {
     _graphics_queue: vk::Queue,
     _transfer_queue: vk::Queue,
     _compute_queue: vk::Queue,
+    allocator: allocator::Allocator,
 }
 
 impl Drop for Device {
