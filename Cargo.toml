@@ -21,7 +21,7 @@ tracing = { version = "0.1", default-features = false, features = ["std", "max_l
 [dev-dependencies]
 anyhow = "1.0"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "smallvec", "parking_lot"] }
-sdl2 = { version = "0.34", default-features = false, features = ["bundled", "static-link", "raw-window-handle"] }
+winit = "0.24"
 
 [profile.bench]
 codegen-units = 1
