@@ -2,10 +2,10 @@
 use std::ffi::c_void;
 use std::num::NonZeroU64;
 
-use ash::version::{DeviceV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, InstanceV1_0, InstanceV1_1};
 use ash::vk;
 #[cfg(feature = "tracing")]
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 
 use dedicated_block_allocator::DedicatedBlockAllocator;
 pub use error::AllocationError;
@@ -39,16 +39,6 @@ pub enum MemoryLocation {
     CpuToGpu,
     /// Memory useful for reading back data from GPU to CPU.
     GpuToCpu,
-}
-
-/// The configuration descriptor for the allocator.
-pub struct AllocatorDescriptor {
-    /// The vulkan instance which will use this allocator.
-    pub instance: ash::Instance,
-    /// The logical device which will use this allocator.
-    pub logical_device: ash::Device,
-    /// The physical device which will use this allocator.
-    pub physical_device: ash::vk::PhysicalDevice,
 }
 
 trait SubAllocator: std::fmt::Debug {
@@ -210,19 +200,13 @@ impl MemoryBlock {
         dedicated: bool,
     ) -> Result<Self> {
         let device_memory = {
-            let alloc_info = vk::MemoryAllocateInfo::builder()
-                .allocation_size(size)
-                .memory_type_index(mem_type_index as u32);
-
             let allocation_flags = vk::MemoryAllocateFlags::DEVICE_ADDRESS;
             let mut flags_info = vk::MemoryAllocateFlagsInfo::builder().flags(allocation_flags);
 
-            // FIXME Activate the needed extension for this.
-            let alloc_info = if cfg!(feature = "vulkan_device_address") {
-                alloc_info.push_next(&mut flags_info)
-            } else {
-                alloc_info
-            };
+            let alloc_info = vk::MemoryAllocateInfo::builder()
+                .allocation_size(size)
+                .memory_type_index(mem_type_index as u32)
+                .push_next(&mut flags_info);
 
             unsafe { device.allocate_memory(&alloc_info, None) }
                 .map_err(|_| AllocationError::OutOfMemory)?
@@ -237,10 +221,10 @@ impl MemoryBlock {
                     vk::MemoryMapFlags::empty(),
                 )
             }
-                .map_err(|_| {
-                    unsafe { device.free_memory(device_memory, None) };
-                    AllocationError::FailedToMap
-                })?
+            .map_err(|_| {
+                unsafe { device.free_memory(device_memory, None) };
+                AllocationError::FailedToMap
+            })?
         } else {
             std::ptr::null_mut()
         };
@@ -506,52 +490,60 @@ fn find_memory_type_index(
 pub struct Allocator {
     memory_types: Vec<MemoryType>,
     device: ash::Device,
-    physical_mem_props: vk::PhysicalDeviceMemoryProperties,
+    physical_memory_properties: vk::PhysicalDeviceMemoryProperties2,
     buffer_image_granularity: u64,
 }
 
 impl Allocator {
     /// Creates a new `Allocator`.
-    pub fn new(desc: &AllocatorDescriptor) -> Self {
-        let mem_props = unsafe {
-            desc.instance
-                .get_physical_device_memory_properties(desc.physical_device)
+    pub fn new(
+        instance: ash::Instance,
+        logical_device: ash::Device,
+        physical_device: ash::vk::PhysicalDevice,
+    ) -> Self {
+        let mut properties = vk::PhysicalDeviceMemoryProperties2 {
+            ..Default::default()
         };
 
-        let memory_types = &mem_props.memory_types[..mem_props.memory_type_count as _];
+        unsafe {
+            instance.get_physical_device_memory_properties2(physical_device, &mut properties)
+        };
+
+        let mem_properties = properties.memory_properties;
+        let memory_types = &mem_properties.memory_types[..mem_properties.memory_type_count as _];
 
         #[cfg(feature = "tracing")]
-            {
-                trace!("Memory type count: {}", mem_props.memory_type_count);
-                trace!("Memory heap count: {}", mem_props.memory_heap_count);
+        {
+            debug!("Memory type count: {}", mem_properties.memory_type_count);
+            debug!("Memory heap count: {}", mem_properties.memory_heap_count);
 
-                for (i, mem_type) in memory_types.iter().enumerate() {
-                    let flags = mem_type.property_flags;
-                    trace!(
-                        "Memory type[{}]: prop flags: 0x{:x}, heap[{}]",
-                        i,
-                        flags.as_raw(),
-                        mem_type.heap_index,
-                    );
-                }
-                for i in 0..mem_props.memory_heap_count {
-                    trace!(
-                        "Heap[{}] flags: 0x{:x}, size: {} MiB",
-                        i,
-                        mem_props.memory_heaps[i as usize].flags.as_raw(),
-                        mem_props.memory_heaps[i as usize].size / (1024 * 1024)
-                    );
-                }
-
-                let host_visible_not_coherent = memory_types.iter().any(|t| {
-                    let flags = t.property_flags;
-                    flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
-                        && !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT)
-                });
-                if host_visible_not_coherent {
-                    warn!("There is a memory type that is host visible, but not host coherent.");
-                }
+            for (i, mem_type) in memory_types.iter().enumerate() {
+                let flags = mem_type.property_flags;
+                debug!(
+                    "Memory type[{}]: prop flags: 0x{:x}, heap[{}]",
+                    i,
+                    flags.as_raw(),
+                    mem_type.heap_index,
+                );
             }
+            for i in 0..mem_properties.memory_heap_count {
+                debug!(
+                    "Heap[{}] flags: 0x{:x}, size: {} MiB",
+                    i,
+                    mem_properties.memory_heaps[i as usize].flags.as_raw(),
+                    mem_properties.memory_heaps[i as usize].size / (1024 * 1024)
+                );
+            }
+
+            let host_visible_not_coherent = memory_types.iter().any(|t| {
+                let flags = t.property_flags;
+                flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+                    && !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT)
+            });
+            if host_visible_not_coherent {
+                warn!("There is a memory type that is host visible, but not host coherent.");
+            }
+        }
 
         let memory_types: Vec<MemoryType> = memory_types
             .iter()
@@ -568,17 +560,15 @@ impl Allocator {
             })
             .collect();
 
-        let physical_device_properties = unsafe {
-            desc.instance
-                .get_physical_device_properties(desc.physical_device)
-        };
+        let physical_device_properties =
+            unsafe { instance.get_physical_device_properties(physical_device) };
 
         let granularity = physical_device_properties.limits.buffer_image_granularity;
 
         Self {
             memory_types,
-            device: desc.logical_device.clone(),
-            physical_mem_props: mem_props,
+            device: logical_device,
+            physical_memory_properties: properties,
             buffer_image_granularity: granularity,
         }
     }
@@ -590,6 +580,7 @@ impl Allocator {
         desc: &AllocationDescriptor,
     ) -> Result<SubAllocation> {
         // vkGetBufferMemoryRequirements2()
+        // VK_KHR_get_memory_requirements2
         self.allocate_memory(desc, true, false)
     }
 
@@ -600,6 +591,7 @@ impl Allocator {
         desc: &AllocationDescriptor,
     ) -> Result<SubAllocation> {
         // vkGetImageMemoryRequirements2()
+        // VK_KHR_get_memory_requirements2
         // TODO how to decide if an image is linear?
         self.allocate_memory(desc, false, false)
     }
@@ -638,7 +630,7 @@ impl Allocator {
         };
         let mut memory_type_index_opt = find_memory_type_index(
             &desc.requirements,
-            &self.physical_mem_props,
+            &self.physical_memory_properties.memory_properties,
             mem_loc_preferred_bits,
         );
 
@@ -655,7 +647,7 @@ impl Allocator {
 
             memory_type_index_opt = find_memory_type_index(
                 &desc.requirements,
-                &self.physical_mem_props,
+                &self.physical_memory_properties.memory_properties,
                 mem_loc_required_bits,
             );
         }
@@ -680,7 +672,7 @@ impl Allocator {
 
                 let memory_type_index_opt = find_memory_type_index(
                     &desc.requirements,
-                    &self.physical_mem_props,
+                    &self.physical_memory_properties.memory_properties,
                     mem_loc_preferred_bits,
                 );
 
@@ -739,7 +731,7 @@ impl Allocator {
 impl Drop for Allocator {
     fn drop(&mut self) {
         #[cfg(feature = "tracing")]
-            self.log_memory_leaks();
+        self.log_memory_leaks();
 
         // Free all remaining memory blocks.
         for mem_type in self.memory_types.iter_mut() {
