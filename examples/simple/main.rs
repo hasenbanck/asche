@@ -7,7 +7,7 @@ fn main() -> Result<()> {
 
     // Log level is based on RUST_LOG env var.
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     let adapter = asche::Adapter::new(
