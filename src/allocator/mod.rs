@@ -47,12 +47,10 @@ pub enum MemoryLocation {
 enum AllocationType {
     /// Block is dedicated to a single resource.
     Dedicated,
-    /// Block is dedicated for a buffer and linear images. If the buffer is bigger than 64 MiB, it will be turned into a dedicated block.
-    Buffer,
-    /// Block is dedicated for an optimal textures and images. If the buffer is bigger than 64 MiB, it will be turned into a dedicated block.
-    Optimal,
-    /// Block is dedicated for short lived buffers that use a linear allocator. If the buffer is bigger than 64 MiB, it will be turned into a dedicated block.
+    /// Block is dedicated for linear resource (buffers and linear images).
     Linear,
+    /// Block is dedicated for an optimal textures and images.
+    Optimal,
 }
 
 /// The memory allocator.
@@ -150,7 +148,7 @@ impl Allocator {
     ) -> Result<Allocation> {
         // vkGetBufferMemoryRequirements2()
         // VK_KHR_get_memory_requirements2
-        self.allocate_memory(desc, AllocationType::Buffer)
+        self.allocate_memory(desc, AllocationType::Linear)
     }
 
     /// Allocates memory for an image.
@@ -423,9 +421,8 @@ impl MemoryBlock {
 
         let allocator: SubAllocator = match allocation_type {
             AllocationType::Dedicated => SubAllocator::Dedicated(DedicatedAllocator::new(size)),
-            AllocationType::Buffer => SubAllocator::BestFit(BestFitAllocator::new(size)),
+            AllocationType::Linear => SubAllocator::BestFit(BestFitAllocator::new(size)),
             AllocationType::Optimal => SubAllocator::BestFit(BestFitAllocator::new(size)),
-            AllocationType::Linear => unimplemented!("Linear allocator not implemented yet"),
         };
 
         Ok(Self {
