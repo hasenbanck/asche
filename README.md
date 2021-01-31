@@ -7,7 +7,7 @@ Provides an abstraction layer above ash to easier use Vulkan in Rust with minima
 
 This crate targets Vulkan 1.2 and uses the following extensions:
 
-Vulan 1.1:
+Vulkan 1.1:
 
 - VK_KHR_get_memory_requirements2
 - VK_KHR_get_physical_device_properties2
@@ -15,7 +15,7 @@ Vulan 1.1:
 
 Vulkan 1.2:
 
-- VK_KHR_dedicated_allocation
+(- VK_KHR_dedicated_allocation)
 - VK_KHR_buffer_device_address
 - VK_KHR_imageless_framebuffer
 - VK_KHR_timeline_semaphore
@@ -37,9 +37,9 @@ In 99.95% of the cases the answer to this question is "No".
 
 ## Credits
 
-The device initialization code is a hard copy from the gfx-rs crate.
+The instance and device initialization code is a hard copy from the gfx-rs crate.
 
-The current memory allocator is a hard copy from the gpu_allocator create.
+The memory allocator originally is based on the gpu_allocator crate.
 
 ## License
 
