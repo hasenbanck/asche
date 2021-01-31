@@ -4,7 +4,7 @@
 use std::ffi::c_void;
 use std::num::NonZeroU64;
 
-use ash::version::{DeviceV1_0, InstanceV1_0, InstanceV1_1};
+use ash::version::{DeviceV1_0, DeviceV1_1, InstanceV1_0, InstanceV1_1};
 use ash::vk;
 #[cfg(feature = "tracing")]
 use tracing::{debug, warn};
@@ -30,6 +30,28 @@ pub struct AllocationDescriptor {
     pub location: MemoryLocation,
 }
 
+/// The configuration descriptor for a buffer memory allocation.
+#[derive(Debug, Clone)]
+pub struct BufferAllocationDescriptor {
+    /// Name of the allocation, for tracking and debugging purposes.
+    pub name: &'static str,
+    /// Vulkan buffer to allocate memory for.
+    pub buffer: vk::Buffer,
+    /// Location where the memory allocation should be stored.
+    pub location: MemoryLocation,
+}
+
+/// The configuration descriptor for an image memory allocation.
+#[derive(Debug, Clone)]
+pub struct ImageAllocationDescriptor {
+    /// Name of the allocation, for tracking and debugging purposes.
+    pub name: &'static str,
+    /// Vulkan image to allocate memory for.
+    pub image: vk::Image,
+    /// Location where the memory allocation should be stored.
+    pub location: MemoryLocation,
+}
+
 /// The location of the memory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryLocation {
@@ -44,7 +66,7 @@ pub enum MemoryLocation {
 
 /// Defines type of the allocation.
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum AllocationType {
+pub enum AllocationType {
     /// Block is dedicated to a single resource.
     Dedicated,
     /// Block is dedicated for linear resource (buffers and linear images).
@@ -141,26 +163,83 @@ impl Allocator {
     }
 
     /// Allocates memory for a buffer.
-    // TODO https://www.asawicki.info/articles/VK_KHR_dedicated_allocation.php5
+    ///
+    /// Required the following extensions:
+    ///  - VK_KHR_get_memory_requirements2
+    ///  - VK_KHR_dedicated_allocation
     pub fn allocate_memory_for_buffer(
         &mut self,
-        desc: &AllocationDescriptor,
+        desc: &BufferAllocationDescriptor,
     ) -> Result<Allocation> {
-        // vkGetBufferMemoryRequirements2()
-        // VK_KHR_get_memory_requirements2
-        self.allocate_memory(desc, AllocationType::Linear)
+        let info = vk::BufferMemoryRequirementsInfo2::builder().buffer(desc.buffer);
+        let mut dedicated_requirements = vk::MemoryDedicatedRequirements::builder();
+        let mut requirements =
+            vk::MemoryRequirements2::builder().push_next(&mut dedicated_requirements);
+
+        unsafe {
+            self.device
+                .get_buffer_memory_requirements2(&info, &mut requirements);
+        }
+
+        let memory_requirements = requirements.memory_requirements;
+
+        let allocation_type = if dedicated_requirements.prefers_dedicated_allocation == 1
+            || dedicated_requirements.requires_dedicated_allocation == 1
+        {
+            AllocationType::Dedicated
+        } else {
+            AllocationType::Optimal
+        };
+
+        let alloc_decs = AllocationDescriptor {
+            name: desc.name,
+            requirements: memory_requirements,
+            location: desc.location,
+        };
+
+        self.allocate_memory(&alloc_decs, allocation_type)
     }
 
     /// Allocates memory for an image.
-    // TODO https://www.asawicki.info/articles/VK_KHR_dedicated_allocation.php5
-    pub fn allocate_memory_for_image(&mut self, desc: &AllocationDescriptor) -> Result<Allocation> {
-        // vkGetImageMemoryRequirements2()
-        // VK_KHR_get_memory_requirements2
-        // TODO how to decide if an image is linear?
-        self.allocate_memory(desc, AllocationType::Optimal)
+    ///
+    /// Required the following extensions:
+    ///  - VK_KHR_get_memory_requirements2
+    ///  - VK_KHR_dedicated_allocation
+    pub fn allocate_memory_for_image(
+        &mut self,
+        desc: &ImageAllocationDescriptor,
+    ) -> Result<Allocation> {
+        let info = vk::ImageMemoryRequirementsInfo2::builder().image(desc.image);
+        let mut dedicated_requirements = vk::MemoryDedicatedRequirements::builder();
+        let mut requirements =
+            vk::MemoryRequirements2::builder().push_next(&mut dedicated_requirements);
+
+        unsafe {
+            self.device
+                .get_image_memory_requirements2(&info, &mut requirements);
+        }
+
+        let memory_requirements = requirements.memory_requirements;
+
+        let allocation_type = if dedicated_requirements.prefers_dedicated_allocation == 1
+            || dedicated_requirements.requires_dedicated_allocation == 1
+        {
+            AllocationType::Dedicated
+        } else {
+            AllocationType::Optimal
+        };
+
+        let alloc_decs = AllocationDescriptor {
+            name: desc.name,
+            requirements: memory_requirements,
+            location: desc.location,
+        };
+
+        self.allocate_memory(&alloc_decs, allocation_type)
     }
 
-    fn allocate_memory(
+    /// Allocates memory.
+    pub fn allocate_memory(
         &mut self,
         desc: &AllocationDescriptor,
         allocation_type: AllocationType,
