@@ -1,6 +1,6 @@
-/// Errors that the allocator module can throw.
+/// Errors that the allocator can throw.
 #[derive(Debug)]
-pub enum AllocationError {
+pub enum AllocatorError {
     /// General out of memory error.
     OutOfMemory,
     /// Failed to map the memory.
@@ -13,29 +13,29 @@ pub enum AllocationError {
     Internal(&'static str),
 }
 
-impl std::fmt::Display for AllocationError {
+impl std::fmt::Display for AllocatorError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            AllocationError::OutOfMemory => {
+            AllocatorError::OutOfMemory => {
                 write!(f, "out of memory")
             }
-            AllocationError::FailedToMap => {
+            AllocatorError::FailedToMap => {
                 write!(f, "failed to map memory")
             }
-            AllocationError::NoCompatibleMemoryTypeFound => {
+            AllocatorError::NoCompatibleMemoryTypeFound => {
                 write!(f, "no compatible memory type available")
             }
-            AllocationError::InvalidAllocationDescriptor => {
+            AllocatorError::InvalidAllocationDescriptor => {
                 write!(f, "invalid AllocationDescriptor")
             }
-            AllocationError::Internal(message) => {
+            AllocatorError::Internal(message) => {
                 write!(f, "{}", message)
             }
         }
     }
 }
 
-impl std::error::Error for AllocationError {
+impl std::error::Error for AllocatorError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
     }

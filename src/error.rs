@@ -15,7 +15,7 @@ pub enum AscheError {
     VkResult(ash::vk::Result),
 
     /// A memory allocator error.
-    AllocatorError(crate::allocator::AllocationError),
+    AllocatorError(crate::allocator::AllocatorError),
 
     /// The requested device type couldn't be found.
     RequestDeviceError,
@@ -105,8 +105,8 @@ impl From<ash::vk::Result> for AscheError {
     }
 }
 
-impl From<crate::allocator::AllocationError> for AscheError {
-    fn from(err: crate::allocator::AllocationError) -> AscheError {
+impl From<crate::allocator::AllocatorError> for AscheError {
+    fn from(err: crate::allocator::AllocatorError) -> AscheError {
         AscheError::AllocatorError(err)
     }
 }

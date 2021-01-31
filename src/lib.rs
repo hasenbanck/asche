@@ -14,7 +14,7 @@ use tracing::{debug, error, info, level_filters::LevelFilter, warn};
 
 pub use error::AscheError;
 
-/// Memory allocator.
+/// A custom Vulkan memory allocator.
 mod allocator;
 /// Debug code for Vulkan.
 #[cfg(feature = "tracing")]
