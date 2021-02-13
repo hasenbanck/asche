@@ -5,21 +5,7 @@
 
 Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
 
-This crate targets Vulkan 1.2 and uses the following extensions:
-
-Vulkan 1.1:
-
-- VK_KHR_get_memory_requirements2
-- VK_KHR_get_physical_device_properties2
-- VK_KHR_maintenance3
-
-Vulkan 1.2:
-
-(- VK_KHR_dedicated_allocation)
-- VK_KHR_buffer_device_address
-- VK_KHR_imageless_framebuffer
-- VK_KHR_timeline_semaphore
-- VK_EXT_descriptor_indexing
+This crate targets Vulkan 1.2.
 
 ## Status
 
