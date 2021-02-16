@@ -14,8 +14,6 @@ use tracing::{debug, error, info, level_filters::LevelFilter, warn};
 
 pub use error::AscheError;
 
-/// A custom Vulkan memory allocator.
-mod allocator;
 /// Debug code for Vulkan.
 #[cfg(feature = "tracing")]
 mod debug;
@@ -121,12 +119,6 @@ impl Adapter {
 
                 self.log_surface_info(physical_device)?;
 
-                let allocator = allocator::Allocator::new(
-                    self.0.instance.clone(),
-                    logical_device.clone(),
-                    physical_device,
-                );
-
                 debug!("Created the default memory allocator");
 
                 Ok(Device {
@@ -135,7 +127,6 @@ impl Adapter {
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
                     _compute_queue: compute_queue,
-                    allocator,
                 })
             } else {
                 Err(AscheError::RequestDeviceError)
@@ -883,7 +874,6 @@ pub struct Device {
     _graphics_queue: vk::Queue,
     _transfer_queue: vk::Queue,
     _compute_queue: vk::Queue,
-    allocator: allocator::Allocator,
 }
 
 impl Drop for Device {
