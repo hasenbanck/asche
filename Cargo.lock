@@ -43,6 +43,7 @@ dependencies = [
  "raw-window-handle",
  "tracing",
  "tracing-subscriber",
+ "vk-alloc",
  "winit",
 ]
 
@@ -733,6 +734,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
 
 [[package]]
+name = "slotmap"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab3003725ae562cf995f3dc82bb99e70926e09000396816765bb6d7adbe740b1"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -863,6 +873,16 @@ name = "version_check"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
+
+[[package]]
+name = "vk-alloc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eb1913f6992e82883a9303dfce3cc319c2367cc9b905eaa4b121167ca874615"
+dependencies = [
+ "ash",
+ "slotmap",
+]
 
 [[package]]
 name = "walkdir"

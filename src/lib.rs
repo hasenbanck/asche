@@ -119,6 +119,12 @@ impl Adapter {
 
                 self.log_surface_info(physical_device)?;
 
+                let allocator = vk_alloc::Allocator::new(
+                    &self.0.instance,
+                    physical_device,
+                    &logical_device,
+                    &vk_alloc::AllocatorDescriptor::default(),
+                );
                 debug!("Created the default memory allocator");
 
                 Ok(Device {
@@ -127,6 +133,7 @@ impl Adapter {
                     _graphics_queue: graphics_queue,
                     _transfer_queue: transfer_queue,
                     _compute_queue: compute_queue,
+                    allocator,
                 })
             } else {
                 Err(AscheError::RequestDeviceError)
@@ -874,6 +881,7 @@ pub struct Device {
     _graphics_queue: vk::Queue,
     _transfer_queue: vk::Queue,
     _compute_queue: vk::Queue,
+    allocator: vk_alloc::Allocator,
 }
 
 impl Drop for Device {

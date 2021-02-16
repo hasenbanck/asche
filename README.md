@@ -25,8 +25,6 @@ In 99.95% of the cases the answer to this question is "No".
 
 The instance and device initialization code is a hard copy from the gfx-rs crate.
 
-The memory allocator originally is based on the gpu_allocator crate.
-
 ## License
 
 Licensed under MIT or Apache-2.0.

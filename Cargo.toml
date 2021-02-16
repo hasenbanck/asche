@@ -17,6 +17,7 @@ default = ["tracing"]
 ash = "0.31"
 raw-window-handle = "0.3.3"
 tracing = { version = "0.1", default-features = false, features = ["std", "max_level_trace", "release_max_level_info"], optional = true }
+vk-alloc = "0.1"
 
 [dev-dependencies]
 anyhow = "1.0"
