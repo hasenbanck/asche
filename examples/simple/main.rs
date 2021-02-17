@@ -16,12 +16,14 @@ fn main() -> Result<(), asche::AscheError> {
         handle: &window.raw_window_handle(),
     })?;
 
-    let _device = asche::Device::new(
+    let mut device = asche::Device::new(
         context,
         &asche::DeviceDescriptor {
             ..Default::default()
         },
     )?;
+
+    device.recreate_swapchain()?;
 
     Ok(())
 }

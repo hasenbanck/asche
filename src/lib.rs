@@ -1,17 +1,23 @@
 #![warn(missing_docs)]
 //! Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
 
-pub(crate) mod context;
-pub(crate) mod device;
-pub(crate) mod error;
-
-pub(crate) type Result<T> = std::result::Result<T, AscheError>;
+#[cfg(feature = "tracing")]
+use ash::vk;
+#[cfg(feature = "tracing")]
+use tracing::{debug, error, info, warn};
 
 pub use {
     context::{Context, ContextDescriptor},
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
     error::AscheError,
 };
+
+pub(crate) mod context;
+pub(crate) mod device;
+pub(crate) mod error;
+pub(crate) mod swapchain;
+
+pub(crate) type Result<T> = std::result::Result<T, AscheError>;
 
 /// Construct a `*const std::os::raw::c_char` from a string
 #[macro_export]
@@ -20,11 +26,6 @@ macro_rules! cstr {
         concat!($s, "\0") as *const str as *const c_char
     };
 }
-
-#[cfg(feature = "tracing")]
-use ash::vk;
-#[cfg(feature = "tracing")]
-use tracing::{debug, error, info, warn};
 
 /// Callback function for the debug utils logging.
 #[cfg(feature = "tracing")]

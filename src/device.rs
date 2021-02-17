@@ -6,12 +6,13 @@ use ash::vk;
 use tracing::{debug, info};
 
 use crate::context::Context;
-use crate::Result;
+use crate::swapchain::{Swapchain, SwapchainDescriptor};
+use crate::{AscheError, Result};
 
 /// Abstracts a Vulkan queue.
 pub struct Queue {
     pub(crate) family_index: u32,
-    pub(crate) inner: vk::Queue,
+    pub(crate) raw: vk::Queue,
 }
 
 /// Defines the priorities of the queues.
@@ -56,14 +57,17 @@ impl Default for DeviceDescriptor {
 
 /// Abstracts a Vulkan device.
 pub struct Device {
-    context: Arc<Context>,
-    logical_device: ash::Device,
-    _graphics_queue: Queue,
-    _transfer_queue: Queue,
-    _compute_queue: Queue,
-    allocator: vk_alloc::Allocator,
-    swapchain_loader: ash::extensions::khr::Swapchain,
-    swapchain: vk::SwapchainKHR,
+    pub(crate) context: Arc<Context>,
+    pub(crate) raw: ash::Device,
+    pub(crate) physical: vk::PhysicalDevice,
+    pub(crate) graphics_queue: Queue,
+    pub(crate) transfer_queue: Queue,
+    pub(crate) compute_queue: Queue,
+    pub(crate) allocator: vk_alloc::Allocator,
+    pub(crate) swapchain_format: vk::Format,
+    pub(crate) swapchain_color_space: vk::ColorSpaceKHR,
+    pub(crate) presentation_mode: vk::PresentModeKHR,
+    pub(crate) swapchain: Option<Swapchain>,
 }
 
 impl Device {
@@ -90,20 +94,6 @@ impl Device {
 
             info!("Created logical device and queues");
 
-            let (swapchain, swapchain_loader) = context.create_swapchain(
-                physical_device,
-                &logical_device,
-                &graphics_queue,
-                descriptor.swapchain_format,
-                descriptor.swapchain_color_space,
-                descriptor.presentation_mode,
-            )?;
-
-            info!(
-                "Created swapchain with format {:?} and color space {:?}",
-                descriptor.swapchain_format, descriptor.swapchain_color_space
-            );
-
             let allocator = vk_alloc::Allocator::new(
                 &context.instance,
                 physical_device,
@@ -112,16 +102,23 @@ impl Device {
             );
             debug!("Created default memory allocator");
 
-            Ok(Device {
+            let mut device = Device {
                 context,
-                logical_device,
-                _graphics_queue: graphics_queue,
-                _transfer_queue: transfer_queue,
-                _compute_queue: compute_queue,
+                raw: logical_device,
+                physical: physical_device,
+                graphics_queue,
+                transfer_queue,
+                compute_queue,
                 allocator,
-                swapchain_loader,
-                swapchain,
-            })
+                swapchain_format: descriptor.swapchain_format,
+                swapchain_color_space: descriptor.swapchain_color_space,
+                presentation_mode: descriptor.presentation_mode,
+                swapchain: None,
+            };
+
+            device.recreate_swapchain()?;
+
+            Ok(device)
         }
 
         #[cfg(not(feature = "tracing"))]
@@ -131,11 +128,13 @@ impl Device {
             let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
                 self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
-            let (swapchain, swapchain_loader) = self.create_swapchain(
+            let swapchain = context.create_swapchain(
                 physical_device,
                 &logical_device,
                 &graphics_queue,
-                &descriptor,
+                descriptor.swapchain_format,
+                descriptor.swapchain_color_space,
+                descriptor.presentation_mode,
             )?;
 
             let allocator = vk_alloc::Allocator::new(
@@ -147,24 +146,80 @@ impl Device {
 
             Ok(Device {
                 context,
-                logical_device,
+                raw: logical_device,
                 _graphics_queue: graphics_queue,
                 _transfer_queue: transfer_queue,
                 _compute_queue: compute_queue,
                 allocator,
-                swapchain_loader,
                 swapchain,
             })
         }
+    }
+
+    // TODO get_current_frame()
+
+    /// Recreates the swapchain. Needs to be called if the surface has changed.
+    pub fn recreate_swapchain(&mut self) -> Result<()> {
+        let formats = unsafe {
+            self.context
+                .surface_loader
+                .get_physical_device_surface_formats(self.physical, self.context.surface)
+        }?;
+
+        let capabilities = unsafe {
+            self.context
+                .surface_loader
+                .get_physical_device_surface_capabilities(self.physical, self.context.surface)
+        }?;
+
+        let image_count = 3
+            .max(capabilities.min_image_count)
+            .min(capabilities.max_image_count);
+
+        let format = formats
+            .iter()
+            .find(|f| {
+                f.format == self.swapchain_format && f.color_space == self.swapchain_color_space
+            })
+            .ok_or(AscheError::SwapchainFormatIncompatible)?;
+
+        // TODO This works, but doesn't use the "old_swapchain" that Vulkan provides! Investigate how we would need to handle that.
+        if let Some(mut old_swapchain) = self.swapchain.take() {
+            old_swapchain.destroy(&self.raw)
+        }
+
+        let swapchain = Swapchain::new(
+            &self,
+            SwapchainDescriptor {
+                graphic_queue_family_index: self.graphics_queue.family_index,
+                extend: capabilities.current_extent,
+                transform: capabilities.current_transform,
+                format: format.format,
+                color_space: format.color_space,
+                presentation_mode: self.presentation_mode,
+                image_count,
+            },
+            None,
+        )?;
+
+        info!(
+            "Created swapchain with format {:?} and color space {:?}",
+            self.swapchain_format, self.swapchain_color_space
+        );
+
+        self.swapchain = Some(swapchain);
+
+        Ok(())
     }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            self.swapchain_loader
-                .destroy_swapchain(self.swapchain, None);
-            self.logical_device.destroy_device(None);
+            if let Some(swapchain) = &mut self.swapchain {
+                swapchain.destroy(&self.raw);
+            }
+            self.raw.destroy_device(None);
         };
     }
 }

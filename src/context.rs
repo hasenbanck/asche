@@ -411,15 +411,15 @@ impl Context {
                 (
                     Queue {
                         family_index: graphics_queue_family_id,
-                        inner: g_q,
+                        raw: g_q,
                     },
                     Queue {
                         family_index: transfer_queue_family_id,
-                        inner: t_q,
+                        raw: t_q,
                     },
                     Queue {
                         family_index: compute_queue_family_id,
-                        inner: c_q,
+                        raw: c_q,
                     },
                 ),
             ))
@@ -447,15 +447,15 @@ impl Context {
                 (
                     Queue {
                         family_index: graphics_queue_family_id,
-                        inner: g_q,
+                        raw: g_q,
                     },
                     Queue {
                         family_index: transfer_queue_family_id,
-                        inner: t_q,
+                        raw: t_q,
                     },
                     Queue {
                         family_index: compute_queue_family_id,
-                        inner: c_q,
+                        raw: c_q,
                     },
                 ),
             ))
@@ -483,15 +483,15 @@ impl Context {
                 (
                     Queue {
                         family_index: graphics_queue_family_id,
-                        inner: g_q,
+                        raw: g_q,
                     },
                     Queue {
                         family_index: transfer_queue_family_id,
-                        inner: t_q,
+                        raw: t_q,
                     },
                     Queue {
                         family_index: compute_queue_family_id,
-                        inner: c_q,
+                        raw: c_q,
                     },
                 ),
             ))
@@ -513,15 +513,15 @@ impl Context {
                 (
                     Queue {
                         family_index: graphics_queue_family_id,
-                        inner: g_q,
+                        raw: g_q,
                     },
                     Queue {
                         family_index: transfer_queue_family_id,
-                        inner: t_q,
+                        raw: t_q,
                     },
                     Queue {
                         family_index: compute_queue_family_id,
-                        inner: c_q,
+                        raw: c_q,
                     },
                 ),
             ))
@@ -551,15 +551,15 @@ impl Context {
                 (
                     Queue {
                         family_index: graphics_queue_family_id,
-                        inner: g_q,
+                        raw: g_q,
                     },
                     Queue {
                         family_index: transfer_queue_family_id,
-                        inner: t_q,
+                        raw: t_q,
                     },
                     Queue {
                         family_index: compute_queue_family_id,
-                        inner: c_q,
+                        raw: c_q,
                     },
                 ),
             ))
@@ -715,100 +715,6 @@ impl Context {
                 _ => panic!("Unhandled vk::QueueFlags value"),
             }
         }
-    }
-
-    pub(crate) fn create_swapchain(
-        &self,
-        physical_device: vk::PhysicalDevice,
-        logical_device: &ash::Device,
-        graphic_queue: &Queue,
-        format: vk::Format,
-        color_space: vk::ColorSpaceKHR,
-        presentation_mode: vk::PresentModeKHR,
-    ) -> Result<(vk::SwapchainKHR, ash::extensions::khr::Swapchain)> {
-        let capabilities = unsafe {
-            self.surface_loader
-                .get_physical_device_surface_capabilities(physical_device, self.surface)
-        }?;
-        let formats = unsafe {
-            self.surface_loader
-                .get_physical_device_surface_formats(physical_device, self.surface)
-        }?;
-
-        #[cfg(feature = "tracing")]
-        {
-            let present_modes = unsafe {
-                self.surface_loader
-                    .get_physical_device_surface_present_modes(physical_device, self.surface)
-            }?;
-
-            info!("Available surface capabilities:");
-            info!("\tmin_image_count: {}", capabilities.min_image_count);
-            info!("\tmax_image_count: {}", capabilities.max_image_count);
-            info!(
-                "\tmax_image_array_layers: {}",
-                capabilities.max_image_array_layers
-            );
-            info!(
-                "\tcurrent_extent: {}x{}",
-                capabilities.current_extent.width, capabilities.current_extent.height
-            );
-            info!(
-                "\tmin_image_extent: {}x{}",
-                capabilities.min_image_extent.width, capabilities.min_image_extent.height
-            );
-            info!(
-                "\tmax_image_extent: {}x{}",
-                capabilities.max_image_extent.width, capabilities.max_image_extent.height
-            );
-            info!(
-                "\tsupported_transforms: {:?}",
-                capabilities.supported_transforms
-            );
-            info!("\tcurrent_transform: {:?}", capabilities.current_transform);
-            info!(
-                "\tsupported_composite_alpha: {:?}",
-                capabilities.supported_composite_alpha
-            );
-            info!(
-                "\tsupported_usage_flags: {:?}",
-                capabilities.supported_usage_flags
-            );
-
-            info!("Available surface presentation modes: {:?}", present_modes);
-
-            info!("Available surface formats:");
-            formats.iter().for_each(|format| {
-                info!("\t{:?} ({:?})", format.format, format.color_space);
-            });
-        }
-
-        let format = formats
-            .iter()
-            .find(|f| f.format == format && f.color_space == color_space)
-            .ok_or(AscheError::SwapchainFormatIncompatible)?;
-
-        let family_index = &[graphic_queue.family_index];
-
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(self.surface)
-            .min_image_count(
-                3.max(capabilities.min_image_count)
-                    .min(capabilities.max_image_count),
-            )
-            .image_format(format.format)
-            .image_color_space(format.color_space)
-            .image_extent(capabilities.current_extent)
-            .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .queue_family_indices(family_index)
-            .pre_transform(capabilities.current_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(presentation_mode);
-        let swapchain_loader = ash::extensions::khr::Swapchain::new(&self.instance, logical_device);
-        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
-        Ok((swapchain, swapchain_loader))
     }
 }
 
