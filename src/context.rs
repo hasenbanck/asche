@@ -1,10 +1,14 @@
-use crate::{AscheError, Result};
-use ash::version::{EntryV1_0, InstanceV1_0};
+use std::ffi::CStr;
+use std::sync::Arc;
+
+use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
 use raw_window_handle::RawWindowHandle;
-use std::ffi::CStr;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, level_filters::LevelFilter, warn};
+
+use crate::device::Queue;
+use crate::{AscheError, QueuePriorityDescriptor, Result};
 
 /// Describes how the context should be configured.
 pub struct ContextDescriptor<'a> {
@@ -35,7 +39,7 @@ pub struct Context {
 
 impl Context {
     /// Creates a new `Context`.
-    pub fn new(descriptor: &ContextDescriptor) -> Result<Self> {
+    pub fn new(descriptor: &ContextDescriptor) -> Result<Arc<Context>> {
         let entry = ash::Entry::new()?;
 
         let engine_name = std::ffi::CString::new("asche")?;
@@ -76,24 +80,24 @@ impl Context {
             let debug_messenger =
                 Self::create_debug_messenger(&entry, instance_extensions, &instance);
 
-            Ok(Self {
+            Ok(Arc::new(Self {
                 _entry: entry,
                 instance,
                 layers,
                 surface,
                 surface_loader,
                 debug_messenger,
-            })
+            }))
         }
         #[cfg(not(feature = "tracing"))]
         {
-            Ok(Self {
+            Ok(Arc::new(Self {
                 _entry: entry,
                 instance: instance,
                 layers,
                 surface,
                 surface_loader,
-            })
+            }))
         }
     }
 
@@ -315,6 +319,496 @@ impl Context {
                 panic!("Surface creation only supported for windows and unix")
             }
         }
+    }
+
+    pub(crate) fn find_physical_device(
+        &self,
+        device_type: vk::PhysicalDeviceType,
+    ) -> Result<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)> {
+        let physical_devices = unsafe { self.instance.enumerate_physical_devices()? };
+
+        let mut chosen: Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)> = None;
+        for device in physical_devices {
+            let properties = unsafe { self.instance.get_physical_device_properties(device) };
+
+            if properties.device_type == device_type {
+                chosen = Some((device, properties))
+            }
+        }
+        let chosen = chosen.ok_or(AscheError::RequestDeviceError)?;
+
+        Ok(chosen)
+    }
+
+    /// Creates a new logical device. Returns the logical device and three separate queues with the
+    /// types vk::QueueFlags::GRAPHICS, vk::QueueFlags::TRANSFER and vk::QueueFlags::COMPUTE.
+    pub(crate) fn create_logical_device(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        priorities: &QueuePriorityDescriptor,
+    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
+        let queue_family_properties = unsafe {
+            self.instance
+                .get_physical_device_queue_family_properties(physical_device)
+        };
+
+        let graphics_queue_family_id = self.find_queue_family(
+            physical_device,
+            vk::QueueFlags::GRAPHICS,
+            &queue_family_properties,
+        )?;
+        let transfer_queue_family_id = self.find_queue_family(
+            physical_device,
+            vk::QueueFlags::TRANSFER,
+            &queue_family_properties,
+        )?;
+        let compute_queue_family_id = self.find_queue_family(
+            physical_device,
+            vk::QueueFlags::COMPUTE,
+            &queue_family_properties,
+        )?;
+
+        self.create_queues_and_device(
+            physical_device,
+            priorities,
+            graphics_queue_family_id,
+            transfer_queue_family_id,
+            compute_queue_family_id,
+        )
+    }
+
+    fn create_queues_and_device(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        priorities: &QueuePriorityDescriptor,
+        graphics_queue_family_id: u32,
+        transfer_queue_family_id: u32,
+        compute_queue_family_id: u32,
+    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
+        // If some queue families point to the same ID, we need to create only one
+        // `vk::DeviceQueueCreateInfo` for them.
+        if graphics_queue_family_id == transfer_queue_family_id
+            && transfer_queue_family_id != compute_queue_family_id
+        {
+            // Case: G=T,C
+            let queue_infos = [
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(graphics_queue_family_id)
+                    .queue_priorities(&[priorities.graphics, priorities.transfer])
+                    .build(),
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(compute_queue_family_id)
+                    .queue_priorities(&[priorities.compute])
+                    .build(),
+            ];
+            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
+            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
+            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
+
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
+        } else if graphics_queue_family_id != transfer_queue_family_id
+            && transfer_queue_family_id == compute_queue_family_id
+        {
+            // Case: G,T=C
+            let queue_infos = [
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(graphics_queue_family_id)
+                    .queue_priorities(&[priorities.graphics])
+                    .build(),
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(transfer_queue_family_id)
+                    .queue_priorities(&[priorities.transfer, priorities.compute])
+                    .build(),
+            ];
+            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
+            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
+            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
+
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
+        } else if graphics_queue_family_id == compute_queue_family_id
+            && graphics_queue_family_id != transfer_queue_family_id
+        {
+            // Case: G=C,T
+            let queue_infos = [
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(graphics_queue_family_id)
+                    .queue_priorities(&[priorities.graphics, priorities.compute])
+                    .build(),
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(transfer_queue_family_id)
+                    .queue_priorities(&[priorities.transfer])
+                    .build(),
+            ];
+            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
+            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
+            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
+
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
+        } else if graphics_queue_family_id == transfer_queue_family_id
+            && transfer_queue_family_id == compute_queue_family_id
+        {
+            // Case: G=T=C
+            let queue_infos = [vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(graphics_queue_family_id)
+                .queue_priorities(&[priorities.graphics, priorities.transfer, priorities.compute])
+                .build()];
+            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
+            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
+            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 2) };
+
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
+        } else {
+            // Case: G,T,C
+            let queue_infos = [
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(graphics_queue_family_id)
+                    .queue_priorities(&[priorities.graphics])
+                    .build(),
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(transfer_queue_family_id)
+                    .queue_priorities(&[priorities.transfer])
+                    .build(),
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(compute_queue_family_id)
+                    .queue_priorities(&[priorities.compute])
+                    .build(),
+            ];
+            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
+            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
+            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
+
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
+        }
+    }
+
+    fn create_device(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        queue_infos: &[vk::DeviceQueueCreateInfo],
+    ) -> Result<ash::Device> {
+        let device_extensions = self.create_device_extensions(physical_device)?;
+
+        #[cfg(feature = "tracing")]
+        {
+            for extension in device_extensions.iter() {
+                info!("Loading device extension: {:?}", extension);
+            }
+        }
+
+        let features = vk::PhysicalDeviceFeatures::builder()
+            .robust_buffer_access(true)
+            .multi_draw_indirect(true)
+            .full_draw_index_uint32(true)
+            .tessellation_shader(true)
+            .texture_compression_bc(true)
+            .sampler_anisotropy(true)
+            .shader_uniform_buffer_array_dynamic_indexing(true)
+            .shader_sampled_image_array_dynamic_indexing(true)
+            .shader_storage_buffer_array_dynamic_indexing(true)
+            .shader_storage_image_array_dynamic_indexing(true);
+
+        let mut features11 = vk::PhysicalDeviceVulkan11Features::builder();
+        let mut features12 = vk::PhysicalDeviceVulkan12Features::builder()
+            .draw_indirect_count(true)
+            .descriptor_indexing(true)
+            .imageless_framebuffer(true)
+            .timeline_semaphore(true)
+            .buffer_device_address(true);
+
+        let layer_pointers = self.layers.iter().map(|&s| s.as_ptr()).collect::<Vec<_>>();
+
+        let extension_pointers = device_extensions
+            .iter()
+            .map(|&s| s.as_ptr())
+            .collect::<Vec<_>>();
+
+        let device_create_info = vk::DeviceCreateInfo::builder()
+            .queue_create_infos(queue_infos)
+            .enabled_extension_names(&extension_pointers)
+            .enabled_layer_names(&layer_pointers)
+            .enabled_features(&features)
+            .push_next(&mut features11)
+            .push_next(&mut features12);
+
+        let logical_device = unsafe {
+            self.instance
+                .create_device(physical_device, &device_create_info, None)?
+        };
+
+        Ok(logical_device)
+    }
+
+    fn create_device_extensions(&self, physical_device: vk::PhysicalDevice) -> Result<Vec<&CStr>> {
+        let mut extensions: Vec<&'static CStr> = Vec::new();
+
+        extensions.push(ash::extensions::khr::Swapchain::name());
+
+        // Only keep available extensions.
+        let device_extensions = unsafe {
+            self.instance
+                .enumerate_device_extension_properties(physical_device)
+        }?;
+
+        extensions.retain(|&ext| {
+            let found = device_extensions
+                .iter()
+                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext });
+            if found {
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!("Unable to find device extension: {}", ext.to_string_lossy());
+                false
+            }
+        });
+
+        Ok(extensions)
+    }
+
+    fn find_queue_family(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        target_family: vk::QueueFlags,
+        queue_family_properties: &[vk::QueueFamilyProperties],
+    ) -> Result<u32> {
+        let mut queue_id = None;
+        for (id, family) in queue_family_properties.iter().enumerate() {
+            match target_family {
+                vk::QueueFlags::GRAPHICS => {
+                    if family.queue_count > 0
+                        && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                        && unsafe {
+                            self.surface_loader.get_physical_device_surface_support(
+                                physical_device,
+                                id as u32,
+                                self.surface,
+                            )?
+                        }
+                    {
+                        queue_id = Some(id as u32);
+                    }
+                }
+                vk::QueueFlags::TRANSFER => {
+                    if family.queue_count > 0
+                        && family.queue_flags.contains(vk::QueueFlags::TRANSFER)
+                        && (queue_id.is_none()
+                            || !family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                                && !family.queue_flags.contains(vk::QueueFlags::COMPUTE))
+                    {
+                        queue_id = Some(id as u32);
+                    }
+                }
+                vk::QueueFlags::COMPUTE => {
+                    if family.queue_count > 0
+                        && family.queue_flags.contains(vk::QueueFlags::COMPUTE)
+                        && (queue_id.is_none()
+                            || !family.queue_flags.contains(vk::QueueFlags::GRAPHICS))
+                    {
+                        queue_id = Some(id as u32);
+                    }
+                }
+                _ => panic!("Unhandled vk::QueueFlags value"),
+            }
+        }
+
+        if let Some(id) = queue_id {
+            #[cfg(feature = "tracing")]
+            info!("Found {:?} queue family with ID {}", target_family, id);
+
+            Ok(id)
+        } else {
+            match target_family {
+                vk::QueueFlags::GRAPHICS => {
+                    Err(AscheError::QueueFamilyNotFound("graphic".to_string()))
+                }
+                vk::QueueFlags::TRANSFER => {
+                    Err(AscheError::QueueFamilyNotFound("transfer".to_string()))
+                }
+                vk::QueueFlags::COMPUTE => {
+                    Err(AscheError::QueueFamilyNotFound("compute".to_string()))
+                }
+                _ => panic!("Unhandled vk::QueueFlags value"),
+            }
+        }
+    }
+
+    pub(crate) fn create_swapchain(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        logical_device: &ash::Device,
+        graphic_queue: &Queue,
+        format: vk::Format,
+        color_space: vk::ColorSpaceKHR,
+        presentation_mode: vk::PresentModeKHR,
+    ) -> Result<(vk::SwapchainKHR, ash::extensions::khr::Swapchain)> {
+        let capabilities = unsafe {
+            self.surface_loader
+                .get_physical_device_surface_capabilities(physical_device, self.surface)
+        }?;
+        let formats = unsafe {
+            self.surface_loader
+                .get_physical_device_surface_formats(physical_device, self.surface)
+        }?;
+
+        #[cfg(feature = "tracing")]
+        {
+            let present_modes = unsafe {
+                self.surface_loader
+                    .get_physical_device_surface_present_modes(physical_device, self.surface)
+            }?;
+
+            info!("Available surface capabilities:");
+            info!("\tmin_image_count: {}", capabilities.min_image_count);
+            info!("\tmax_image_count: {}", capabilities.max_image_count);
+            info!(
+                "\tmax_image_array_layers: {}",
+                capabilities.max_image_array_layers
+            );
+            info!(
+                "\tcurrent_extent: {}x{}",
+                capabilities.current_extent.width, capabilities.current_extent.height
+            );
+            info!(
+                "\tmin_image_extent: {}x{}",
+                capabilities.min_image_extent.width, capabilities.min_image_extent.height
+            );
+            info!(
+                "\tmax_image_extent: {}x{}",
+                capabilities.max_image_extent.width, capabilities.max_image_extent.height
+            );
+            info!(
+                "\tsupported_transforms: {:?}",
+                capabilities.supported_transforms
+            );
+            info!("\tcurrent_transform: {:?}", capabilities.current_transform);
+            info!(
+                "\tsupported_composite_alpha: {:?}",
+                capabilities.supported_composite_alpha
+            );
+            info!(
+                "\tsupported_usage_flags: {:?}",
+                capabilities.supported_usage_flags
+            );
+
+            info!("Available surface presentation modes: {:?}", present_modes);
+
+            info!("Available surface formats:");
+            formats.iter().for_each(|format| {
+                info!("\t{:?} ({:?})", format.format, format.color_space);
+            });
+        }
+
+        let format = formats
+            .iter()
+            .find(|f| f.format == format && f.color_space == color_space)
+            .ok_or(AscheError::SwapchainFormatIncompatible)?;
+
+        let family_index = &[graphic_queue.family_index];
+
+        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+            .surface(self.surface)
+            .min_image_count(
+                3.max(capabilities.min_image_count)
+                    .min(capabilities.max_image_count),
+            )
+            .image_format(format.format)
+            .image_color_space(format.color_space)
+            .image_extent(capabilities.current_extent)
+            .image_array_layers(1)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .queue_family_indices(family_index)
+            .pre_transform(capabilities.current_transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .present_mode(presentation_mode);
+        let swapchain_loader = ash::extensions::khr::Swapchain::new(&self.instance, logical_device);
+        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+        Ok((swapchain, swapchain_loader))
     }
 }
 
