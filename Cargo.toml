@@ -16,18 +16,10 @@ default = ["tracing"]
 [dependencies]
 ash = "0.31"
 raw-window-handle = "0.3.3"
-tracing = { version = "0.1", default-features = false, features = ["std", "max_level_trace", "release_max_level_info"], optional = true }
+tracing = { version = "0.1", optional = true }
 vk-alloc = "0.1"
 
 [dev-dependencies]
 anyhow = "1.0"
-tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "smallvec", "parking_lot"] }
+tracing-subscriber = "0.2"
 winit = "0.24"
-
-[profile.bench]
-codegen-units = 1
-lto = "thin"
-
-[profile.release]
-codegen-units = 1
-lto = "thin"
