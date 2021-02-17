@@ -1,9 +1,8 @@
-use anyhow::Result;
 use raw_window_handle::HasRawWindowHandle;
 
-fn main() -> Result<()> {
+fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::Window::new(&event_loop)?;
+    let window = winit::window::Window::new(&event_loop).unwrap();
 
     // Log level is based on RUST_LOG env var.
     #[cfg(feature = "tracing")]
