@@ -20,6 +20,9 @@ pub enum AscheError {
     /// Can't find a queue family.
     QueueFamilyNotFound(String),
 
+    /// The selected format / color space for the swapchain is not supported by the device.
+    SwapchainFormatIncompatible,
+
     /// An unspecified asche error.
     Unspecified(String),
 }
@@ -47,6 +50,9 @@ impl std::fmt::Display for AscheError {
             }
             AscheError::QueueFamilyNotFound(family) => {
                 write!(f, "can't find queue family: {}", family)
+            }
+            AscheError::SwapchainFormatIncompatible => {
+                write!(f, "selected format / color space for the swapchain is not supported by the device")
             }
             AscheError::Unspecified(message) => {
                 write!(f, "{}", message)

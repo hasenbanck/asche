@@ -61,6 +61,12 @@ impl Default for AdapterDescriptor {
 pub struct DeviceDescriptor {
     /// The device type that is requested.
     pub device_type: vk::PhysicalDeviceType,
+    /// The image format of the swapchain.
+    pub swapchain_format: vk::Format,
+    /// The color space of the swapchain.
+    pub swapchain_color_space: vk::ColorSpaceKHR,
+    /// The presentation mode of the swap chain.
+    pub presentation_mode: vk::PresentModeKHR,
     /// The priorities of the queues.
     pub queue_priority: QueuePriorityDescriptor,
 }
@@ -69,6 +75,9 @@ impl Default for DeviceDescriptor {
     fn default() -> Self {
         Self {
             device_type: vk::PhysicalDeviceType::DISCRETE_GPU,
+            swapchain_format: vk::Format::B8G8R8A8_SRGB,
+            swapchain_color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+            presentation_mode: vk::PresentModeKHR::FIFO,
             queue_priority: QueuePriorityDescriptor {
                 graphics: 1.0,
                 transfer: 1.0,
@@ -117,7 +126,17 @@ impl Adapter {
 
                 info!("Created logical device and queues");
 
-                self.log_surface_info(physical_device)?;
+                let (swapchain, swapchain_loader) = self.create_swapchain(
+                    physical_device,
+                    &logical_device,
+                    &graphics_queue,
+                    &descriptor,
+                )?;
+
+                info!(
+                    "Created swapchain with format {:?} and color space {:?}",
+                    descriptor.swapchain_format, descriptor.swapchain_color_space
+                );
 
                 let allocator = vk_alloc::Allocator::new(
                     &self.0.instance,
@@ -125,7 +144,7 @@ impl Adapter {
                     &logical_device,
                     &vk_alloc::AllocatorDescriptor::default(),
                 );
-                debug!("Created the default memory allocator");
+                debug!("Created default memory allocator");
 
                 Ok(Device {
                     _context: self.0.clone(),
@@ -134,6 +153,8 @@ impl Adapter {
                     _transfer_queue: transfer_queue,
                     _compute_queue: compute_queue,
                     allocator,
+                    swapchain_loader,
+                    swapchain,
                 })
             } else {
                 Err(AscheError::RequestDeviceError)
@@ -152,10 +173,18 @@ impl Adapter {
                 let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
                     self.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
-                let allocator = allocator::Allocator::new(
-                    self.0.instance.clone(),
-                    logical_device.clone(),
+                let (swapchain, swapchain_loader) = self.create_swapchain(
                     physical_device,
+                    &logical_device,
+                    &graphics_queue,
+                    &descriptor,
+                )?;
+
+                let allocator = vk_alloc::Allocator::new(
+                    &self.0.instance,
+                    physical_device,
+                    &logical_device,
+                    &vk_alloc::AllocatorDescriptor::default(),
                 );
 
                 Ok(Device {
@@ -165,6 +194,8 @@ impl Adapter {
                     _transfer_queue: transfer_queue,
                     _compute_queue: compute_queue,
                     allocator,
+                    swapchain_loader,
+                    swapchain,
                 })
             } else {
                 Err(AscheError::RequestDeviceError)
@@ -172,65 +203,103 @@ impl Adapter {
         }
     }
 
-    #[cfg(feature = "tracing")]
-    fn log_surface_info(&self, physical_device: vk::PhysicalDevice) -> Result<()> {
+    fn create_swapchain(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        logical_device: &ash::Device,
+        graphic_queue: &Queue,
+        descriptor: &DeviceDescriptor,
+    ) -> Result<(vk::SwapchainKHR, ash::extensions::khr::Swapchain)> {
         let capabilities = unsafe {
             self.0
-                .surface
-                .get_physical_device_surface_capabilities(physical_device, self.0.surface_khr)
-        }?;
-        let present_modes = unsafe {
-            self.0
-                .surface
-                .get_physical_device_surface_present_modes(physical_device, self.0.surface_khr)
+                .surface_loader
+                .get_physical_device_surface_capabilities(physical_device, self.0.surface)
         }?;
         let formats = unsafe {
             self.0
-                .surface
-                .get_physical_device_surface_formats(physical_device, self.0.surface_khr)
+                .surface_loader
+                .get_physical_device_surface_formats(physical_device, self.0.surface)
         }?;
 
-        info!("Available surface capabilities:");
-        info!("\tmin_image_count: {}", capabilities.min_image_count);
-        info!("\tmax_image_count: {}", capabilities.max_image_count);
-        info!(
-            "\tmax_image_array_layers: {}",
-            capabilities.max_image_array_layers
-        );
-        info!(
-            "\tcurrent_extent: {}x{}",
-            capabilities.current_extent.width, capabilities.current_extent.height
-        );
-        info!(
-            "\tmin_image_extent: {}x{}",
-            capabilities.min_image_extent.width, capabilities.min_image_extent.height
-        );
-        info!(
-            "\tmax_image_extent: {}x{}",
-            capabilities.max_image_extent.width, capabilities.max_image_extent.height
-        );
-        info!(
-            "\tsupported_transforms: {:?}",
-            capabilities.supported_transforms
-        );
-        info!("\tcurrent_transform: {:?}", capabilities.current_transform);
-        info!(
-            "\tsupported_composite_alpha: {:?}",
-            capabilities.supported_composite_alpha
-        );
-        info!(
-            "\tsupported_usage_flags: {:?}",
-            capabilities.supported_usage_flags
-        );
+        #[cfg(feature = "tracing")]
+        {
+            let present_modes = unsafe {
+                self.0
+                    .surface_loader
+                    .get_physical_device_surface_present_modes(physical_device, self.0.surface)
+            }?;
 
-        info!("Available surface presentation modes: {:?}", present_modes);
+            info!("Available surface capabilities:");
+            info!("\tmin_image_count: {}", capabilities.min_image_count);
+            info!("\tmax_image_count: {}", capabilities.max_image_count);
+            info!(
+                "\tmax_image_array_layers: {}",
+                capabilities.max_image_array_layers
+            );
+            info!(
+                "\tcurrent_extent: {}x{}",
+                capabilities.current_extent.width, capabilities.current_extent.height
+            );
+            info!(
+                "\tmin_image_extent: {}x{}",
+                capabilities.min_image_extent.width, capabilities.min_image_extent.height
+            );
+            info!(
+                "\tmax_image_extent: {}x{}",
+                capabilities.max_image_extent.width, capabilities.max_image_extent.height
+            );
+            info!(
+                "\tsupported_transforms: {:?}",
+                capabilities.supported_transforms
+            );
+            info!("\tcurrent_transform: {:?}", capabilities.current_transform);
+            info!(
+                "\tsupported_composite_alpha: {:?}",
+                capabilities.supported_composite_alpha
+            );
+            info!(
+                "\tsupported_usage_flags: {:?}",
+                capabilities.supported_usage_flags
+            );
 
-        info!("Available surface formats:");
-        formats.iter().for_each(|format| {
-            info!("\t{:?} ({:?})", format.format, format.color_space);
-        });
+            info!("Available surface presentation modes: {:?}", present_modes);
 
-        Ok(())
+            info!("Available surface formats:");
+            formats.iter().for_each(|format| {
+                info!("\t{:?} ({:?})", format.format, format.color_space);
+            });
+        }
+
+        let format = formats
+            .iter()
+            .find(|format| {
+                format.format == descriptor.swapchain_format
+                    && format.color_space == descriptor.swapchain_color_space
+            })
+            .ok_or(AscheError::SwapchainFormatIncompatible)?;
+
+        let family_index = &[graphic_queue.family_index];
+
+        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+            .surface(self.0.surface)
+            .min_image_count(
+                3.max(capabilities.min_image_count)
+                    .min(capabilities.max_image_count),
+            )
+            .image_format(format.format)
+            .image_color_space(format.color_space)
+            .image_extent(capabilities.current_extent)
+            .image_array_layers(1)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .queue_family_indices(family_index)
+            .pre_transform(capabilities.current_transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .present_mode(descriptor.presentation_mode);
+        let swapchain_loader =
+            ash::extensions::khr::Swapchain::new(&self.0.instance, logical_device);
+        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+        Ok((swapchain, swapchain_loader))
     }
 
     fn find_physical_device(
@@ -254,7 +323,7 @@ impl Adapter {
         &self,
         physical_device: vk::PhysicalDevice,
         priorities: &QueuePriorityDescriptor,
-    ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
+    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
         let queue_family_properties = unsafe {
             self.0
                 .instance
@@ -293,7 +362,7 @@ impl Adapter {
         graphics_queue_family_id: u32,
         transfer_queue_family_id: u32,
         compute_queue_family_id: u32,
-    ) -> Result<(ash::Device, (vk::Queue, vk::Queue, vk::Queue))> {
+    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
         // If some queue families point to the same ID, we need to create only one
         // `vk::DeviceQueueCreateInfo` for them.
         if graphics_queue_family_id == transfer_queue_family_id
@@ -315,7 +384,23 @@ impl Adapter {
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
 
-            Ok((logical_device, (g_q, t_q, c_q)))
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
         } else if graphics_queue_family_id != transfer_queue_family_id
             && transfer_queue_family_id == compute_queue_family_id
         {
@@ -335,7 +420,23 @@ impl Adapter {
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
 
-            Ok((logical_device, (g_q, t_q, c_q)))
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
         } else if graphics_queue_family_id == compute_queue_family_id
             && graphics_queue_family_id != transfer_queue_family_id
         {
@@ -355,7 +456,23 @@ impl Adapter {
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
 
-            Ok((logical_device, (g_q, t_q, c_q)))
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
         } else if graphics_queue_family_id == transfer_queue_family_id
             && transfer_queue_family_id == compute_queue_family_id
         {
@@ -369,7 +486,23 @@ impl Adapter {
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 2) };
 
-            Ok((logical_device, (g_q, t_q, c_q)))
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
         } else {
             // Case: G,T,C
             let queue_infos = [
@@ -391,7 +524,23 @@ impl Adapter {
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
 
-            Ok((logical_device, (g_q, t_q, c_q)))
+            Ok((
+                logical_device,
+                (
+                    Queue {
+                        family_index: graphics_queue_family_id,
+                        inner: g_q,
+                    },
+                    Queue {
+                        family_index: transfer_queue_family_id,
+                        inner: t_q,
+                    },
+                    Queue {
+                        family_index: compute_queue_family_id,
+                        inner: c_q,
+                    },
+                ),
+            ))
         }
     }
 
@@ -499,10 +648,10 @@ impl Adapter {
                     if family.queue_count > 0
                         && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                         && unsafe {
-                            self.0.surface.get_physical_device_surface_support(
+                            self.0.surface_loader.get_physical_device_surface_support(
                                 physical_device,
                                 id as u32,
-                                self.0.surface_khr,
+                                self.0.surface,
                             )?
                         }
                     {
@@ -557,9 +706,9 @@ impl Adapter {
 /// Wraps some ash structures globally used.
 struct AshContext {
     _entry: ash::Entry,
-    pub(crate) instance: ash::Instance,
-    pub(crate) surface_khr: vk::SurfaceKHR,
-    pub(crate) surface: ash::extensions::khr::Surface,
+    instance: ash::Instance,
+    surface_loader: ash::extensions::khr::Surface,
+    surface: vk::SurfaceKHR,
     layers: Vec<&'static CStr>,
     #[cfg(feature = "tracing")]
     debug_messenger: Option<DebugMessenger>,
@@ -567,8 +716,8 @@ struct AshContext {
 
 #[cfg(feature = "tracing")]
 struct DebugMessenger {
-    pub(crate) ext: ext::DebugUtils,
-    pub(crate) callback: vk::DebugUtilsMessengerEXT,
+    ext: ext::DebugUtils,
+    callback: vk::DebugUtilsMessengerEXT,
 }
 
 impl AshContext {
@@ -609,7 +758,7 @@ impl AshContext {
         let extensions = Self::create_instance_extensions(&instance_extensions);
         let layers = Self::create_layers(instance_layers);
         let instance = Self::create_instance(&entry, &app_info, &extensions, &layers)?;
-        let (surface_khr, surface) = Self::create_surface(&entry, &instance, &handle)?;
+        let (surface, surface_loader) = Self::create_surface(&entry, &instance, &handle)?;
 
         #[cfg(feature = "tracing")]
         {
@@ -620,8 +769,8 @@ impl AshContext {
                 _entry: entry,
                 instance,
                 layers,
-                surface_khr,
                 surface,
+                surface_loader,
                 debug_messenger,
             })
         }
@@ -631,8 +780,8 @@ impl AshContext {
                 _entry: entry,
                 instance: instance,
                 layers,
-                surface_khr,
                 surface,
+                surface_loader,
             })
         }
     }
@@ -812,10 +961,9 @@ impl AshContext {
                     .hinstance(h.hinstance);
 
                 let win32_surface = ash::extensions::khr::Win32Surface::new(entry, instance);
-                let surface_khr =
-                    unsafe { win32_surface.create_win32_surface(&create_info, None) }?;
-                let surface = ash::extensions::khr::Surface::new(entry, instance);
-                Ok((surface_khr, surface))
+                let surface = unsafe { win32_surface.create_win32_surface(&create_info, None) }?;
+                let surface_loader = ash::extensions::khr::Surface::new(entry, instance);
+                Ok((surface, surface_loader))
             }
             #[cfg(unix)]
             RawWindowHandle::Xlib(h) => {
@@ -868,7 +1016,7 @@ impl Drop for AshContext {
                     .destroy_debug_utils_messenger(messenger.callback, None);
             }
 
-            self.surface.destroy_surface(self.surface_khr, None);
+            self.surface_loader.destroy_surface(self.surface, None);
             self.instance.destroy_instance(None);
         };
     }
@@ -878,14 +1026,26 @@ impl Drop for AshContext {
 pub struct Device {
     _context: Arc<AshContext>,
     logical_device: ash::Device,
-    _graphics_queue: vk::Queue,
-    _transfer_queue: vk::Queue,
-    _compute_queue: vk::Queue,
+    _graphics_queue: Queue,
+    _transfer_queue: Queue,
+    _compute_queue: Queue,
     allocator: vk_alloc::Allocator,
+    swapchain_loader: ash::extensions::khr::Swapchain,
+    swapchain: vk::SwapchainKHR,
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
-        unsafe { self.logical_device.destroy_device(None) };
+        unsafe {
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None);
+            self.logical_device.destroy_device(None);
+        };
     }
+}
+
+/// Abstracts a Vulkan queue.
+pub struct Queue {
+    family_index: u32,
+    inner: vk::Queue,
 }
