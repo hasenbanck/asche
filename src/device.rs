@@ -215,8 +215,8 @@ impl Device {
         )?;
 
         info!(
-            "Created swapchain with format {:?} and color space {:?}",
-            self.swapchain_format, self.swapchain_color_space
+            "Created swapchain with format {:?}, color space {:?} and image count {}",
+            self.swapchain_format, self.swapchain_color_space, image_count
         );
 
         self.swapchain = Some(swapchain);
