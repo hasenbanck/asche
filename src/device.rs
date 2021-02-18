@@ -116,7 +116,7 @@ impl Device {
                 swapchain: None,
             };
 
-            device.recreate_swapchain()?;
+            device.recreate_swapchain(None)?;
 
             Ok(device)
         }
@@ -159,7 +159,7 @@ impl Device {
     // TODO get_current_frame()
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
-    pub fn recreate_swapchain(&mut self) -> Result<()> {
+    pub fn recreate_swapchain(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
         let formats = unsafe {
             self.context
                 .surface_loader
@@ -172,9 +172,15 @@ impl Device {
                 .get_physical_device_surface_capabilities(self.physical, self.context.surface)
         }?;
 
-        let image_count = 3
-            .max(capabilities.min_image_count)
-            .min(capabilities.max_image_count);
+        let mut image_count = capabilities.min_image_count + 1;
+        if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
+            image_count = capabilities.max_image_count;
+        }
+
+        let surface_extent = match capabilities.current_extent.width {
+            std::u32::MAX => window_extend.unwrap_or_default(),
+            _ => capabilities.current_extent,
+        };
 
         let format = formats
             .iter()
@@ -189,7 +195,7 @@ impl Device {
             &self,
             SwapchainDescriptor {
                 graphic_queue_family_index: self.graphics_queue.family_index,
-                extend: capabilities.current_extent,
+                extend: surface_extent,
                 transform: capabilities.current_transform,
                 format: format.format,
                 color_space: format.color_space,

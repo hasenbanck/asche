@@ -1,3 +1,4 @@
+use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
 
 fn main() -> Result<(), asche::AscheError> {
@@ -23,7 +24,10 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    device.recreate_swapchain()?;
+    device.recreate_swapchain(Some(vk::Extent2D {
+        width: window.outer_size().width,
+        height: window.outer_size().height,
+    }))?;
 
     Ok(())
 }
