@@ -6,7 +6,7 @@ use ash::vk;
 use tracing::{debug, info};
 
 use crate::context::Context;
-use crate::swapchain::{Swapchain, SwapchainDescriptor};
+use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{AscheError, Result};
 
 /// Abstracts a Vulkan queue.
@@ -177,9 +177,18 @@ impl Device {
             image_count = capabilities.max_image_count;
         }
 
-        let surface_extent = match capabilities.current_extent.width {
+        let extent = match capabilities.current_extent.width {
             std::u32::MAX => window_extend.unwrap_or_default(),
             _ => capabilities.current_extent,
+        };
+
+        let pre_transform = if capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+        {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else {
+            capabilities.current_transform
         };
 
         let format = formats
@@ -195,8 +204,8 @@ impl Device {
             &self,
             SwapchainDescriptor {
                 graphic_queue_family_index: self.graphics_queue.family_index,
-                extend: surface_extent,
-                transform: capabilities.current_transform,
+                extend: extent,
+                pre_transform,
                 format: format.format,
                 color_space: format.color_space,
                 presentation_mode: self.presentation_mode,
@@ -213,6 +222,24 @@ impl Device {
         self.swapchain = Some(swapchain);
 
         Ok(())
+    }
+
+    /// Acquires the next frame the program can render into.
+    pub fn acquire_next_frame(&self) -> Result<SwapchainFrame> {
+        let swapchain = self
+            .swapchain
+            .as_ref()
+            .ok_or(AscheError::SwapchainNotInitialized)?;
+        swapchain.acquire_next_frame()
+    }
+
+    /// Queues the frame in the presentation queue.
+    pub fn queue_frame(&self, frame: SwapchainFrame) -> Result<()> {
+        let swapchain = &self
+            .swapchain
+            .as_ref()
+            .ok_or(AscheError::SwapchainNotInitialized)?;
+        swapchain.queue_frame(frame, &self.graphics_queue)
     }
 }
 

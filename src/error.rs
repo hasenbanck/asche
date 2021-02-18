@@ -23,6 +23,9 @@ pub enum AscheError {
     /// The selected format / color space for the swapchain is not supported by the device.
     SwapchainFormatIncompatible,
 
+    /// Swapchain is not initialized.
+    SwapchainNotInitialized,
+
     /// An unspecified asche error.
     Unspecified(String),
 }
@@ -53,6 +56,9 @@ impl std::fmt::Display for AscheError {
             }
             AscheError::SwapchainFormatIncompatible => {
                 write!(f, "selected format / color space for the swapchain is not supported by the device")
+            }
+            AscheError::SwapchainNotInitialized => {
+                write!(f, "swapchain is not initialized")
             }
             AscheError::Unspecified(message) => {
                 write!(f, "{}", message)
