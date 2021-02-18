@@ -183,10 +183,7 @@ impl Device {
             })
             .ok_or(AscheError::SwapchainFormatIncompatible)?;
 
-        // TODO This works, but doesn't use the "old_swapchain" that Vulkan provides! Investigate how we would need to handle that.
-        if let Some(mut old_swapchain) = self.swapchain.take() {
-            old_swapchain.destroy(&self.raw)
-        }
+        let old_swapchain = self.swapchain.take();
 
         let swapchain = Swapchain::new(
             &self,
@@ -199,7 +196,7 @@ impl Device {
                 presentation_mode: self.presentation_mode,
                 image_count,
             },
-            None,
+            old_swapchain,
         )?;
 
         info!(

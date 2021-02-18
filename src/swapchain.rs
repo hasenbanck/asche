@@ -29,7 +29,11 @@ impl Swapchain {
         old_swapchain: Option<Swapchain>,
     ) -> Result<Self> {
         let old_swapchain = match old_swapchain {
-            Some(osc) => osc.raw,
+            Some(mut osc) => {
+                Self::destroy_image_views(&device.raw, &mut osc.image_views);
+
+                osc.raw
+            }
             None => vk::SwapchainKHR::null(),
         };
 
@@ -53,24 +57,13 @@ impl Swapchain {
             ash::extensions::khr::Swapchain::new(&device.context.instance, &device.raw);
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
 
-        let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
-        let mut image_views = Vec::with_capacity(images.len());
-
-        for image in &images {
-            let subresource_range = vk::ImageSubresourceRange::builder()
-                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                .base_mip_level(0)
-                .level_count(1)
-                .base_array_layer(0)
-                .layer_count(1);
-            let imageview_create_info = vk::ImageViewCreateInfo::builder()
-                .image(*image)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(descriptor.format)
-                .subresource_range(*subresource_range);
-            let imageview = unsafe { device.raw.create_image_view(&imageview_create_info, None) }?;
-            image_views.push(imageview);
+        if old_swapchain != vk::SwapchainKHR::null() {
+            unsafe { swapchain_loader.destroy_swapchain(old_swapchain, None) };
         }
+
+        let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+        let image_views =
+            Swapchain::create_image_views(device, descriptor.format, &images, images.len())?;
 
         Ok(Self {
             loader: swapchain_loader,
@@ -81,10 +74,43 @@ impl Swapchain {
 
     pub(crate) fn destroy(&mut self, logical_device: &ash::Device) {
         unsafe {
-            for image_view in &self.image_views {
-                logical_device.destroy_image_view(*image_view, None);
-            }
+            Self::destroy_image_views(logical_device, &mut self.image_views);
             self.loader.destroy_swapchain(self.raw, None);
         };
+    }
+
+    fn destroy_image_views(logical_device: &ash::Device, image_views: &mut [vk::ImageView]) {
+        unsafe {
+            for image_view in image_views {
+                logical_device.destroy_image_view(*image_view, None);
+            }
+        };
+    }
+
+    fn create_image_views(
+        device: &Device,
+        format: vk::Format,
+        images: &[vk::Image],
+        size: usize,
+    ) -> Result<Vec<vk::ImageView>> {
+        let mut image_views = Vec::with_capacity(size);
+
+        for image in images.iter() {
+            let subresource_range = vk::ImageSubresourceRange::builder()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(1);
+            let imageview_create_info = vk::ImageViewCreateInfo::builder()
+                .image(*image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(format)
+                .subresource_range(*subresource_range);
+            let imageview = unsafe { device.raw.create_image_view(&imageview_create_info, None) }?;
+            image_views.push(imageview);
+        }
+
+        Ok(image_views)
     }
 }
