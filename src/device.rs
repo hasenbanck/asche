@@ -223,9 +223,12 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
+        /*
         if let Some(swapchain) = &mut self.swapchain {
+
             swapchain.destroy(&self.context.logical_device);
         }
+         */
     }
 }
 

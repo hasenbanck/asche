@@ -25,6 +25,5 @@ fn main() -> Result<(), asche::AscheError> {
         width: window.outer_size().width,
         height: window.outer_size().height,
     }))?;
-
     Ok(())
 }

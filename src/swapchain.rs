@@ -38,12 +38,20 @@ impl Swapchain {
     ) -> Result<Self> {
         let old_swapchain = match old_swapchain {
             Some(mut osc) => {
+                let swapchain = osc.raw;
+
+                // We need to destroy the associated resources of the swapchain, before we can
+                // try to reuse the vk::SwapchainKHR when creating the new swapchain.
                 Self::destroy_resources(
                     &context.logical_device,
                     &mut osc.image_views,
-                    &osc.present_complete_semaphore,
+                    &mut osc.present_complete_semaphore,
                 );
-                osc.raw
+                // We set the raw handler to null, so that drop doesn't try to destroy it again,
+                // since "create_swapchain()" will do that for us.
+                osc.raw = vk::SwapchainKHR::null();
+
+                swapchain
             }
             None => vk::SwapchainKHR::null(),
         };
@@ -68,12 +76,6 @@ impl Swapchain {
         let swapchain_loader =
             ash::extensions::khr::Swapchain::new(&context.instance.raw, &context.logical_device);
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
-
-        if old_swapchain != vk::SwapchainKHR::null() {
-            unsafe {
-                swapchain_loader.destroy_swapchain(old_swapchain, None);
-            };
-        }
 
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
         let image_views =
@@ -130,28 +132,6 @@ impl Swapchain {
         Ok(())
     }
 
-    pub(crate) fn destroy(&mut self, logical_device: &ash::Device) {
-        Self::destroy_resources(
-            logical_device,
-            &mut self.image_views,
-            &self.present_complete_semaphore,
-        );
-        unsafe { self.loader.destroy_swapchain(self.raw, None) };
-    }
-
-    fn destroy_resources(
-        logical_device: &ash::Device,
-        image_views: &mut [vk::ImageView],
-        present_complete_semaphore: &vk::Semaphore,
-    ) {
-        unsafe {
-            logical_device.destroy_semaphore(*present_complete_semaphore, None);
-            for image_view in image_views {
-                logical_device.destroy_image_view(*image_view, None);
-            }
-        };
-    }
-
     fn create_image_views(
         context: &DeviceContext,
         images: &[vk::Image],
@@ -187,6 +167,33 @@ impl Swapchain {
         }
 
         Ok(image_views)
+    }
+
+    fn destroy_resources(
+        logical_device: &ash::Device,
+        image_views: &mut [vk::ImageView],
+        present_complete_semaphore: &mut vk::Semaphore,
+    ) {
+        unsafe {
+            logical_device.destroy_semaphore(*present_complete_semaphore, None);
+            *present_complete_semaphore = vk::Semaphore::null();
+
+            for image_view in image_views {
+                logical_device.destroy_image_view(*image_view, None);
+                *image_view = vk::ImageView::null();
+            }
+        };
+    }
+}
+
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        Self::destroy_resources(
+            &self.context.logical_device,
+            &mut self.image_views,
+            &mut self.present_complete_semaphore,
+        );
+        unsafe { self.loader.destroy_swapchain(self.raw, None) };
     }
 }
 
