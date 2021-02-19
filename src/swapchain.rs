@@ -1,11 +1,17 @@
+use std::rc::Rc;
+
 use ash::version::DeviceV1_0;
 use ash::vk;
 
-use crate::device::Queue;
-use crate::{Device, Result};
+use crate::device::{DeviceContext, Queue};
+use crate::Result;
+
+// TODO handle destruction of resources on drop
+// TODO start presentation of dropped frame?
 
 /// Abstracts a Vulkan swapchain.
 pub struct Swapchain {
+    context: Rc<DeviceContext>,
     loader: ash::extensions::khr::Swapchain,
     raw: vk::SwapchainKHR,
     image_views: Vec<vk::ImageView>,
@@ -26,14 +32,14 @@ pub(crate) struct SwapchainDescriptor {
 impl Swapchain {
     /// Creates a new `Swapchain`.
     pub(crate) fn new(
-        device: &Device,
+        context: Rc<DeviceContext>,
         descriptor: SwapchainDescriptor,
         old_swapchain: Option<Swapchain>,
     ) -> Result<Self> {
         let old_swapchain = match old_swapchain {
             Some(mut osc) => {
                 Self::destroy_resources(
-                    &device.raw,
+                    &context.logical_device,
                     &mut osc.image_views,
                     &osc.present_complete_semaphore,
                 );
@@ -44,7 +50,7 @@ impl Swapchain {
 
         let graphic_family_index = &[descriptor.graphic_queue_family_index];
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(device.context.surface)
+            .surface(context.instance.surface)
             .min_image_count(descriptor.image_count)
             .image_format(descriptor.format)
             .image_color_space(descriptor.color_space)
@@ -60,7 +66,7 @@ impl Swapchain {
             .clipped(true);
 
         let swapchain_loader =
-            ash::extensions::khr::Swapchain::new(&device.context.instance, &device.raw);
+            ash::extensions::khr::Swapchain::new(&context.instance.raw, &context.logical_device);
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
 
         if old_swapchain != vk::SwapchainKHR::null() {
@@ -71,14 +77,18 @@ impl Swapchain {
 
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
         let image_views =
-            Swapchain::create_image_views(device, &images, descriptor.format, images.len())?;
+            Swapchain::create_image_views(&context, &images, descriptor.format, images.len())?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
-        let present_complete_semaphore =
-            unsafe { device.raw.create_semaphore(&semaphore_create_info, None)? };
+        let present_complete_semaphore = unsafe {
+            context
+                .logical_device
+                .create_semaphore(&semaphore_create_info, None)?
+        };
 
         Ok(Self {
+            context,
             loader: swapchain_loader,
             raw: swapchain,
             image_views,
@@ -143,7 +153,7 @@ impl Swapchain {
     }
 
     fn create_image_views(
-        device: &Device,
+        context: &DeviceContext,
         images: &[vk::Image],
         format: vk::Format,
         size: usize,
@@ -168,7 +178,11 @@ impl Swapchain {
                     layer_count: 1,
                 })
                 .image(*image);
-            let imageview = unsafe { device.raw.create_image_view(&imageview_create_info, None) }?;
+            let imageview = unsafe {
+                context
+                    .logical_device
+                    .create_image_view(&imageview_create_info, None)
+            }?;
             image_views.push(imageview);
         }
 

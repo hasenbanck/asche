@@ -7,14 +7,14 @@ use ash::vk;
 use tracing::{debug, error, info, warn};
 
 pub use {
-    context::{Context, ContextDescriptor},
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
     error::AscheError,
+    instance::{Instance, InstanceDescriptor},
 };
 
-pub(crate) mod context;
 pub(crate) mod device;
 pub(crate) mod error;
+pub(crate) mod instance;
 pub(crate) mod swapchain;
 
 pub(crate) type Result<T> = std::result::Result<T, AscheError>;

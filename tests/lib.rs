@@ -1,13 +1,14 @@
-mod fixture;
+use raw_window_handle::HasRawWindowHandle;
 
 use fixture::TestContext;
-use raw_window_handle::HasRawWindowHandle;
+
+mod fixture;
 
 #[test]
 fn context_creation() {
     let test_context = TestContext::default();
 
-    let _ = asche::Context::new(&asche::ContextDescriptor {
+    let _ = asche::Instance::new(&asche::InstanceDescriptor {
         app_name: "context_creation",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &test_context.window.raw_window_handle(),
@@ -18,14 +19,14 @@ fn context_creation() {
 fn device_creation() {
     let test_context = TestContext::default();
 
-    let context = asche::Context::new(&asche::ContextDescriptor {
+    let context = asche::Instance::new(&asche::InstanceDescriptor {
         app_name: "device_creation",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &test_context.window.raw_window_handle(),
     })
     .unwrap();
 
-    let _ = asche::Device::new(
+    let _ = asche::DeviceContext::new(
         context,
         &asche::DeviceDescriptor {
             ..Default::default()

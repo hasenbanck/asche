@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
 #[cfg(feature = "tracing")]
 use tracing::{debug, info};
 
-use crate::context::Context;
+use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{AscheError, Result};
 
@@ -57,27 +57,25 @@ impl Default for DeviceDescriptor {
 
 /// Abstracts a Vulkan device.
 pub struct Device {
-    pub(crate) context: Arc<Context>,
-    pub(crate) raw: ash::Device,
-    pub(crate) physical: vk::PhysicalDevice,
-    pub(crate) graphics_queue: Queue,
-    pub(crate) transfer_queue: Queue,
-    pub(crate) compute_queue: Queue,
-    pub(crate) allocator: vk_alloc::Allocator,
-    pub(crate) swapchain_format: vk::Format,
-    pub(crate) swapchain_color_space: vk::ColorSpaceKHR,
-    pub(crate) presentation_mode: vk::PresentModeKHR,
-    pub(crate) swapchain: Option<Swapchain>,
+    context: Rc<DeviceContext>,
+    allocator: vk_alloc::Allocator,
+    swapchain: Option<Swapchain>,
+    graphics_queue: Queue,
+    transfer_queue: Queue,
+    compute_queue: Queue,
+    swapchain_format: vk::Format,
+    swapchain_color_space: vk::ColorSpaceKHR,
+    presentation_mode: vk::PresentModeKHR,
 }
 
 impl Device {
     /// Creates a new device.
-    pub fn new(context: Arc<Context>, descriptor: &DeviceDescriptor) -> Result<Self> {
+    pub(crate) fn new(instance: Instance, descriptor: &DeviceDescriptor) -> Result<Self> {
+        let (physical_device, physical_device_properties) =
+            instance.find_physical_device(descriptor.device_type)?;
+
         #[cfg(feature = "tracing")]
         {
-            let (physical_device, physical_device_properties) =
-                context.find_physical_device(descriptor.device_type)?;
-
             let name = String::from(
                 unsafe {
                     std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr())
@@ -88,88 +86,67 @@ impl Device {
                 "Selected physical device: {} ({:?})",
                 name, physical_device_properties.device_type
             );
-
-            let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
-                context.create_logical_device(physical_device, &descriptor.queue_priority)?;
-
-            info!("Created logical device and queues");
-
-            let allocator = vk_alloc::Allocator::new(
-                &context.instance,
-                physical_device,
-                &logical_device,
-                &vk_alloc::AllocatorDescriptor::default(),
-            );
-            debug!("Created default memory allocator");
-
-            let mut device = Device {
-                context,
-                raw: logical_device,
-                physical: physical_device,
-                graphics_queue,
-                transfer_queue,
-                compute_queue,
-                allocator,
-                swapchain_format: descriptor.swapchain_format,
-                swapchain_color_space: descriptor.swapchain_color_space,
-                presentation_mode: descriptor.presentation_mode,
-                swapchain: None,
-            };
-
-            device.recreate_swapchain(None)?;
-
-            Ok(device)
         }
 
-        #[cfg(not(feature = "tracing"))]
-        {
-            let (physical_device, _) = self.find_physical_device(descriptor.device_type)?;
+        let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
+            instance.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
-            let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
-                self.create_logical_device(physical_device, &descriptor.queue_priority)?;
+        #[cfg(feature = "tracing")]
+        info!("Created logical device and queues");
 
-            let swapchain = context.create_swapchain(
-                physical_device,
-                &logical_device,
-                &graphics_queue,
-                descriptor.swapchain_format,
-                descriptor.swapchain_color_space,
-                descriptor.presentation_mode,
-            )?;
+        let allocator = vk_alloc::Allocator::new(
+            &instance.raw,
+            physical_device,
+            &logical_device,
+            &vk_alloc::AllocatorDescriptor::default(),
+        );
 
-            let allocator = vk_alloc::Allocator::new(
-                &context.instance,
-                physical_device,
-                &logical_device,
-                &vk_alloc::AllocatorDescriptor::default(),
-            );
+        #[cfg(feature = "tracing")]
+        debug!("Created default memory allocator");
 
-            Ok(Device {
-                context,
-                raw: logical_device,
-                _graphics_queue: graphics_queue,
-                _transfer_queue: transfer_queue,
-                _compute_queue: compute_queue,
-                allocator,
-                swapchain,
-            })
-        }
+        let context = DeviceContext {
+            instance,
+            logical_device,
+            physical_device,
+        };
+
+        let mut device = Device {
+            context: Rc::new(context),
+            allocator,
+            graphics_queue,
+            transfer_queue,
+            compute_queue,
+            presentation_mode: descriptor.presentation_mode,
+            swapchain_format: descriptor.swapchain_format,
+            swapchain_color_space: descriptor.swapchain_color_space,
+            swapchain: None,
+        };
+
+        device.recreate_swapchain(None)?;
+
+        Ok(device)
     }
-
-    // TODO get_current_frame()
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
     pub fn recreate_swapchain(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
         let formats = unsafe {
             self.context
+                .instance
                 .surface_loader
-                .get_physical_device_surface_formats(self.physical, self.context.surface)
+                .get_physical_device_surface_formats(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                )
         }?;
 
         let capabilities = unsafe {
             self.context
+                .instance
                 .surface_loader
-                .get_physical_device_surface_capabilities(self.physical, self.context.surface)
+                .get_physical_device_surface_capabilities(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                )
         }?;
 
         let mut image_count = capabilities.min_image_count + 1;
@@ -201,7 +178,7 @@ impl Device {
         let old_swapchain = self.swapchain.take();
 
         let swapchain = Swapchain::new(
-            &self,
+            self.context.clone(),
             SwapchainDescriptor {
                 graphic_queue_family_index: self.graphics_queue.family_index,
                 extend: extent,
@@ -224,8 +201,8 @@ impl Device {
         Ok(())
     }
 
-    /// Acquires the next frame the program can render into.
-    pub fn acquire_next_frame(&self) -> Result<SwapchainFrame> {
+    /// Gets the next frame the program can render into.
+    pub fn get_next_frame(&self) -> Result<SwapchainFrame> {
         let swapchain = self
             .swapchain
             .as_ref()
@@ -233,6 +210,7 @@ impl Device {
         swapchain.acquire_next_frame()
     }
 
+    // TODO try to do this in frame drop.
     /// Queues the frame in the presentation queue.
     pub fn queue_frame(&self, frame: SwapchainFrame) -> Result<()> {
         let swapchain = &self
@@ -245,11 +223,21 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        unsafe {
-            if let Some(swapchain) = &mut self.swapchain {
-                swapchain.destroy(&self.raw);
-            }
-            self.raw.destroy_device(None);
-        };
+        if let Some(swapchain) = &mut self.swapchain {
+            swapchain.destroy(&self.context.logical_device);
+        }
+    }
+}
+
+/// The context for a device.
+pub struct DeviceContext {
+    pub(crate) instance: Instance,
+    pub(crate) logical_device: ash::Device,
+    pub(crate) physical_device: vk::PhysicalDevice,
+}
+
+impl Drop for DeviceContext {
+    fn drop(&mut self) {
+        unsafe { self.logical_device.destroy_device(None) };
     }
 }

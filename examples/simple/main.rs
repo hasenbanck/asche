@@ -11,18 +11,15 @@ fn main() -> Result<(), asche::AscheError> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    let context = asche::Context::new(&asche::ContextDescriptor {
+    let instance = asche::Instance::new(&asche::InstanceDescriptor {
         app_name: "simple example",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &window.raw_window_handle(),
     })?;
 
-    let mut device = asche::Device::new(
-        context,
-        &asche::DeviceDescriptor {
-            ..Default::default()
-        },
-    )?;
+    let mut device = instance.request_device(&asche::DeviceDescriptor {
+        ..Default::default()
+    })?;
 
     device.recreate_swapchain(Some(vk::Extent2D {
         width: window.outer_size().width,
