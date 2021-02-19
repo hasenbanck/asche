@@ -207,10 +207,9 @@ impl Device {
             .swapchain
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?;
-        swapchain.acquire_next_frame()
+        swapchain.get_next_frame()
     }
 
-    // TODO try to do this in frame drop.
     /// Queues the frame in the presentation queue.
     pub fn queue_frame(&self, frame: SwapchainFrame) -> Result<()> {
         let swapchain = &self
@@ -223,12 +222,7 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        /*
-        if let Some(swapchain) = &mut self.swapchain {
-
-            swapchain.destroy(&self.context.logical_device);
-        }
-         */
+        // TODO destroy custom VK resources.
     }
 }
 

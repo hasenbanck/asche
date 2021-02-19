@@ -6,8 +6,11 @@ use ash::vk;
 use crate::device::{DeviceContext, Queue};
 use crate::Result;
 
-// TODO handle destruction of resources on drop
-// TODO start presentation of dropped frame?
+/// Swapchain frame.
+pub struct SwapchainFrame {
+    pub view: vk::ImageView,
+    pub index: u32,
+}
 
 /// Abstracts a Vulkan swapchain.
 pub struct Swapchain {
@@ -99,7 +102,7 @@ impl Swapchain {
     }
 
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
-    pub(crate) fn acquire_next_frame(&self) -> Result<SwapchainFrame> {
+    pub(crate) fn get_next_frame(&self) -> Result<SwapchainFrame> {
         let (index, _) = unsafe {
             self.loader.acquire_next_image(
                 self.raw,
@@ -195,10 +198,4 @@ impl Drop for Swapchain {
         );
         unsafe { self.loader.destroy_swapchain(self.raw, None) };
     }
-}
-
-/// Swapchain frame.
-pub struct SwapchainFrame {
-    pub view: vk::ImageView,
-    pub index: u32,
 }
