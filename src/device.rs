@@ -7,7 +7,9 @@ use tracing::{debug, info};
 
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
-use crate::{AscheError, Context, Pipeline, PipelineLayout, RenderPass, Result, ShaderModule};
+use crate::{
+    AscheError, CommandPool, Context, Pipeline, PipelineLayout, RenderPass, Result, ShaderModule,
+};
 
 /// Abstracts a Vulkan queue.
 pub struct Queue {
@@ -66,6 +68,7 @@ pub struct Device {
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
+    graphics_command_pools: Vec<Rc<CommandPool>>,
 }
 
 impl Device {
@@ -104,14 +107,17 @@ impl Device {
         #[cfg(feature = "tracing")]
         debug!("Created default memory allocator");
 
-        let context = Context {
+        let context = Rc::new(Context {
             instance,
             logical_device,
             physical_device,
-        };
+        });
+
+        let graphics_command_pools =
+            Device::allocate_graphics_command_pools(&graphics_queue, &context)?;
 
         let mut device = Device {
-            context: Rc::new(context),
+            context,
             allocator,
             graphics_queue,
             transfer_queue,
@@ -120,11 +126,35 @@ impl Device {
             swapchain_format: descriptor.swapchain_format,
             swapchain_color_space: descriptor.swapchain_color_space,
             swapchain: None,
+            graphics_command_pools,
         };
 
         device.recreate_swapchain(None)?;
 
         Ok(device)
+    }
+
+    fn allocate_graphics_command_pools(
+        graphics_queue: &Queue,
+        context: &Rc<Context>,
+    ) -> Result<Vec<Rc<CommandPool>>> {
+        let command_pool_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(graphics_queue.family_index)
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+
+        let command_pool = unsafe {
+            context
+                .logical_device
+                .create_command_pool(&command_pool_info, None)?
+        };
+
+        let command_pool = Rc::new(CommandPool {
+            context: context.clone(),
+            raw: command_pool,
+        });
+
+        let graphic_command_pools = vec![command_pool];
+        Ok(graphic_command_pools)
     }
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
@@ -293,4 +323,6 @@ impl Device {
             raw: module,
         })
     }
+
+    // TODO create command pools. This should return an RCed command pool. We maybe need to RC the inner raw pool. We can then count how many pools are lent using the counter in the RC.
 }
