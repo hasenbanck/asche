@@ -211,7 +211,7 @@ impl Device {
             self.context.clone(),
             SwapchainDescriptor {
                 graphic_queue_family_index: self.graphics_queue.family_index,
-                extend: extent,
+                extent,
                 pre_transform,
                 format: format.format,
                 color_space: format.color_space,
@@ -265,7 +265,7 @@ impl Device {
                 .create_render_pass(&renderpass_info, None)?
         };
 
-        swapchain.create_framebuffers(renderpass)?;
+        swapchain.create_renderpass_framebuffers(renderpass)?;
 
         Ok(RenderPass {
             context: self.context.clone(),

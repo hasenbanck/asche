@@ -57,8 +57,6 @@ impl Application {
             height: window.outer_size().height,
         };
 
-        device.recreate_swapchain(Some(extent))?;
-
         // Shader
         let vert_module =
             device.create_shader_module(include_glsl!("./examples/simple/shaders/simple.vert"))?;
@@ -166,6 +164,8 @@ impl Application {
             .render_pass(render_pass.raw)
             .subpass(0);
         let pipeline = device.create_graphics_pipeline(pipeline_info)?;
+
+        device.recreate_swapchain(Some(extent))?;
 
         Ok(Self {
             device,

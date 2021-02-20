@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use ash::version::DeviceV1_0;
@@ -18,7 +19,7 @@ pub struct Swapchain {
     loader: ash::extensions::khr::Swapchain,
     raw: vk::SwapchainKHR,
     image_views: Vec<vk::ImageView>,
-    framebuffers: Vec<vk::Framebuffer>,
+    renderpass_framebuffers: HashMap<vk::RenderPass, Vec<vk::Framebuffer>>,
     present_complete_semaphore: vk::Semaphore,
     extent: vk::Extent2D,
 }
@@ -26,7 +27,7 @@ pub struct Swapchain {
 /// Configures a swapchain
 pub(crate) struct SwapchainDescriptor {
     pub(crate) graphic_queue_family_index: u32,
-    pub(crate) extend: vk::Extent2D,
+    pub(crate) extent: vk::Extent2D,
     pub(crate) pre_transform: vk::SurfaceTransformFlagsKHR,
     pub(crate) format: vk::Format,
     pub(crate) color_space: vk::ColorSpaceKHR,
@@ -41,25 +42,31 @@ impl Swapchain {
         descriptor: SwapchainDescriptor,
         old_swapchain: Option<Swapchain>,
     ) -> Result<Self> {
-        let old_swapchain = match old_swapchain {
+        let (old_swapchain, renderpasses) = match old_swapchain {
             Some(mut osc) => {
                 let swapchain = osc.raw;
+
+                let renderpasses: Vec<vk::RenderPass> = osc
+                    .renderpass_framebuffers
+                    .iter()
+                    .map(|(k, _)| *k)
+                    .collect();
 
                 // We need to destroy the associated resources of the swapchain, before we can
                 // try to reuse the vk::SwapchainKHR when creating the new swapchain.
                 Self::destroy_resources(
                     &context.logical_device,
                     &mut osc.image_views,
-                    &mut osc.framebuffers,
+                    &mut osc.renderpass_framebuffers,
                     &mut osc.present_complete_semaphore,
                 );
                 // We set the raw handler to null, so that drop doesn't try to destroy it again,
                 // since "create_swapchain()" will do that for us.
                 osc.raw = vk::SwapchainKHR::null();
 
-                swapchain
+                (swapchain, renderpasses)
             }
-            None => vk::SwapchainKHR::null(),
+            None => (vk::SwapchainKHR::null(), vec![]),
         };
 
         let graphic_family_index = &[descriptor.graphic_queue_family_index];
@@ -68,7 +75,7 @@ impl Swapchain {
             .min_image_count(descriptor.image_count)
             .image_format(descriptor.format)
             .image_color_space(descriptor.color_space)
-            .image_extent(descriptor.extend)
+            .image_extent(descriptor.extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -87,6 +94,17 @@ impl Swapchain {
         let image_views =
             Swapchain::create_image_views(&context, &images, descriptor.format, images.len())?;
 
+        let mut renderpass_framebuffers = HashMap::with_capacity(renderpasses.len());
+        for renderpass in renderpasses {
+            let framebuffers = Self::init_framebuffers(
+                &context.logical_device,
+                &image_views,
+                renderpass,
+                descriptor.extent,
+            )?;
+            renderpass_framebuffers.insert(renderpass, framebuffers);
+        }
+
         let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
         let present_complete_semaphore = unsafe {
@@ -100,9 +118,9 @@ impl Swapchain {
             loader: swapchain_loader,
             raw: swapchain,
             image_views,
-            framebuffers: vec![],
+            renderpass_framebuffers,
             present_complete_semaphore,
-            extent: descriptor.extend,
+            extent: descriptor.extent,
         })
     }
 
@@ -178,38 +196,58 @@ impl Swapchain {
     }
 
     /// Creates the framebuffers for a renderpass.
-    pub(crate) fn create_framebuffers(&mut self, renderpass: vk::RenderPass) -> Result<()> {
-        for image_view in &self.image_views {
+    pub(crate) fn create_renderpass_framebuffers(
+        &mut self,
+        renderpass: vk::RenderPass,
+    ) -> Result<()> {
+        let framebuffers = Self::init_framebuffers(
+            &self.context.logical_device,
+            &self.image_views,
+            renderpass,
+            self.extent,
+        )?;
+        self.renderpass_framebuffers
+            .insert(renderpass, framebuffers);
+        Ok(())
+    }
+
+    fn init_framebuffers(
+        logical_device: &ash::Device,
+        image_views: &[vk::ImageView],
+        renderpass: vk::RenderPass,
+        extent: vk::Extent2D,
+    ) -> Result<Vec<vk::Framebuffer>> {
+        let mut framebuffers = Vec::with_capacity(image_views.len());
+        for image_view in image_views {
             let view = [*image_view];
             let framebuffer_info = vk::FramebufferCreateInfo::builder()
                 .render_pass(renderpass)
                 .attachments(&view)
-                .width(self.extent.width)
-                .height(self.extent.height)
+                .width(extent.width)
+                .height(extent.height)
                 .layers(1);
-            let fb = unsafe {
-                self.context
-                    .logical_device
-                    .create_framebuffer(&framebuffer_info, None)
-            }?;
-            self.framebuffers.push(fb);
+            let fb = unsafe { logical_device.create_framebuffer(&framebuffer_info, None)? };
+            framebuffers.push(fb);
         }
-        Ok(())
+
+        Ok(framebuffers)
     }
 
     fn destroy_resources(
         logical_device: &ash::Device,
         image_views: &mut [vk::ImageView],
-        framebuffers: &mut [vk::Framebuffer],
+        framebuffers: &mut HashMap<vk::RenderPass, Vec<vk::Framebuffer>>,
         present_complete_semaphore: &mut vk::Semaphore,
     ) {
         unsafe {
             logical_device.destroy_semaphore(*present_complete_semaphore, None);
             *present_complete_semaphore = vk::Semaphore::null();
 
-            for framebuffer in framebuffers {
-                logical_device.destroy_framebuffer(*framebuffer, None);
-                *framebuffer = vk::Framebuffer::null()
+            for (_, renderpass_framebuffers) in framebuffers {
+                for framebuffer in renderpass_framebuffers {
+                    logical_device.destroy_framebuffer(*framebuffer, None);
+                    *framebuffer = vk::Framebuffer::null()
+                }
             }
 
             for image_view in image_views {
@@ -225,7 +263,7 @@ impl Drop for Swapchain {
         Self::destroy_resources(
             &self.context.logical_device,
             &mut self.image_views,
-            &mut self.framebuffers,
+            &mut self.renderpass_framebuffers,
             &mut self.present_complete_semaphore,
         );
         unsafe { self.loader.destroy_swapchain(self.raw, None) };
