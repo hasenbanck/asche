@@ -7,7 +7,7 @@ use tracing::{debug, info};
 
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
-use crate::{AscheError, Result};
+use crate::{AscheError, Context, Pipeline, PipelineLayout, RenderPass, Result, ShaderModule};
 
 /// Abstracts a Vulkan queue.
 pub struct Queue {
@@ -57,7 +57,7 @@ impl Default for DeviceDescriptor {
 
 /// Abstracts a Vulkan device.
 pub struct Device {
-    context: Rc<DeviceContext>,
+    context: Rc<Context>,
     allocator: vk_alloc::Allocator,
     swapchain: Option<Swapchain>,
     graphics_queue: Queue,
@@ -104,7 +104,7 @@ impl Device {
         #[cfg(feature = "tracing")]
         debug!("Created default memory allocator");
 
-        let context = DeviceContext {
+        let context = Context {
             instance,
             logical_device,
             physical_device,
@@ -210,7 +210,7 @@ impl Device {
         swapchain.get_next_frame()
     }
 
-    /// Queues the frame in the presentation queue.
+    /// Queues the frame in the presentation queue.8
     pub fn queue_frame(&self, frame: SwapchainFrame) -> Result<()> {
         let swapchain = &self
             .swapchain
@@ -218,23 +218,79 @@ impl Device {
             .ok_or(AscheError::SwapchainNotInitialized)?;
         swapchain.queue_frame(frame, &self.graphics_queue)
     }
-}
 
-impl Drop for Device {
-    fn drop(&mut self) {
-        // TODO destroy custom VK resources.
+    /// Creates a new render pass.
+    pub fn create_render_pass(
+        &mut self,
+        renderpass_info: vk::RenderPassCreateInfoBuilder,
+    ) -> Result<RenderPass> {
+        let swapchain = self
+            .swapchain
+            .as_mut()
+            .ok_or(AscheError::SwapchainNotInitialized)?;
+
+        let renderpass = unsafe {
+            self.context
+                .logical_device
+                .create_render_pass(&renderpass_info, None)?
+        };
+
+        swapchain.create_framebuffers(renderpass)?;
+
+        Ok(RenderPass {
+            context: self.context.clone(),
+            raw: renderpass,
+        })
     }
-}
 
-/// The context for a device.
-pub struct DeviceContext {
-    pub(crate) instance: Instance,
-    pub(crate) logical_device: ash::Device,
-    pub(crate) physical_device: vk::PhysicalDevice,
-}
+    /// Creates a new pipeline layout.
+    pub fn create_pipeline_layout(
+        &mut self,
+        pipeline_layout_info: vk::PipelineLayoutCreateInfoBuilder,
+    ) -> Result<PipelineLayout> {
+        let pipeline_layout = unsafe {
+            self.context
+                .logical_device
+                .create_pipeline_layout(&pipeline_layout_info, None)?
+        };
 
-impl Drop for DeviceContext {
-    fn drop(&mut self) {
-        unsafe { self.logical_device.destroy_device(None) };
+        Ok(PipelineLayout {
+            context: self.context.clone(),
+            raw: pipeline_layout,
+        })
+    }
+
+    /// Creates a new pipeline.
+    pub fn create_graphics_pipeline(
+        &mut self,
+        pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
+    ) -> Result<Pipeline> {
+        let pipeline = unsafe {
+            self.context.logical_device.create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                &[pipeline_info.build()],
+                None,
+            )?[0]
+        };
+
+        Ok(Pipeline {
+            context: self.context.clone(),
+            raw: pipeline,
+        })
+    }
+
+    /// Creates a new shader module using the provided SPIR-V code.
+    pub fn create_shader_module(&self, sprirv_code: &[u32]) -> Result<ShaderModule> {
+        let create_info = vk::ShaderModuleCreateInfo::builder().code(sprirv_code);
+        let module = unsafe {
+            self.context
+                .logical_device
+                .create_shader_module(&create_info, None)?
+        };
+
+        Ok(ShaderModule {
+            context: self.context.clone(),
+            raw: module,
+        })
     }
 }

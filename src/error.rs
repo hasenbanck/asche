@@ -1,5 +1,7 @@
 use std::error::Error;
 
+use ash::vk;
+
 /// Errors that asche can throw.
 #[derive(Debug)]
 pub enum AscheError {
@@ -107,5 +109,11 @@ impl From<ash::InstanceError> for AscheError {
 impl From<ash::vk::Result> for AscheError {
     fn from(err: ash::vk::Result) -> AscheError {
         AscheError::VkResult(err)
+    }
+}
+
+impl From<(Vec<vk::Pipeline>, ash::vk::Result)> for AscheError {
+    fn from(err: (Vec<vk::Pipeline>, vk::Result)) -> Self {
+        AscheError::VkResult(err.1)
     }
 }

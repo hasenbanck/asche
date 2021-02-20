@@ -22,3 +22,4 @@ vk-alloc = "0.1"
 [dev-dependencies]
 tracing-subscriber = "0.2"
 winit = "0.24"
+vk-shader-macros = "0.2"

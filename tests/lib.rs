@@ -19,18 +19,16 @@ fn context_creation() {
 fn device_creation() {
     let test_context = TestContext::default();
 
-    let context = asche::Instance::new(&asche::InstanceDescriptor {
+    let instance = asche::Instance::new(&asche::InstanceDescriptor {
         app_name: "device_creation",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &test_context.window.raw_window_handle(),
     })
     .unwrap();
 
-    let _ = asche::DeviceContext::new(
-        context,
-        &asche::DeviceDescriptor {
+    let _device = instance
+        .request_device(&asche::DeviceDescriptor {
             ..Default::default()
-        },
-    )
-    .unwrap();
+        })
+        .unwrap();
 }
