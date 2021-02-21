@@ -114,7 +114,7 @@ impl Device {
         });
 
         let graphics_command_pools =
-            Device::allocate_graphics_command_pools(&graphics_queue, &context)?;
+            allocate_graphics_command_pools(&context, &context.logical_device, &graphics_queue, 1)?;
 
         let mut device = Device {
             context,
@@ -132,29 +132,6 @@ impl Device {
         device.recreate_swapchain(None)?;
 
         Ok(device)
-    }
-
-    fn allocate_graphics_command_pools(
-        graphics_queue: &Queue,
-        context: &Arc<Context>,
-    ) -> Result<Vec<Arc<CommandPool>>> {
-        let command_pool_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(graphics_queue.family_index)
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
-
-        let command_pool = unsafe {
-            context
-                .logical_device
-                .create_command_pool(&command_pool_info, None)?
-        };
-
-        let command_pool = Arc::new(CommandPool {
-            context: context.clone(),
-            raw: command_pool,
-        });
-
-        let graphic_command_pools = vec![command_pool];
-        Ok(graphic_command_pools)
     }
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
@@ -257,18 +234,13 @@ impl Device {
         object_type: vk::ObjectType,
         object_handle: u64,
     ) -> Result<()> {
-        let name = std::ffi::CString::new(name.to_owned())?;
-        let info = vk::DebugUtilsObjectNameInfoEXT::builder()
-            .object_name(&name)
-            .object_type(object_type)
-            .object_handle(object_handle);
-        unsafe {
-            self.context
-                .instance
-                .debug_utils
-                .debug_utils_set_object_name(self.context.logical_device.handle(), &info)?
-        };
-        Ok(())
+        set_object_name(
+            &self.context,
+            &self.context.logical_device,
+            name,
+            object_type,
+            object_handle,
+        )
     }
 
     /// Creates a new render pass.
@@ -362,4 +334,63 @@ impl Device {
     }
 
     // TODO create command pools. This should return an RCed command pool. We maybe need to RC the inner raw pool. We can then count how many pools are lent using the counter in the RC.
+}
+
+fn allocate_graphics_command_pools(
+    context: &Arc<Context>,
+    logical_device: &ash::Device,
+    graphics_queue: &Queue,
+    count: u32,
+) -> Result<Vec<Arc<CommandPool>>> {
+    let command_pool_info = vk::CommandPoolCreateInfo::builder()
+        .queue_family_index(graphics_queue.family_index)
+        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+
+    let mut graphic_command_pools = Vec::with_capacity(count as usize);
+
+    for i in 0..count {
+        let command_pool = unsafe {
+            context
+                .logical_device
+                .create_command_pool(&command_pool_info, None)?
+        };
+
+        set_object_name(
+            context,
+            logical_device,
+            &format!("command pool {}", i),
+            vk::ObjectType::COMMAND_POOL,
+            command_pool.as_raw(),
+        )?;
+
+        let command_pool = Arc::new(CommandPool {
+            context: context.clone(),
+            raw: command_pool,
+        });
+
+        graphic_command_pools.push(command_pool)
+    }
+
+    Ok(graphic_command_pools)
+}
+
+fn set_object_name(
+    context: &Arc<Context>,
+    logical_device: &ash::Device,
+    name: &str,
+    object_type: vk::ObjectType,
+    object_handle: u64,
+) -> Result<()> {
+    let name = std::ffi::CString::new(name.to_owned())?;
+    let info = vk::DebugUtilsObjectNameInfoEXT::builder()
+        .object_name(&name)
+        .object_type(object_type)
+        .object_handle(object_handle);
+    unsafe {
+        context
+            .instance
+            .debug_utils
+            .debug_utils_set_object_name(logical_device.handle(), &info)?
+    };
+    Ok(())
 }
