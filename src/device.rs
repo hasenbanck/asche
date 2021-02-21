@@ -258,50 +258,46 @@ impl Device {
         swapchain.queue_frame(frame, &self.graphics_queue)
     }
 
-    /// Executes command buffers on a queue.
-    pub fn execute(&self, queue_type: QueueType, command_buffers: &[&CommandBuffer]) -> Result<()> {
+    /// Executes a command buffer on a queue.
+    pub fn execute(&self, queue_type: QueueType, command_buffer: &CommandBuffer) -> Result<()> {
         let semaphores = [self.timeline];
-        let submits: Vec<vk::SubmitInfo> = command_buffers
-            .iter()
-            .map(|buffer| {
-                let command_buffers = [buffer.encoder.buffer];
-                let wait_values = &[buffer.timeline_wait_value];
-                let signal_values = &[buffer.timeline_signal_value];
 
-                let mut timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
-                    .wait_semaphore_values(wait_values)
-                    .signal_semaphore_values(signal_values);
+        let stage_masks = [ash::vk::PipelineStageFlags::ALL_GRAPHICS];
+        let command_buffers = [command_buffer.encoder.buffer];
+        let wait_values = [command_buffer.timeline_wait_value];
+        let signal_values = [command_buffer.timeline_signal_value];
 
-                let submit_info = vk::SubmitInfo::builder()
-                    .command_buffers(&command_buffers)
-                    .wait_semaphores(&semaphores)
-                    .signal_semaphores(&semaphores)
-                    .push_next(&mut timeline_info);
+        let mut timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
+            .wait_semaphore_values(&wait_values)
+            .signal_semaphore_values(&signal_values);
 
-                submit_info.build()
-            })
-            .collect();
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_dst_stage_mask(&stage_masks)
+            .command_buffers(&command_buffers)
+            .wait_semaphores(&semaphores)
+            .signal_semaphores(&semaphores)
+            .push_next(&mut timeline_info);
 
         unsafe {
             match queue_type {
                 QueueType::Compute => {
                     self.context.logical_device.queue_submit(
                         self.compute_queue.raw,
-                        &submits,
+                        &[submit_info.build()],
                         vk::Fence::null(),
                     )?;
                 }
                 QueueType::Graphics => {
                     self.context.logical_device.queue_submit(
                         self.graphics_queue.raw,
-                        &submits,
+                        &[submit_info.build()],
                         vk::Fence::null(),
                     )?;
                 }
                 QueueType::Transfer => {
                     self.context.logical_device.queue_submit(
                         self.transfer_queue.raw,
-                        &submits,
+                        &[submit_info.build()],
                         vk::Fence::null(),
                     )?;
                 }

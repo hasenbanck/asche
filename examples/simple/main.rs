@@ -53,6 +53,7 @@ struct Application {
     _pipeline: asche::Pipeline,
     command_pool: asche::CommandPool,
     render_pass: asche::RenderPass,
+    frame_counter: u64,
 }
 
 impl Application {
@@ -187,13 +188,18 @@ impl Application {
             _pipeline: pipeline,
             command_pool,
             render_pass,
+            frame_counter: 0,
         })
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
+        let frame_offset = self.frame_counter * 100;
         let frame = self.device.get_next_frame()?;
 
-        let command_buffer = self.command_pool.create_command_buffer(10, 100)?;
+        let command_buffer = self.command_pool.create_command_buffer(
+            Timeline::RenderStart.with_offset(frame_offset),
+            Timeline::RenderEnd.with_offset(frame_offset),
+        )?;
         command_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -220,14 +226,29 @@ impl Application {
         })?;
 
         self.device
-            .execute(asche::QueueType::Graphics, &[&command_buffer])?;
-        //self.device.set_timeline_value(10)?;
-        //self.device.wait_for_timeline_value(100)?;
+            .execute(asche::QueueType::Graphics, &command_buffer)?;
+        self.device
+            .set_timeline_value(Timeline::RenderStart.with_offset(frame_offset))?;
+        self.device
+            .wait_for_timeline_value(Timeline::RenderEnd.with_offset(frame_offset))?;
 
         self.command_pool.reset()?;
 
         self.device.queue_frame(frame)?;
+        self.frame_counter += 1;
 
         Ok(())
+    }
+}
+
+#[derive(Copy, Clone)]
+enum Timeline {
+    RenderStart = 1,
+    RenderEnd,
+}
+
+impl Timeline {
+    fn with_offset(&self, offset: u64) -> u64 {
+        *self as u64 + offset
     }
 }
