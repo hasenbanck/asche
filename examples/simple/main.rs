@@ -1,3 +1,5 @@
+use std::sync::mpsc::RecvTimeoutError::Timeout;
+
 use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
 use vk_shader_macros::include_glsl;
@@ -193,7 +195,7 @@ impl Application {
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame_offset = self.frame_counter * 100;
+        let frame_offset = self.frame_counter * Timeline::FrameOffset as u64;
         let frame = self.device.get_next_frame()?;
 
         let command_buffer = self.command_pool.create_command_buffer(
@@ -245,6 +247,7 @@ impl Application {
 enum Timeline {
     RenderStart = 1,
     RenderEnd,
+    FrameOffset,
 }
 
 impl Timeline {
