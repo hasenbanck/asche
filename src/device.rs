@@ -235,6 +235,20 @@ impl Device {
         Ok(())
     }
 
+    /// Gets the frame buffer for the given render pass and frame.
+    pub fn get_frame_buffer(
+        &self,
+        render_pass: &RenderPass,
+        frame: &SwapchainFrame,
+    ) -> Result<vk::Framebuffer> {
+        let swapchain = self
+            .swapchain
+            .as_ref()
+            .ok_or(AscheError::SwapchainNotInitialized)?;
+
+        Ok(swapchain.get_frame_buffer(render_pass.raw, frame.index))
+    }
+
     /// Gets the next frame the program can render into.
     pub fn get_next_frame(&self) -> Result<SwapchainFrame> {
         let swapchain = self

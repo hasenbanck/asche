@@ -140,6 +140,15 @@ impl Swapchain {
         })
     }
 
+    /// Gets the framebuffer for a renderpass.
+    pub(crate) fn get_frame_buffer(
+        &self,
+        render_pass: vk::RenderPass,
+        index: u32,
+    ) -> vk::Framebuffer {
+        self.renderpass_framebuffers[&render_pass][index as usize]
+    }
+
     /// Queues the given frame into the graphic queue.
     pub(crate) fn queue_frame(&self, frame: SwapchainFrame, graphic_queue: &Queue) -> Result<()> {
         let wait_semaphors = [self.present_complete_semaphore];

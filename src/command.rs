@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
-use ash::vk::{Handle, Offset2D};
+use ash::vk::Handle;
 
 use crate::context::{Context, TagName};
-use crate::{QueueType, Result};
+use crate::swapchain::SwapchainFrame;
+use crate::{Device, QueueType, RenderPass, Result};
 
 /// A wrapped command pool.
 pub struct CommandPool {
@@ -181,47 +182,77 @@ impl CommandEncoder {
         Ok(())
     }
 
-    /// Sets the viewport.
-    pub fn set_viewport(&self, viewport: vk::Viewport) {
-        unsafe {
-            self.context
-                .logical_device
-                .cmd_set_viewport(self.buffer, 0, &[viewport])
-        };
-    }
-
-    /// Sets the scissor rectangle.
-    pub fn set_scissor(&self, scissor_rect: vk::Rect2D) {
-        unsafe {
-            self.context
-                .logical_device
-                .cmd_set_scissor(self.buffer, 0, &[scissor_rect])
-        };
-    }
-
-    /// Clears an attachment.
-    pub fn clear_attachment(
+    /// Returns a renderpass encoder. Drop once finished recording.
+    pub fn begin_render_pass(
         &self,
-        attachment_index: u32,
-        clear_rect: vk::Rect2D,
-        clear_value: vk::ClearValue,
-        aspect_mask: vk::ImageAspectFlags,
-    ) {
-        let clear_attachment = vk::ClearAttachment::builder()
-            .color_attachment(attachment_index)
-            .clear_value(clear_value)
-            .aspect_mask(aspect_mask);
-        let rect = vk::ClearRect {
-            rect: clear_rect,
-            base_array_layer: 0,
-            layer_count: 0,
+        render_pass: &RenderPass,
+        frame_buffer: vk::Framebuffer,
+        clear_values: &[vk::ClearValue],
+        render_area: vk::Rect2D,
+    ) -> Result<RenderPassEncoder> {
+        let encoder = RenderPassEncoder {
+            context: self.context.clone(),
+            buffer: self.buffer,
         };
+        encoder.begin(render_pass.raw, frame_buffer, clear_values, render_area);
+
+        Ok(encoder)
+    }
+
+    /// Sets the viewport and the scissor rectangle.
+    pub fn set_viewport_and_scissor(&self, rect: vk::Rect2D) {
         unsafe {
-            self.context.logical_device.cmd_clear_attachments(
-                self.buffer,
-                &[clear_attachment.build()],
-                &[rect],
-            );
+            let viewport = vk::Viewport {
+                x: rect.offset.x as f32,
+                y: rect.offset.y as f32,
+                width: rect.extent.width as f32,
+                height: rect.extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            };
+
+            self.context
+                .logical_device
+                .cmd_set_viewport(self.buffer, 0, &[viewport]);
+            self.context
+                .logical_device
+                .cmd_set_scissor(self.buffer, 0, &[rect]);
+        };
+    }
+}
+
+/// Used to encode renderpass commands of a command buffer.
+pub struct RenderPassEncoder {
+    pub(crate) context: Arc<Context>,
+    pub(crate) buffer: vk::CommandBuffer,
+}
+
+impl Drop for RenderPassEncoder {
+    fn drop(&mut self) {
+        unsafe { self.context.logical_device.cmd_end_render_pass(self.buffer) };
+    }
+}
+
+impl RenderPassEncoder {
+    /// Begins a render pass.
+    fn begin(
+        &self,
+        render_pass: vk::RenderPass,
+        frame_buffer: vk::Framebuffer,
+        clear_values: &[vk::ClearValue],
+        render_area: vk::Rect2D,
+    ) {
+        let create_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(render_pass)
+            .framebuffer(frame_buffer)
+            .clear_values(clear_values)
+            .render_area(render_area);
+        let contents = vk::SubpassContents::INLINE;
+
+        unsafe {
+            self.context
+                .logical_device
+                .cmd_begin_render_pass(self.buffer, &create_info, contents)
         };
     }
 }

@@ -5,6 +5,7 @@ use vk_shader_macros::include_glsl;
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
+        .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
         .with_title("asche - simple example")
         .with_resizable(false)
         .build(&event_loop)
@@ -49,9 +50,10 @@ struct Application {
     device: asche::Device,
     window: winit::window::Window,
     extent: vk::Extent2D,
-    pipeline: asche::Pipeline,
+    _pipeline: asche::Pipeline,
     _command_pool: asche::CommandPool,
     command_buffer: asche::CommandBuffer,
+    render_pass: asche::RenderPass,
 }
 
 impl Application {
@@ -60,8 +62,8 @@ impl Application {
         window: winit::window::Window,
     ) -> Result<Self, asche::AscheError> {
         let extent = vk::Extent2D {
-            width: window.outer_size().width,
-            height: window.outer_size().height,
+            width: window.inner_size().width,
+            height: window.inner_size().height,
         };
 
         // Shader
@@ -184,32 +186,37 @@ impl Application {
             device,
             window,
             extent,
-            pipeline,
+            _pipeline: pipeline,
             _command_pool: command_pool,
             command_buffer,
+            render_pass,
         })
     }
 
     fn render(&self) -> Result<(), asche::AscheError> {
-        // let frame = self.device.get_next_frame()?;
+        let frame = self.device.get_next_frame()?;
 
         self.command_buffer.record(|encoder| {
-            encoder.set_viewport(vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: self.extent.width as f32,
-                height: self.extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            });
-
-            encoder.set_scissor(vk::Rect2D {
+            encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: self.extent,
             });
 
-            // TODO how to define the attachment here?
-            //encoder.clear_attachment();
+            let frame_buffer = self.device.get_frame_buffer(&self.render_pass, &frame)?;
+
+            let _pass = encoder.begin_render_pass(
+                &self.render_pass,
+                frame_buffer,
+                &[vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [1.0, 0.0, 1.0, 1.0],
+                    },
+                }],
+                vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: self.extent,
+                },
+            )?;
 
             Ok(())
         })?;
@@ -220,7 +227,7 @@ impl Application {
 
         self.command_buffer.reset()?;
 
-        // self.device.queue_frame(frame);
+        self.device.queue_frame(frame)?;
 
         Ok(())
     }
