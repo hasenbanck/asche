@@ -195,7 +195,7 @@ impl Application {
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame_offset = self.frame_counter * Timeline::FrameOffset as u64;
+        let frame_offset = self.frame_counter * Timeline::RenderEnd as u64;
         let frame = self.device.get_next_frame()?;
 
         let command_buffer = self.command_pool.create_command_buffer(
@@ -230,8 +230,6 @@ impl Application {
         self.device
             .execute(asche::QueueType::Graphics, &command_buffer)?;
         self.device
-            .set_timeline_value(Timeline::RenderStart.with_offset(frame_offset))?;
-        self.device
             .wait_for_timeline_value(Timeline::RenderEnd.with_offset(frame_offset))?;
 
         self.command_pool.reset()?;
@@ -245,9 +243,8 @@ impl Application {
 
 #[derive(Copy, Clone)]
 enum Timeline {
-    RenderStart = 1,
+    RenderStart = 0,
     RenderEnd,
-    FrameOffset,
 }
 
 impl Timeline {
