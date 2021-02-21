@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
@@ -6,11 +6,10 @@ use ash::vk::Handle;
 #[cfg(feature = "tracing")]
 use tracing::{debug, info};
 
+use crate::command::CommandPool;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
-use crate::{
-    AscheError, CommandPool, Context, Pipeline, PipelineLayout, RenderPass, Result, ShaderModule,
-};
+use crate::{AscheError, Context, Pipeline, PipelineLayout, RenderPass, Result, ShaderModule};
 
 /// Abstracts a Vulkan queue.
 pub struct Queue {
@@ -60,7 +59,7 @@ impl Default for DeviceDescriptor {
 
 /// Abstracts a Vulkan device.
 pub struct Device {
-    context: Rc<Context>,
+    context: Arc<Context>,
     allocator: vk_alloc::Allocator,
     swapchain: Option<Swapchain>,
     graphics_queue: Queue,
@@ -69,7 +68,7 @@ pub struct Device {
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
-    graphics_command_pools: Vec<Rc<CommandPool>>,
+    graphics_command_pools: Vec<Arc<CommandPool>>,
 }
 
 impl Device {
@@ -108,7 +107,7 @@ impl Device {
         #[cfg(feature = "tracing")]
         debug!("Created default memory allocator");
 
-        let context = Rc::new(Context {
+        let context = Arc::new(Context {
             instance,
             logical_device,
             physical_device,
@@ -137,8 +136,8 @@ impl Device {
 
     fn allocate_graphics_command_pools(
         graphics_queue: &Queue,
-        context: &Rc<Context>,
-    ) -> Result<Vec<Rc<CommandPool>>> {
+        context: &Arc<Context>,
+    ) -> Result<Vec<Arc<CommandPool>>> {
         let command_pool_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(graphics_queue.family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
@@ -149,7 +148,7 @@ impl Device {
                 .create_command_pool(&command_pool_info, None)?
         };
 
-        let command_pool = Rc::new(CommandPool {
+        let command_pool = Arc::new(CommandPool {
             context: context.clone(),
             raw: command_pool,
         });

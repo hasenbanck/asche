@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 //! Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
@@ -9,11 +9,13 @@ use ash::vk;
 use tracing::{debug, error, info, warn};
 
 pub use {
+    command::{CommandBuffer, CommandPool},
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceDescriptor},
 };
 
+pub(crate) mod command;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;
@@ -95,7 +97,7 @@ impl Drop for Context {
 
 /// Wraps a render pass.
 pub struct RenderPass {
-    pub(crate) context: Rc<Context>,
+    pub(crate) context: Arc<Context>,
     /// The raw vk::RenderPass
     pub raw: vk::RenderPass,
 }
@@ -112,7 +114,7 @@ impl Drop for RenderPass {
 
 /// Wraps a pipeline layout.
 pub struct PipelineLayout {
-    pub(crate) context: Rc<Context>,
+    pub(crate) context: Arc<Context>,
     /// The raw vk::PipelineLayout
     pub raw: vk::PipelineLayout,
 }
@@ -129,7 +131,7 @@ impl Drop for PipelineLayout {
 
 /// Wraps a pipeline.
 pub struct Pipeline {
-    pub(crate) context: Rc<Context>,
+    pub(crate) context: Arc<Context>,
     /// The raw ck::Pipeline.
     pub raw: vk::Pipeline,
 }
@@ -144,7 +146,7 @@ impl Drop for Pipeline {
 
 /// Wraps a shader module.
 pub struct ShaderModule {
-    pub(crate) context: Rc<Context>,
+    pub(crate) context: Arc<Context>,
     /// The raw vk::ShaderModule.
     pub raw: vk::ShaderModule,
 }
@@ -155,93 +157,6 @@ impl Drop for ShaderModule {
             self.context
                 .logical_device
                 .destroy_shader_module(self.raw, None);
-        };
-    }
-}
-
-/// A wrapped command pool.
-pub struct CommandPool {
-    pub(crate) context: Rc<Context>,
-    pub(crate) raw: vk::CommandPool,
-}
-
-impl Drop for CommandPool {
-    fn drop(&mut self) {
-        unsafe {
-            self.context
-                .logical_device
-                .destroy_command_pool(self.raw, None);
-        };
-    }
-}
-
-impl CommandPool {
-    /// Creates a new command buffer.
-    pub fn create_command_buffer(&mut self) -> Result<CommandBuffer> {
-        let info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(self.raw)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-
-        let command_buffer = unsafe {
-            self.context
-                .logical_device
-                .allocate_command_buffers(&info)?
-        };
-
-        Ok(CommandBuffer {
-            context: self.context.clone(),
-            raw: command_buffer[0],
-        })
-    }
-
-    /// Creates new command buffers.
-    pub fn create_command_buffers(&mut self, count: u32) -> Result<Vec<CommandBuffer>> {
-        let info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(self.raw)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(count);
-
-        let command_buffers = unsafe {
-            self.context
-                .logical_device
-                .allocate_command_buffers(&info)?
-        };
-
-        let command_buffers = command_buffers
-            .iter()
-            .map(|buffer| CommandBuffer {
-                context: self.context.clone(),
-                raw: *buffer,
-            })
-            .collect();
-
-        Ok(command_buffers)
-    }
-}
-
-/// A wrapped command buffer.
-pub struct CommandBuffer {
-    pub(crate) context: Rc<Context>,
-    pub(crate) raw: vk::CommandBuffer,
-}
-
-impl CommandBuffer {
-    /// Sets the viewport.
-    pub fn set_viewport(&self, viewport: vk::Viewport) {
-        unsafe {
-            self.context
-                .logical_device
-                .cmd_set_viewport(self.raw, 0, &[viewport]);
-        };
-    }
-
-    /// Sets the scissor rectangle.
-    pub fn set_scissor(&self, scissor_rect: vk::Rect2D) {
-        unsafe {
-            self.context
-                .logical_device
-                .cmd_set_scissor(self.raw, 0, &[scissor_rect]);
         };
     }
 }

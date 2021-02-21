@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
@@ -15,7 +15,7 @@ pub struct SwapchainFrame {
 
 /// Abstracts a Vulkan swapchain.
 pub struct Swapchain {
-    context: Rc<Context>,
+    context: Arc<Context>,
     loader: ash::extensions::khr::Swapchain,
     raw: vk::SwapchainKHR,
     image_views: Vec<vk::ImageView>,
@@ -38,7 +38,7 @@ pub(crate) struct SwapchainDescriptor {
 impl Swapchain {
     /// Creates a new `Swapchain`.
     pub(crate) fn new(
-        context: Rc<Context>,
+        context: Arc<Context>,
         descriptor: SwapchainDescriptor,
         old_swapchain: Option<Swapchain>,
     ) -> Result<Self> {
