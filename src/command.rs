@@ -7,8 +7,7 @@ use ash::vk;
 use ash::vk::Handle;
 
 use crate::context::{Context, TagName};
-use crate::swapchain::SwapchainFrame;
-use crate::{Device, QueueType, RenderPass, Result};
+use crate::{QueueType, RenderPass, Result};
 
 /// A wrapped command pool.
 pub struct CommandPool {
@@ -61,7 +60,11 @@ impl CommandPool {
     }
 
     /// Creates a new command buffer.
-    pub fn create_command_buffer(&mut self) -> Result<CommandBuffer> {
+    pub fn create_command_buffer(
+        &mut self,
+        timeline_wait_value: u64,
+        timeline_signal_value: u64,
+    ) -> Result<CommandBuffer> {
         let info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.raw)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -95,7 +98,12 @@ impl CommandPool {
             command_buffers[0].as_raw(),
         )?;
 
-        let command_buffer = CommandBuffer::new(self.context.clone(), command_buffers[0]);
+        let command_buffer = CommandBuffer::new(
+            self.context.clone(),
+            command_buffers[0],
+            timeline_wait_value,
+            timeline_signal_value,
+        );
 
         self.command_buffer_counter += 1;
 
@@ -116,12 +124,21 @@ impl CommandPool {
 
 /// A wrapped command buffer.
 pub struct CommandBuffer {
+    pub(crate) timeline_wait_value: u64,
+    pub(crate) timeline_signal_value: u64,
     pub(crate) encoder: CommandEncoder,
 }
 
 impl CommandBuffer {
-    pub(crate) fn new(context: Arc<Context>, buffer: vk::CommandBuffer) -> Self {
+    pub(crate) fn new(
+        context: Arc<Context>,
+        buffer: vk::CommandBuffer,
+        timeline_wait_value: u64,
+        timeline_signal_value: u64,
+    ) -> Self {
         Self {
+            timeline_wait_value,
+            timeline_signal_value,
             encoder: CommandEncoder { context, buffer },
         }
     }
@@ -134,18 +151,6 @@ impl CommandBuffer {
         self.encoder.begin()?;
         exec(&self.encoder)?;
         self.encoder.end()?;
-
-        Ok(())
-    }
-
-    /// Resets a command buffer.
-    pub fn reset(&self) -> Result<()> {
-        unsafe {
-            self.encoder
-                .context
-                .logical_device
-                .reset_command_buffer(self.encoder.buffer, vk::CommandBufferResetFlags::empty())?
-        };
 
         Ok(())
     }

@@ -27,7 +27,7 @@ fn main() -> Result<(), asche::AscheError> {
         ..Default::default()
     })?;
 
-    let app = Application::new(device, window)?;
+    let mut app = Application::new(device, window)?;
 
     event_loop.run(move |event, _, control_flow| match event {
         winit::event::Event::WindowEvent {
@@ -51,8 +51,7 @@ struct Application {
     window: winit::window::Window,
     extent: vk::Extent2D,
     _pipeline: asche::Pipeline,
-    _command_pool: asche::CommandPool,
-    command_buffer: asche::CommandBuffer,
+    command_pool: asche::CommandPool,
     render_pass: asche::RenderPass,
 }
 
@@ -180,23 +179,22 @@ impl Application {
         let pipeline = device.create_graphics_pipeline("simple pipeline", pipeline_info)?;
 
         let mut command_pool = device.create_command_pool(asche::QueueType::Graphics)?;
-        let command_buffer = command_pool.create_command_buffer()?;
 
         Ok(Self {
             device,
             window,
             extent,
             _pipeline: pipeline,
-            _command_pool: command_pool,
-            command_buffer,
+            command_pool,
             render_pass,
         })
     }
 
-    fn render(&self) -> Result<(), asche::AscheError> {
+    fn render(&mut self) -> Result<(), asche::AscheError> {
         let frame = self.device.get_next_frame()?;
 
-        self.command_buffer.record(|encoder| {
+        let command_buffer = self.command_pool.create_command_buffer(10, 100)?;
+        command_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: self.extent,
@@ -222,10 +220,11 @@ impl Application {
         })?;
 
         self.device
-            .execute(asche::QueueType::Graphics, &[&self.command_buffer])?;
-        self.device.wait(asche::WaitForQueueType::Graphics)?;
+            .execute(asche::QueueType::Graphics, &[&command_buffer])?;
+        //self.device.set_timeline_value(10)?;
+        //self.device.wait_for_timeline_value(100)?;
 
-        self.command_buffer.reset()?;
+        self.command_pool.reset()?;
 
         self.device.queue_frame(frame)?;
 

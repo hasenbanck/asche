@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
 use ash::vk::Handle;
 #[cfg(feature = "tracing")]
@@ -12,7 +12,7 @@ use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
     AscheError, CommandBuffer, Pipeline, PipelineLayout, Queue, QueueType, RenderPass, Result,
-    ShaderModule, WaitForQueueType,
+    ShaderModule,
 };
 
 /// Defines the priorities of the queues.
@@ -67,9 +67,7 @@ pub struct Device {
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
     command_pool_counter: u64,
-    compute_fence: vk::Fence,
-    graphics_fence: vk::Fence,
-    transfer_fence: vk::Fence,
+    timeline: vk::Semaphore,
 }
 
 impl Drop for Device {
@@ -77,17 +75,7 @@ impl Drop for Device {
         unsafe {
             self.context
                 .logical_device
-                .destroy_fence(self.compute_fence, None)
-        };
-        unsafe {
-            self.context
-                .logical_device
-                .destroy_fence(self.graphics_fence, None)
-        };
-        unsafe {
-            self.context
-                .logical_device
-                .destroy_fence(self.transfer_fence, None)
+                .destroy_semaphore(self.timeline, None)
         };
     }
 }
@@ -134,10 +122,15 @@ impl Device {
             physical_device,
         });
 
-        let fence_info = vk::FenceCreateInfo::builder();
-        let compute_fence = unsafe { context.logical_device.create_fence(&fence_info, None)? };
-        let graphics_fence = unsafe { context.logical_device.create_fence(&fence_info, None)? };
-        let transfer_fence = unsafe { context.logical_device.create_fence(&fence_info, None)? };
+        let mut create_info = vk::SemaphoreTypeCreateInfo::builder()
+            .semaphore_type(vk::SemaphoreType::TIMELINE)
+            .initial_value(0);
+        let semaphore_info = vk::SemaphoreCreateInfo::builder().push_next(&mut create_info);
+        let timeline = unsafe {
+            context
+                .logical_device
+                .create_semaphore(&semaphore_info, None)?
+        };
 
         let mut device = Device {
             context,
@@ -150,9 +143,7 @@ impl Device {
             swapchain_color_space: descriptor.swapchain_color_space,
             swapchain: None,
             command_pool_counter: 0,
-            compute_fence,
-            graphics_fence,
-            transfer_fence,
+            timeline,
         };
 
         device.recreate_swapchain(None)?;
@@ -269,43 +260,49 @@ impl Device {
 
     /// Executes command buffers on a queue.
     pub fn execute(&self, queue_type: QueueType, command_buffers: &[&CommandBuffer]) -> Result<()> {
-        let command_buffers: Vec<vk::CommandBuffer> = command_buffers
+        let semaphores = [self.timeline];
+        let submits: Vec<vk::SubmitInfo> = command_buffers
             .iter()
-            .map(|buffer| buffer.encoder.buffer)
-            .collect();
+            .map(|buffer| {
+                let command_buffers = [buffer.encoder.buffer];
+                let wait_values = &[buffer.timeline_wait_value];
+                let signal_values = &[buffer.timeline_signal_value];
 
-        let info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+                let mut timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
+                    .wait_semaphore_values(wait_values)
+                    .signal_semaphore_values(signal_values);
+
+                let submit_info = vk::SubmitInfo::builder()
+                    .command_buffers(&command_buffers)
+                    .wait_semaphores(&semaphores)
+                    .signal_semaphores(&semaphores)
+                    .push_next(&mut timeline_info);
+
+                submit_info.build()
+            })
+            .collect();
 
         unsafe {
             match queue_type {
                 QueueType::Compute => {
-                    self.context
-                        .logical_device
-                        .reset_fences(&[self.compute_fence])?;
                     self.context.logical_device.queue_submit(
                         self.compute_queue.raw,
-                        &[info.build()],
-                        self.compute_fence,
+                        &submits,
+                        vk::Fence::null(),
                     )?;
                 }
                 QueueType::Graphics => {
-                    self.context
-                        .logical_device
-                        .reset_fences(&[self.graphics_fence])?;
                     self.context.logical_device.queue_submit(
                         self.graphics_queue.raw,
-                        &[info.build()],
-                        self.graphics_fence,
+                        &submits,
+                        vk::Fence::null(),
                     )?;
                 }
                 QueueType::Transfer => {
-                    self.context
-                        .logical_device
-                        .reset_fences(&[self.transfer_fence])?;
                     self.context.logical_device.queue_submit(
                         self.transfer_queue.raw,
-                        &[info.build()],
-                        self.transfer_fence,
+                        &submits,
+                        vk::Fence::null(),
                     )?;
                 }
             }
@@ -314,21 +311,29 @@ impl Device {
         Ok(())
     }
 
-    /// Waits until the execution on a queue has finished.
-    pub fn wait(&self, queue_type: WaitForQueueType) -> Result<()> {
-        let fences: Vec<vk::Fence> = match queue_type {
-            WaitForQueueType::All => {
-                vec![self.compute_fence, self.graphics_fence, self.transfer_fence]
-            }
-            WaitForQueueType::Compute => vec![self.compute_fence],
-            WaitForQueueType::Graphics => vec![self.graphics_fence],
-            WaitForQueueType::Transfer => vec![self.transfer_fence],
-        };
+    /// Sets a timeline value.
+    pub fn set_timeline_value(&self, timeline_value: u64) -> Result<()> {
+        let signal_info = vk::SemaphoreSignalInfo::builder()
+            .semaphore(self.timeline)
+            .value(timeline_value);
+
+        unsafe { self.context.logical_device.signal_semaphore(&signal_info)? };
+
+        Ok(())
+    }
+
+    /// Waits until the timeline has reached the value.
+    pub fn wait_for_timeline_value(&self, timeline_value: u64) -> Result<()> {
+        let semaphores = [self.timeline];
+        let values = [timeline_value];
+        let wait_info = vk::SemaphoreWaitInfo::builder()
+            .semaphores(&semaphores)
+            .values(&values);
 
         unsafe {
             self.context
                 .logical_device
-                .wait_for_fences(&fences, true, u64::MAX)?
+                .wait_semaphores(&wait_info, 5000000000)? // 5 sec timeout
         };
 
         Ok(())
@@ -435,9 +440,8 @@ impl Device {
             QueueType::Transfer => &self.transfer_queue,
         };
 
-        let command_pool_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(queue.family_index)
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+        let command_pool_info =
+            vk::CommandPoolCreateInfo::builder().queue_family_index(queue.family_index);
 
         let command_pool = unsafe {
             self.context
