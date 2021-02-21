@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
-use ash::vk::{CommandBufferResetFlags, CommandBufferUsageFlags, Handle};
+use ash::vk::{Handle, Offset2D};
 
 use crate::context::{Context, TagName};
 use crate::{QueueType, Result};
@@ -115,7 +115,7 @@ impl CommandPool {
 
 /// A wrapped command buffer.
 pub struct CommandBuffer {
-    encoder: CommandEncoder,
+    pub(crate) encoder: CommandEncoder,
 }
 
 impl CommandBuffer {
@@ -132,7 +132,7 @@ impl CommandBuffer {
     {
         self.encoder.begin()?;
         exec(&self.encoder)?;
-        self.encoder.end();
+        self.encoder.end()?;
 
         Ok(())
     }
@@ -152,8 +152,8 @@ impl CommandBuffer {
 
 /// Used to encode command for a command buffer.
 pub struct CommandEncoder {
-    context: Arc<Context>,
-    buffer: vk::CommandBuffer,
+    pub(crate) context: Arc<Context>,
+    pub(crate) buffer: vk::CommandBuffer,
 }
 
 impl CommandEncoder {
@@ -196,6 +196,32 @@ impl CommandEncoder {
             self.context
                 .logical_device
                 .cmd_set_scissor(self.buffer, 0, &[scissor_rect])
+        };
+    }
+
+    /// Clears an attachment.
+    pub fn clear_attachment(
+        &self,
+        attachment_index: u32,
+        clear_rect: vk::Rect2D,
+        clear_value: vk::ClearValue,
+        aspect_mask: vk::ImageAspectFlags,
+    ) {
+        let clear_attachment = vk::ClearAttachment::builder()
+            .color_attachment(attachment_index)
+            .clear_value(clear_value)
+            .aspect_mask(aspect_mask);
+        let rect = vk::ClearRect {
+            rect: clear_rect,
+            base_array_layer: 0,
+            layer_count: 0,
+        };
+        unsafe {
+            self.context.logical_device.cmd_clear_attachments(
+                self.buffer,
+                &[clear_attachment.build()],
+                &[rect],
+            );
         };
     }
 }

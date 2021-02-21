@@ -48,7 +48,10 @@ fn main() -> Result<(), asche::AscheError> {
 struct Application {
     device: asche::Device,
     window: winit::window::Window,
+    extent: vk::Extent2D,
     pipeline: asche::Pipeline,
+    _command_pool: asche::CommandPool,
+    command_buffer: asche::CommandBuffer,
 }
 
 impl Application {
@@ -177,32 +180,48 @@ impl Application {
         let mut command_pool = device.create_command_pool(asche::QueueType::Graphics)?;
         let command_buffer = command_pool.create_command_buffer()?;
 
-        command_buffer.record(|encoder| {
+        Ok(Self {
+            device,
+            window,
+            extent,
+            pipeline,
+            _command_pool: command_pool,
+            command_buffer,
+        })
+    }
+
+    fn render(&self) -> Result<(), asche::AscheError> {
+        // let frame = self.device.get_next_frame()?;
+
+        self.command_buffer.record(|encoder| {
             encoder.set_viewport(vk::Viewport {
                 x: 0.0,
                 y: 0.0,
-                width: extent.width as f32,
-                height: extent.height as f32,
+                width: self.extent.width as f32,
+                height: self.extent.height as f32,
                 min_depth: 0.0,
                 max_depth: 1.0,
             });
 
             encoder.set_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent,
+                extent: self.extent,
             });
+
+            // TODO how to define the attachment here?
+            //encoder.clear_attachment();
 
             Ok(())
         })?;
 
-        Ok(Self {
-            device,
-            window,
-            pipeline,
-        })
-    }
+        self.device
+            .execute(asche::QueueType::Graphics, &[&self.command_buffer])?;
+        self.device.wait(asche::WaitForQueueType::Graphics)?;
 
-    fn render(&self) -> Result<(), asche::AscheError> {
+        self.command_buffer.reset()?;
+
+        // self.device.queue_frame(frame);
+
         Ok(())
     }
 }

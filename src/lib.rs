@@ -96,6 +96,19 @@ pub enum QueueType {
     Transfer,
 }
 
+/// Defines which queue to wait for.
+#[derive(Copy, Clone)]
+pub enum WaitForQueueType {
+    /// Wait for all queues to finish.
+    All = 0,
+    /// Compute queue.
+    Compute,
+    /// Graphics queue.
+    Graphics,
+    /// Transfer queue.
+    Transfer,
+}
+
 /// Abstracts a Vulkan queue.
 pub struct Queue {
     pub(crate) family_index: u32,

@@ -11,7 +11,8 @@ use crate::context::Context;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, Pipeline, PipelineLayout, Queue, QueueType, RenderPass, Result, ShaderModule,
+    AscheError, CommandBuffer, Pipeline, PipelineLayout, Queue, QueueType, RenderPass, Result,
+    ShaderModule, WaitForQueueType,
 };
 
 /// Defines the priorities of the queues.
@@ -66,6 +67,29 @@ pub struct Device {
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
     command_pool_counter: u64,
+    compute_fence: vk::Fence,
+    graphics_fence: vk::Fence,
+    transfer_fence: vk::Fence,
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe {
+            self.context
+                .logical_device
+                .destroy_fence(self.compute_fence, None)
+        };
+        unsafe {
+            self.context
+                .logical_device
+                .destroy_fence(self.graphics_fence, None)
+        };
+        unsafe {
+            self.context
+                .logical_device
+                .destroy_fence(self.transfer_fence, None)
+        };
+    }
 }
 
 impl Device {
@@ -110,6 +134,11 @@ impl Device {
             physical_device,
         });
 
+        let fence_info = vk::FenceCreateInfo::builder();
+        let compute_fence = unsafe { context.logical_device.create_fence(&fence_info, None)? };
+        let graphics_fence = unsafe { context.logical_device.create_fence(&fence_info, None)? };
+        let transfer_fence = unsafe { context.logical_device.create_fence(&fence_info, None)? };
+
         let mut device = Device {
             context,
             allocator,
@@ -121,6 +150,9 @@ impl Device {
             swapchain_color_space: descriptor.swapchain_color_space,
             swapchain: None,
             command_pool_counter: 0,
+            compute_fence,
+            graphics_fence,
+            transfer_fence,
         };
 
         device.recreate_swapchain(None)?;
@@ -221,16 +253,71 @@ impl Device {
         swapchain.queue_frame(frame, &self.graphics_queue)
     }
 
-    /// Sets a name for an object.
-    #[inline]
-    fn set_object_name(
-        &self,
-        name: &str,
-        object_type: vk::ObjectType,
-        object_handle: u64,
-    ) -> Result<()> {
-        self.context
-            .set_object_name(name, object_type, object_handle)
+    /// Executes command buffers on a queue.
+    pub fn execute(&self, queue_type: QueueType, command_buffers: &[&CommandBuffer]) -> Result<()> {
+        let command_buffers: Vec<vk::CommandBuffer> = command_buffers
+            .iter()
+            .map(|buffer| buffer.encoder.buffer)
+            .collect();
+
+        let info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+        unsafe {
+            match queue_type {
+                QueueType::Compute => {
+                    self.context
+                        .logical_device
+                        .reset_fences(&[self.compute_fence])?;
+                    self.context.logical_device.queue_submit(
+                        self.compute_queue.raw,
+                        &[info.build()],
+                        self.compute_fence,
+                    )?;
+                }
+                QueueType::Graphics => {
+                    self.context
+                        .logical_device
+                        .reset_fences(&[self.graphics_fence])?;
+                    self.context.logical_device.queue_submit(
+                        self.graphics_queue.raw,
+                        &[info.build()],
+                        self.graphics_fence,
+                    )?;
+                }
+                QueueType::Transfer => {
+                    self.context
+                        .logical_device
+                        .reset_fences(&[self.transfer_fence])?;
+                    self.context.logical_device.queue_submit(
+                        self.transfer_queue.raw,
+                        &[info.build()],
+                        self.transfer_fence,
+                    )?;
+                }
+            }
+        };
+
+        Ok(())
+    }
+
+    /// Waits until the execution on a queue has finished.
+    pub fn wait(&self, queue_type: WaitForQueueType) -> Result<()> {
+        let fences: Vec<vk::Fence> = match queue_type {
+            WaitForQueueType::All => {
+                vec![self.compute_fence, self.graphics_fence, self.transfer_fence]
+            }
+            WaitForQueueType::Compute => vec![self.compute_fence],
+            WaitForQueueType::Graphics => vec![self.graphics_fence],
+            WaitForQueueType::Transfer => vec![self.transfer_fence],
+        };
+
+        unsafe {
+            self.context
+                .logical_device
+                .wait_for_fences(&fences, true, u64::MAX)?
+        };
+
+        Ok(())
     }
 
     /// Creates a new render pass.
@@ -252,7 +339,8 @@ impl Device {
 
         swapchain.create_renderpass_framebuffers(renderpass)?;
 
-        self.set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.as_raw())?;
+        self.context
+            .set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.as_raw())?;
 
         Ok(RenderPass {
             context: self.context.clone(),
@@ -272,7 +360,7 @@ impl Device {
                 .create_pipeline_layout(&pipeline_layout_info, None)?
         };
 
-        self.set_object_name(
+        self.context.set_object_name(
             name,
             vk::ObjectType::PIPELINE_LAYOUT,
             pipeline_layout.as_raw(),
@@ -298,7 +386,8 @@ impl Device {
             )?[0]
         };
 
-        self.set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
+        self.context
+            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
 
         Ok(Pipeline {
             context: self.context.clone(),
@@ -315,7 +404,8 @@ impl Device {
                 .create_shader_module(&create_info, None)?
         };
 
-        self.set_object_name(name, vk::ObjectType::SHADER_MODULE, module.as_raw())?;
+        self.context
+            .set_object_name(name, vk::ObjectType::SHADER_MODULE, module.as_raw())?;
 
         Ok(ShaderModule {
             context: self.context.clone(),
