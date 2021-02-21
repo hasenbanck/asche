@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
+use ash::vk::Handle;
 #[cfg(feature = "tracing")]
 use tracing::{debug, info};
 
@@ -221,6 +222,7 @@ impl Device {
             old_swapchain,
         )?;
 
+        #[cfg(feature = "tracing")]
         info!(
             "Created swapchain with format {:?}, color space {:?} and image count {}",
             self.swapchain_format, self.swapchain_color_space, image_count
@@ -249,9 +251,31 @@ impl Device {
         swapchain.queue_frame(frame, &self.graphics_queue)
     }
 
+    /// Sets a name for an object.
+    fn set_object_name(
+        &self,
+        name: &str,
+        object_type: vk::ObjectType,
+        object_handle: u64,
+    ) -> Result<()> {
+        let name = std::ffi::CString::new(name.to_owned())?;
+        let info = vk::DebugUtilsObjectNameInfoEXT::builder()
+            .object_name(&name)
+            .object_type(object_type)
+            .object_handle(object_handle);
+        unsafe {
+            self.context
+                .instance
+                .debug_utils
+                .debug_utils_set_object_name(self.context.logical_device.handle(), &info)?
+        };
+        Ok(())
+    }
+
     /// Creates a new render pass.
     pub fn create_render_pass(
         &mut self,
+        name: &str,
         renderpass_info: vk::RenderPassCreateInfoBuilder,
     ) -> Result<RenderPass> {
         let swapchain = self
@@ -267,6 +291,8 @@ impl Device {
 
         swapchain.create_renderpass_framebuffers(renderpass)?;
 
+        self.set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.as_raw())?;
+
         Ok(RenderPass {
             context: self.context.clone(),
             raw: renderpass,
@@ -276,6 +302,7 @@ impl Device {
     /// Creates a new pipeline layout.
     pub fn create_pipeline_layout(
         &mut self,
+        name: &str,
         pipeline_layout_info: vk::PipelineLayoutCreateInfoBuilder,
     ) -> Result<PipelineLayout> {
         let pipeline_layout = unsafe {
@@ -283,6 +310,12 @@ impl Device {
                 .logical_device
                 .create_pipeline_layout(&pipeline_layout_info, None)?
         };
+
+        self.set_object_name(
+            name,
+            vk::ObjectType::PIPELINE_LAYOUT,
+            pipeline_layout.as_raw(),
+        )?;
 
         Ok(PipelineLayout {
             context: self.context.clone(),
@@ -293,6 +326,7 @@ impl Device {
     /// Creates a new pipeline.
     pub fn create_graphics_pipeline(
         &mut self,
+        name: &str,
         pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
     ) -> Result<Pipeline> {
         let pipeline = unsafe {
@@ -303,6 +337,8 @@ impl Device {
             )?[0]
         };
 
+        self.set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
+
         Ok(Pipeline {
             context: self.context.clone(),
             raw: pipeline,
@@ -310,13 +346,15 @@ impl Device {
     }
 
     /// Creates a new shader module using the provided SPIR-V code.
-    pub fn create_shader_module(&self, sprirv_code: &[u32]) -> Result<ShaderModule> {
+    pub fn create_shader_module(&self, name: &str, sprirv_code: &[u32]) -> Result<ShaderModule> {
         let create_info = vk::ShaderModuleCreateInfo::builder().code(sprirv_code);
         let module = unsafe {
             self.context
                 .logical_device
                 .create_shader_module(&create_info, None)?
         };
+
+        self.set_object_name(name, vk::ObjectType::SHADER_MODULE, module.as_raw())?;
 
         Ok(ShaderModule {
             context: self.context.clone(),

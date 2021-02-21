@@ -58,10 +58,14 @@ impl Application {
         };
 
         // Shader
-        let vert_module =
-            device.create_shader_module(include_glsl!("./examples/simple/shaders/simple.vert"))?;
-        let frag_module =
-            device.create_shader_module(include_glsl!("./examples/simple/shaders/simple.frag"))?;
+        let vert_module = device.create_shader_module(
+            "vertex module",
+            include_glsl!("./examples/simple/shaders/simple.vert"),
+        )?;
+        let frag_module = device.create_shader_module(
+            "fragment module",
+            include_glsl!("./examples/simple/shaders/simple.frag"),
+        )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let vertexshader_stage = vk::PipelineShaderStageCreateInfo::builder()
@@ -110,11 +114,12 @@ impl Application {
             .subpasses(&subpasses)
             .dependencies(&subpass_dependencies);
 
-        let render_pass = device.create_render_pass(renderpass_info)?;
+        let render_pass = device.create_render_pass("simple render pass", renderpass_info)?;
 
         // Pipeline layout
         let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
-        let pipeline_layout = device.create_pipeline_layout(pipeline_layout)?;
+        let pipeline_layout =
+            device.create_pipeline_layout("simple pipeline layout", pipeline_layout)?;
 
         // Pipeline
         let shader_stages = vec![vertexshader_stage.build(), fragmentshader_stage.build()];
@@ -163,7 +168,7 @@ impl Application {
             .layout(pipeline_layout.raw)
             .render_pass(render_pass.raw)
             .subpass(0);
-        let pipeline = device.create_graphics_pipeline(pipeline_info)?;
+        let pipeline = device.create_graphics_pipeline("simple pipeline", pipeline_info)?;
 
         device.recreate_swapchain(Some(extent))?;
 

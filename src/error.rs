@@ -16,6 +16,9 @@ pub enum AscheError {
     /// A ash::vk::Result.
     VkResult(ash::vk::Result),
 
+    /// Can't load the debug utils extension.
+    DebugUtilsMissing,
+
     /// The requested device type couldn't be found.
     RequestDeviceError,
 
@@ -49,6 +52,10 @@ impl std::fmt::Display for AscheError {
             }
             AscheError::VkResult(err) => {
                 write!(f, "{:?}", err.source())
+            }
+
+            AscheError::DebugUtilsMissing => {
+                write!(f, "can't load the debug utils extension")
             }
             AscheError::RequestDeviceError => {
                 write!(f, "can't find device with requested capabilities")

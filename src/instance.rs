@@ -19,12 +19,6 @@ pub struct InstanceDescriptor<'a> {
     pub handle: &'a raw_window_handle::RawWindowHandle,
 }
 
-#[cfg(feature = "tracing")]
-struct DebugMessenger {
-    ext: ash::extensions::ext::DebugUtils,
-    callback: vk::DebugUtilsMessengerEXT,
-}
-
 /// Initializes the all Vulkan resources needed to create a device.
 pub struct Instance {
     _entry: ash::Entry,
@@ -32,8 +26,8 @@ pub struct Instance {
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) surface: vk::SurfaceKHR,
     pub(crate) layers: Vec<&'static CStr>,
-    #[cfg(feature = "tracing")]
-    debug_messenger: Option<DebugMessenger>,
+    pub(crate) debug_utils: ash::extensions::ext::DebugUtils,
+    pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl Instance {
@@ -74,30 +68,18 @@ impl Instance {
         let instance = Self::create_instance(&entry, &app_info, &extensions, &layers)?;
         let (surface, surface_loader) = Self::create_surface(&entry, &instance, descriptor.handle)?;
 
-        #[cfg(feature = "tracing")]
-        {
-            let debug_messenger =
-                Self::create_debug_messenger(&entry, instance_extensions, &instance);
+        let (debug_utils, debug_messenger) =
+            Self::create_debug_utils(&entry, instance_extensions, &instance)?;
 
-            Ok(Self {
-                _entry: entry,
-                raw: instance,
-                layers,
-                surface,
-                surface_loader,
-                debug_messenger,
-            })
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            Ok(Arc::new(Self {
-                _entry: entry,
-                raw: instance,
-                layers,
-                surface,
-                surface_loader,
-            }))
-        }
+        Ok(Self {
+            _entry: entry,
+            raw: instance,
+            layers,
+            surface,
+            surface_loader,
+            debug_utils,
+            debug_messenger,
+        })
     }
 
     /// Requests a new Vulkan device.
@@ -105,55 +87,57 @@ impl Instance {
         Device::new(self, device_descriptor)
     }
 
-    #[cfg(feature = "tracing")]
-    fn create_debug_messenger(
+    fn create_debug_utils(
         entry: &ash::Entry,
         instance_extensions: Vec<vk::ExtensionProperties>,
         instance: &ash::Instance,
-    ) -> Option<DebugMessenger> {
-        let debug_messenger = {
-            let debug_utils = instance_extensions.iter().any(|props| unsafe {
-                CStr::from_ptr(props.extension_name.as_ptr())
-                    == ash::extensions::ext::DebugUtils::name()
-            });
+    ) -> Result<(ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT)> {
+        let debug_utils_found = instance_extensions.iter().any(|props| unsafe {
+            CStr::from_ptr(props.extension_name.as_ptr())
+                == ash::extensions::ext::DebugUtils::name()
+        });
 
-            if debug_utils {
-                let ext = ash::extensions::ext::DebugUtils::new(entry, instance);
-                let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                    .message_severity(Self::vulkan_log_level())
-                    .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-                    .pfn_user_callback(Some(crate::debug_utils_callback));
-                let callback = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
-                Some(DebugMessenger { ext, callback })
-            } else {
-                warn!("Unable to create Debug Utils");
-                None
-            }
-        };
-        debug_messenger
+        if debug_utils_found {
+            let ext = ash::extensions::ext::DebugUtils::new(entry, instance);
+            let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                .message_severity(Self::vulkan_log_level())
+                .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+                .pfn_user_callback(Some(crate::debug_utils_callback));
+
+            let callback = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
+            Ok((ext, callback))
+        } else {
+            Err(AscheError::DebugUtilsMissing)
+        }
     }
 
-    #[cfg(feature = "tracing")]
     fn vulkan_log_level() -> vk::DebugUtilsMessageSeverityFlagsEXT {
-        match tracing::level_filters::STATIC_MAX_LEVEL {
-            LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
-            LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-            LevelFilter::WARN => {
-                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+        #[cfg(feature = "tracing")]
+        {
+            match tracing::level_filters::STATIC_MAX_LEVEL {
+                LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
+                LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                LevelFilter::WARN => {
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                }
+                LevelFilter::INFO => {
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                }
+                LevelFilter::DEBUG => {
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                }
+                LevelFilter::TRACE => vk::DebugUtilsMessageSeverityFlagsEXT::all(),
             }
-            LevelFilter::INFO => {
-                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-            }
-            LevelFilter::DEBUG => {
-                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-            }
-            LevelFilter::TRACE => vk::DebugUtilsMessageSeverityFlagsEXT::all(),
+        }
+        #[cfg(not(feature = "tracing"))]
+        {
+            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
         }
     }
 
@@ -243,10 +227,7 @@ impl Instance {
 
         extensions.push(vk::KhrGetPhysicalDeviceProperties2Fn::name());
 
-        #[cfg(feature = "tracing")]
-        {
-            extensions.push(ash::extensions::ext::DebugUtils::name());
-        }
+        extensions.push(ash::extensions::ext::DebugUtils::name());
 
         // Only keep available extensions.
         extensions.retain(|&ext| {
@@ -725,12 +706,8 @@ impl Instance {
 impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
-            #[cfg(feature = "tracing")]
-            if let Some(messenger) = &self.debug_messenger {
-                messenger
-                    .ext
-                    .destroy_debug_utils_messenger(messenger.callback, None);
-            }
+            self.debug_utils
+                .destroy_debug_utils_messenger(self.debug_messenger, None);
 
             self.surface_loader.destroy_surface(self.surface, None);
             self.raw.destroy_instance(None);
