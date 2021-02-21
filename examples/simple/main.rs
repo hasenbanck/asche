@@ -198,11 +198,11 @@ impl Application {
         let frame_offset = self.frame_counter * Timeline::RenderEnd as u64;
         let frame = self.device.get_next_frame()?;
 
-        let command_buffer = self.command_pool.create_command_buffer(
+        let render_buffer = self.command_pool.create_command_buffer(
             Timeline::RenderStart.with_offset(frame_offset),
             Timeline::RenderEnd.with_offset(frame_offset),
         )?;
-        command_buffer.record(|encoder| {
+        render_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: self.extent,
@@ -228,7 +228,7 @@ impl Application {
         })?;
 
         self.device
-            .execute(asche::QueueType::Graphics, &command_buffer)?;
+            .execute(asche::QueueType::Graphics, &render_buffer)?;
         self.device
             .wait_for_timeline_value(Timeline::RenderEnd.with_offset(frame_offset))?;
 
