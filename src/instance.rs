@@ -564,23 +564,10 @@ impl Instance {
             }
         }
 
-        let features = vk::PhysicalDeviceFeatures::builder()
-            .robust_buffer_access(true)
-            .multi_draw_indirect(true)
-            .full_draw_index_uint32(true)
-            .tessellation_shader(true)
-            .texture_compression_bc(true)
-            .sampler_anisotropy(true)
-            .shader_uniform_buffer_array_dynamic_indexing(true)
-            .shader_sampled_image_array_dynamic_indexing(true)
-            .shader_storage_buffer_array_dynamic_indexing(true)
-            .shader_storage_image_array_dynamic_indexing(true);
+        let features = vk::PhysicalDeviceFeatures::builder().robust_buffer_access(true);
 
         let mut features11 = vk::PhysicalDeviceVulkan11Features::builder();
         let mut features12 = vk::PhysicalDeviceVulkan12Features::builder()
-            .draw_indirect_count(true)
-            .descriptor_indexing(true)
-            .imageless_framebuffer(true)
             .timeline_semaphore(true)
             .buffer_device_address(true);
 
