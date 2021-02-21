@@ -4,8 +4,8 @@ use std::sync::Arc;
 use ash::version::DeviceV1_0;
 use ash::vk;
 
-use crate::device::Queue;
-use crate::{Context, Result};
+use crate::context::Context;
+use crate::{Queue, Result};
 
 /// Swapchain frame.
 pub struct SwapchainFrame {

@@ -15,7 +15,10 @@ pub use {
     instance::{Instance, InstanceDescriptor},
 };
 
+use crate::context::Context;
+
 pub(crate) mod command;
+pub(crate) mod context;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;
@@ -82,17 +85,10 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
     vk::FALSE
 }
 
-/// A context used internally.
-pub(crate) struct Context {
-    pub(crate) instance: Instance,
-    pub(crate) logical_device: ash::Device,
-    pub(crate) physical_device: vk::PhysicalDevice,
-}
-
-impl Drop for Context {
-    fn drop(&mut self) {
-        unsafe { self.logical_device.destroy_device(None) };
-    }
+/// Abstracts a Vulkan queue.
+pub struct Queue {
+    pub(crate) family_index: u32,
+    pub(crate) raw: vk::Queue,
 }
 
 /// Wraps a render pass.

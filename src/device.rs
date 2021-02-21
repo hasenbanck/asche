@@ -7,15 +7,10 @@ use ash::vk::Handle;
 use tracing::{debug, info};
 
 use crate::command::CommandPool;
+use crate::context::Context;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
-use crate::{AscheError, Context, Pipeline, PipelineLayout, RenderPass, Result, ShaderModule};
-
-/// Abstracts a Vulkan queue.
-pub struct Queue {
-    pub(crate) family_index: u32,
-    pub(crate) raw: vk::Queue,
-}
+use crate::{AscheError, Pipeline, PipelineLayout, Queue, RenderPass, Result, ShaderModule};
 
 /// Defines the priorities of the queues.
 pub struct QueuePriorityDescriptor {
@@ -113,8 +108,7 @@ impl Device {
             physical_device,
         });
 
-        let graphics_command_pools =
-            allocate_graphics_command_pools(&context, &context.logical_device, &graphics_queue, 1)?;
+        let graphics_command_pools = allocate_graphics_command_pools(&context, &graphics_queue, 1)?;
 
         let mut device = Device {
             context,
@@ -228,19 +222,15 @@ impl Device {
     }
 
     /// Sets a name for an object.
+    #[inline]
     fn set_object_name(
         &self,
         name: &str,
         object_type: vk::ObjectType,
         object_handle: u64,
     ) -> Result<()> {
-        set_object_name(
-            &self.context,
-            &self.context.logical_device,
-            name,
-            object_type,
-            object_handle,
-        )
+        self.context
+            .set_object_name(name, object_type, object_handle)
     }
 
     /// Creates a new render pass.
@@ -338,7 +328,6 @@ impl Device {
 
 fn allocate_graphics_command_pools(
     context: &Arc<Context>,
-    logical_device: &ash::Device,
     graphics_queue: &Queue,
     count: u32,
 ) -> Result<Vec<Arc<CommandPool>>> {
@@ -355,15 +344,14 @@ fn allocate_graphics_command_pools(
                 .create_command_pool(&command_pool_info, None)?
         };
 
-        set_object_name(
-            context,
-            logical_device,
+        context.set_object_name(
             &format!("command pool {}", i),
             vk::ObjectType::COMMAND_POOL,
             command_pool.as_raw(),
         )?;
 
         let command_pool = Arc::new(CommandPool {
+            id: i,
             context: context.clone(),
             raw: command_pool,
         });
@@ -372,25 +360,4 @@ fn allocate_graphics_command_pools(
     }
 
     Ok(graphic_command_pools)
-}
-
-fn set_object_name(
-    context: &Arc<Context>,
-    logical_device: &ash::Device,
-    name: &str,
-    object_type: vk::ObjectType,
-    object_handle: u64,
-) -> Result<()> {
-    let name = std::ffi::CString::new(name.to_owned())?;
-    let info = vk::DebugUtilsObjectNameInfoEXT::builder()
-        .object_name(&name)
-        .object_type(object_type)
-        .object_handle(object_handle);
-    unsafe {
-        context
-            .instance
-            .debug_utils
-            .debug_utils_set_object_name(logical_device.handle(), &info)?
-    };
-    Ok(())
 }

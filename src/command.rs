@@ -4,11 +4,14 @@ use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
+use ash::vk::Handle;
 
-use crate::{Context, Result};
+use crate::context::Context;
+use crate::Result;
 
 /// A wrapped command pool.
 pub struct CommandPool {
+    pub(crate) id: u32,
     pub(crate) context: Arc<Context>,
     pub(crate) raw: vk::CommandPool,
 }
@@ -36,6 +39,16 @@ impl CommandPool {
                 .logical_device
                 .allocate_command_buffers(&info)?
         };
+
+        self.context.set_object_name(
+            &format!(
+                "command pool {} command buffer {}",
+                self.id,
+                command_buffer[0].as_raw(),
+            ),
+            vk::ObjectType::COMMAND_BUFFER,
+            command_buffer[0].as_raw(),
+        )?;
 
         Ok(CommandBuffer {
             context: self.context.clone(),

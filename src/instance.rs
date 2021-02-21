@@ -6,8 +6,7 @@ use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, level_filters::LevelFilter, warn};
 
-use crate::device::Queue;
-use crate::{AscheError, Device, DeviceDescriptor, QueuePriorityDescriptor, Result};
+use crate::{AscheError, Device, DeviceDescriptor, Queue, QueuePriorityDescriptor, Result};
 
 /// Describes how the instance should be configured.
 pub struct InstanceDescriptor<'a> {
