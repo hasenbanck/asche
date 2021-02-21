@@ -4,7 +4,11 @@ use vk_shader_macros::include_glsl;
 
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::Window::new(&event_loop).unwrap();
+    let window = winit::window::WindowBuilder::new()
+        .with_title("asche - simple example")
+        .with_resizable(false)
+        .build(&event_loop)
+        .unwrap();
 
     // Log level is based on RUST_LOG env var.
     #[cfg(feature = "tracing")]
@@ -170,7 +174,26 @@ impl Application {
             .subpass(0);
         let pipeline = device.create_graphics_pipeline("simple pipeline", pipeline_info)?;
 
-        device.recreate_swapchain(Some(extent))?;
+        let mut command_pool = device.create_command_pool(asche::QueueType::Graphics)?;
+        let command_buffer = command_pool.create_command_buffer()?;
+
+        command_buffer.record(|encoder| {
+            encoder.set_viewport(vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: extent.width as f32,
+                height: extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            });
+
+            encoder.set_scissor(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            });
+
+            Ok(())
+        })?;
 
         Ok(Self {
             device,

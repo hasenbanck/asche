@@ -4,16 +4,18 @@ use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
-use ash::vk::Handle;
+use ash::vk::{CommandBufferResetFlags, CommandBufferUsageFlags, Handle};
 
-use crate::context::Context;
-use crate::Result;
+use crate::context::{Context, TagName};
+use crate::{QueueType, Result};
 
 /// A wrapped command pool.
 pub struct CommandPool {
-    pub(crate) id: u32,
-    pub(crate) context: Arc<Context>,
-    pub(crate) raw: vk::CommandPool,
+    context: Arc<Context>,
+    raw: vk::CommandPool,
+    queue_type: QueueType,
+    id: u64,
+    command_buffer_counter: u64,
 }
 
 impl Drop for CommandPool {
@@ -27,6 +29,36 @@ impl Drop for CommandPool {
 }
 
 impl CommandPool {
+    /// Creates a new command pool.
+    pub(crate) fn new(
+        context: Arc<Context>,
+        raw: vk::CommandPool,
+        queue_type: QueueType,
+        id: u64,
+    ) -> Result<Self> {
+        context.set_object_name(
+            &format!("command pool {}", id),
+            vk::ObjectType::COMMAND_POOL,
+            raw.as_raw(),
+        )?;
+
+        let bytes: [u8; 1] = unsafe { std::mem::transmute(queue_type as u8) };
+        context.set_object_tag(
+            TagName::QueueType,
+            &bytes,
+            vk::ObjectType::COMMAND_POOL,
+            raw.as_raw(),
+        )?;
+
+        Ok(Self {
+            context,
+            raw,
+            queue_type,
+            id,
+            command_buffer_counter: 0,
+        })
+    }
+
     /// Creates a new command buffer.
     pub fn create_command_buffer(&mut self) -> Result<CommandBuffer> {
         let info = vk::CommandBufferAllocateInfo::builder()
@@ -34,66 +66,127 @@ impl CommandPool {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
-        let command_buffer = unsafe {
-            self.context
-                .logical_device
-                .allocate_command_buffers(&info)?
-        };
-
-        self.context.set_object_name(
-            &format!(
-                "command pool {} command buffer {}",
-                self.id,
-                command_buffer[0].as_raw(),
-            ),
-            vk::ObjectType::COMMAND_BUFFER,
-            command_buffer[0].as_raw(),
-        )?;
-
-        Ok(CommandBuffer {
-            context: self.context.clone(),
-            raw: command_buffer[0],
-        })
-    }
-
-    /// Creates new command buffers.
-    pub fn create_command_buffers(&mut self, count: u32) -> Result<Vec<CommandBuffer>> {
-        let info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(self.raw)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(count);
-
         let command_buffers = unsafe {
             self.context
                 .logical_device
                 .allocate_command_buffers(&info)?
         };
 
-        let command_buffers = command_buffers
-            .iter()
-            .map(|buffer| CommandBuffer {
-                context: self.context.clone(),
-                raw: *buffer,
-            })
-            .collect();
+        self.context.set_object_name(
+            &format!("command buffer {}", self.command_buffer_counter,),
+            vk::ObjectType::COMMAND_BUFFER,
+            command_buffers[0].as_raw(),
+        )?;
 
-        Ok(command_buffers)
+        let bytes: [u8; 8] = unsafe { std::mem::transmute(self.id) };
+        self.context.set_object_tag(
+            TagName::BufferPoolIndex,
+            &bytes,
+            vk::ObjectType::COMMAND_BUFFER,
+            command_buffers[0].as_raw(),
+        )?;
+
+        let bytes: [u8; 1] = unsafe { std::mem::transmute(self.queue_type as u8) };
+        self.context.set_object_tag(
+            TagName::QueueType,
+            &bytes,
+            vk::ObjectType::COMMAND_BUFFER,
+            command_buffers[0].as_raw(),
+        )?;
+
+        let command_buffer = CommandBuffer::new(self.context.clone(), command_buffers[0]);
+
+        self.command_buffer_counter += 1;
+
+        Ok(command_buffer)
+    }
+
+    /// Resets a command pool.
+    pub fn reset(&self) -> Result<()> {
+        unsafe {
+            self.context
+                .logical_device
+                .reset_command_pool(self.raw, vk::CommandPoolResetFlags::empty())?
+        };
+
+        Ok(())
     }
 }
 
 /// A wrapped command buffer.
 pub struct CommandBuffer {
-    pub(crate) context: Arc<Context>,
-    pub(crate) raw: vk::CommandBuffer,
+    encoder: CommandEncoder,
 }
 
 impl CommandBuffer {
+    pub(crate) fn new(context: Arc<Context>, buffer: vk::CommandBuffer) -> Self {
+        Self {
+            encoder: CommandEncoder { context, buffer },
+        }
+    }
+
+    /// Records the command buffer actions with the help of an encoder.
+    pub fn record<F>(&self, exec: F) -> Result<()>
+    where
+        F: Fn(&CommandEncoder) -> Result<()>,
+    {
+        self.encoder.begin()?;
+        exec(&self.encoder)?;
+        self.encoder.end();
+
+        Ok(())
+    }
+
+    /// Resets a command buffer.
+    pub fn reset(&self) -> Result<()> {
+        unsafe {
+            self.encoder
+                .context
+                .logical_device
+                .reset_command_buffer(self.encoder.buffer, vk::CommandBufferResetFlags::empty())?
+        };
+
+        Ok(())
+    }
+}
+
+/// Used to encode command for a command buffer.
+pub struct CommandEncoder {
+    context: Arc<Context>,
+    buffer: vk::CommandBuffer,
+}
+
+impl CommandEncoder {
+    /// Begins a command buffer.
+    fn begin(&self) -> Result<()> {
+        let info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe {
+            self.context
+                .logical_device
+                .begin_command_buffer(self.buffer, &info)?
+        };
+
+        Ok(())
+    }
+
+    /// Ends a command buffer.
+    fn end(&self) -> Result<()> {
+        unsafe {
+            self.context
+                .logical_device
+                .end_command_buffer(self.buffer)?
+        };
+
+        Ok(())
+    }
+
     /// Sets the viewport.
     pub fn set_viewport(&self, viewport: vk::Viewport) {
         unsafe {
             self.context
                 .logical_device
-                .cmd_set_viewport(self.raw, 0, &[viewport]);
+                .cmd_set_viewport(self.buffer, 0, &[viewport])
         };
     }
 
@@ -102,7 +195,7 @@ impl CommandBuffer {
         unsafe {
             self.context
                 .logical_device
-                .cmd_set_scissor(self.raw, 0, &[scissor_rect]);
+                .cmd_set_scissor(self.buffer, 0, &[scissor_rect])
         };
     }
 }

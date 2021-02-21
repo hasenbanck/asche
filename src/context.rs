@@ -38,4 +38,35 @@ impl Context {
         };
         Ok(())
     }
+
+    /// Sets a debug tag for an object.
+    pub(crate) fn set_object_tag(
+        &self,
+        tag_name: TagName,
+        tag_value: &[u8],
+        object_type: vk::ObjectType,
+        object_handle: u64,
+    ) -> Result<()> {
+        let info = vk::DebugUtilsObjectTagInfoEXT::builder()
+            .tag_name(tag_name as u64)
+            .tag(tag_value)
+            .object_type(object_type)
+            .object_handle(object_handle);
+        unsafe {
+            self.instance
+                .debug_utils
+                .debug_utils_set_object_tag(self.logical_device.handle(), &info)?
+        };
+
+        Ok(())
+    }
+}
+
+/// Tag names used for debugging.
+#[derive(Copy, Clone)]
+pub(crate) enum TagName {
+    /// Buffer pool index (u64)
+    BufferPoolIndex = 0,
+    /// Type of a queue (u8)
+    QueueType,
 }

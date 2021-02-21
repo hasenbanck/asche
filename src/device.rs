@@ -10,7 +10,9 @@ use crate::command::CommandPool;
 use crate::context::Context;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
-use crate::{AscheError, Pipeline, PipelineLayout, Queue, RenderPass, Result, ShaderModule};
+use crate::{
+    AscheError, Pipeline, PipelineLayout, Queue, QueueType, RenderPass, Result, ShaderModule,
+};
 
 /// Defines the priorities of the queues.
 pub struct QueuePriorityDescriptor {
@@ -63,7 +65,7 @@ pub struct Device {
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
-    graphics_command_pools: Vec<Arc<CommandPool>>,
+    command_pool_counter: u64,
 }
 
 impl Device {
@@ -108,8 +110,6 @@ impl Device {
             physical_device,
         });
 
-        let graphics_command_pools = allocate_graphics_command_pools(&context, &graphics_queue, 1)?;
-
         let mut device = Device {
             context,
             allocator,
@@ -120,7 +120,7 @@ impl Device {
             swapchain_format: descriptor.swapchain_format,
             swapchain_color_space: descriptor.swapchain_color_space,
             swapchain: None,
-            graphics_command_pools,
+            command_pool_counter: 0,
         };
 
         device.recreate_swapchain(None)?;
@@ -323,41 +323,33 @@ impl Device {
         })
     }
 
-    // TODO create command pools. This should return an RCed command pool. We maybe need to RC the inner raw pool. We can then count how many pools are lent using the counter in the RC.
-}
+    /// Creates a new command pool. Pools are not cached and are owned by the caller.
+    pub fn create_command_pool(&mut self, queue_type: QueueType) -> Result<CommandPool> {
+        let queue = match queue_type {
+            QueueType::Graphics => &self.graphics_queue,
+            QueueType::Compute => &self.compute_queue,
+            QueueType::Transfer => &self.transfer_queue,
+        };
 
-fn allocate_graphics_command_pools(
-    context: &Arc<Context>,
-    graphics_queue: &Queue,
-    count: u32,
-) -> Result<Vec<Arc<CommandPool>>> {
-    let command_pool_info = vk::CommandPoolCreateInfo::builder()
-        .queue_family_index(graphics_queue.family_index)
-        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+        let command_pool_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(queue.family_index)
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
-    let mut graphic_command_pools = Vec::with_capacity(count as usize);
-
-    for i in 0..count {
         let command_pool = unsafe {
-            context
+            self.context
                 .logical_device
                 .create_command_pool(&command_pool_info, None)?
         };
 
-        context.set_object_name(
-            &format!("command pool {}", i),
-            vk::ObjectType::COMMAND_POOL,
-            command_pool.as_raw(),
+        let command_pool = CommandPool::new(
+            self.context.clone(),
+            command_pool,
+            QueueType::Compute,
+            self.command_pool_counter,
         )?;
 
-        let command_pool = Arc::new(CommandPool {
-            id: i,
-            context: context.clone(),
-            raw: command_pool,
-        });
+        self.command_pool_counter += 1;
 
-        graphic_command_pools.push(command_pool)
+        Ok(command_pool)
     }
-
-    Ok(graphic_command_pools)
 }

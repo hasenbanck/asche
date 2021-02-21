@@ -85,6 +85,17 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
     vk::FALSE
 }
 
+/// Type of a queue.
+#[derive(Copy, Clone)]
+pub enum QueueType {
+    /// Compute queue.
+    Compute = 0,
+    /// Graphics queue.
+    Graphics,
+    /// Transfer queue.
+    Transfer,
+}
+
 /// Abstracts a Vulkan queue.
 pub struct Queue {
     pub(crate) family_index: u32,
