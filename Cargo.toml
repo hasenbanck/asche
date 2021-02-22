@@ -19,7 +19,7 @@ raw-window-handle = "0.3.3"
 tracing = { version = "0.1", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
-tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi"] }
+tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 winit = "0.24"
 vk-alloc = "0.1"
 vk-shader-macros = "0.2"

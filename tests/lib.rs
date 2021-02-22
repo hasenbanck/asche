@@ -26,7 +26,7 @@ fn device_creation() {
     })
     .unwrap();
 
-    let _device = instance
+    let (_device, (_compute_queue, _graphics_queue, _transfer_queue)) = instance
         .request_device(&asche::DeviceDescriptor {
             ..Default::default()
         })
