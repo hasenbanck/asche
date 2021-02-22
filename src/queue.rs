@@ -29,15 +29,12 @@ macro_rules! impl_queue {
             ) -> Result<Self> {
                 let queue = Queue::new(context, QueueType::Compute, family_index, queue)?;
 
-
-
                 Ok(Self { inner: queue })
             }
 
             /// Creates a new command pool. Pools are not cached and are owned by the caller.
             pub fn create_command_pool(&mut self) -> Result<$pool_name> {
                 let counter = self.inner.next_command_pool_counter();
-
                 let command_pool = $pool_name::new(
                     self.inner.context.clone(),
                     self.inner.family_index,
@@ -182,7 +179,6 @@ impl Queue {
         Ok(())
     }
 
-    /// Query a timeline value.
     #[inline]
     fn query_timeline_value(&self) -> Result<u64> {
         let value = unsafe {
@@ -193,7 +189,6 @@ impl Queue {
         Ok(value)
     }
 
-    /// Sets a timeline value.
     #[inline]
     fn set_timeline_value(&self, timeline_value: u64) -> Result<()> {
         let signal_info = vk::SemaphoreSignalInfo::builder()
@@ -205,7 +200,6 @@ impl Queue {
         Ok(())
     }
 
-    /// Waits until the timeline has reached the value.
     #[inline]
     fn wait_for_timeline_value(&self, timeline_value: u64) -> Result<()> {
         let semaphores = [self.timeline];
