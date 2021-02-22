@@ -52,7 +52,7 @@ struct Application {
     graphics_command_pool: asche::GraphicsCommandPool,
     window: winit::window::Window,
     extent: vk::Extent2D,
-    _pipeline: asche::Pipeline,
+    _pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
     frame_counter: u64,
 }
@@ -125,12 +125,13 @@ impl Application {
             .subpasses(&subpasses)
             .dependencies(&subpass_dependencies);
 
-        let render_pass = device.create_render_pass("simple render pass", renderpass_info)?;
+        let render_pass =
+            device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
 
         // Pipeline layout
         let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
         let pipeline_layout =
-            device.create_pipeline_layout("simple pipeline layout", pipeline_layout)?;
+            device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
 
         // Pipeline
         let shader_stages = vec![vertexshader_stage.build(), fragmentshader_stage.build()];

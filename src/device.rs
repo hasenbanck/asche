@@ -10,7 +10,7 @@ use crate::context::Context;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, ComputeQueue, GraphicsQueue, Pipeline, PipelineLayout, RenderPass, Result,
+    AscheError, ComputeQueue, GraphicsPipeline, GraphicsQueue, PipelineLayout, RenderPass, Result,
     ShaderModule, TransferQueue,
 };
 
@@ -298,12 +298,12 @@ impl Device {
         })
     }
 
-    /// Creates a new pipeline.
+    /// Creates a new graphics pipeline.
     pub fn create_graphics_pipeline(
         &mut self,
         name: &str,
         pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
-    ) -> Result<Pipeline> {
+    ) -> Result<GraphicsPipeline> {
         let pipeline = unsafe {
             self.context.logical_device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
@@ -315,7 +315,30 @@ impl Device {
         self.context
             .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
 
-        Ok(Pipeline {
+        Ok(GraphicsPipeline {
+            context: self.context.clone(),
+            raw: pipeline,
+        })
+    }
+
+    /// Creates a new compute pipeline.
+    pub fn create_compute_pipeline(
+        &mut self,
+        name: &str,
+        pipeline_info: vk::ComputePipelineCreateInfoBuilder,
+    ) -> Result<GraphicsPipeline> {
+        let pipeline = unsafe {
+            self.context.logical_device.create_compute_pipelines(
+                vk::PipelineCache::null(),
+                &[pipeline_info.build()],
+                None,
+            )?[0]
+        };
+
+        self.context
+            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
+
+        Ok(GraphicsPipeline {
             context: self.context.clone(),
             raw: pipeline,
         })

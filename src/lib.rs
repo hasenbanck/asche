@@ -146,14 +146,29 @@ impl Drop for PipelineLayout {
     }
 }
 
-/// Wraps a pipeline.
-pub struct Pipeline {
+/// Wraps a graphics pipeline.
+pub struct GraphicsPipeline {
     pub(crate) context: Arc<Context>,
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
 }
 
-impl Drop for Pipeline {
+impl Drop for GraphicsPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.logical_device.destroy_pipeline(self.raw, None);
+        };
+    }
+}
+
+/// Wraps a compute pipeline.
+pub struct ComputePipeline {
+    pub(crate) context: Arc<Context>,
+    /// The raw vk::Pipeline.
+    pub raw: vk::Pipeline,
+}
+
+impl Drop for ComputePipeline {
     fn drop(&mut self) {
         unsafe {
             self.context.logical_device.destroy_pipeline(self.raw, None);

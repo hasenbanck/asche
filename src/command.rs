@@ -248,23 +248,6 @@ impl ComputeCommandEncoder {
     fn end(&self) -> Result<()> {
         end(&self.context, self.buffer)
     }
-
-    /// Returns a compute pass encoder. Drop once finished recording.
-    pub fn begin_compute_pass(
-        &self,
-        compute_pass: &RenderPass,
-        frame_buffer: vk::Framebuffer,
-        clear_values: &[vk::ClearValue],
-        render_area: vk::Rect2D,
-    ) -> Result<ComputePassEncoder> {
-        let encoder = ComputePassEncoder {
-            context: self.context.clone(),
-            buffer: self.buffer,
-        };
-        encoder.begin(compute_pass.raw, frame_buffer, clear_values, render_area);
-
-        Ok(encoder)
-    }
 }
 
 /// Used to encode command for a graphics command buffer.
@@ -293,23 +276,6 @@ impl GraphicsCommandEncoder {
         render_area: vk::Rect2D,
     ) -> Result<RenderPassEncoder> {
         let encoder = RenderPassEncoder {
-            context: self.context.clone(),
-            buffer: self.buffer,
-        };
-        encoder.begin(render_pass.raw, frame_buffer, clear_values, render_area);
-
-        Ok(encoder)
-    }
-
-    /// Returns a compute pass encoder. Drop once finished recording.
-    pub fn begin_compute_pass(
-        &self,
-        render_pass: &RenderPass,
-        frame_buffer: vk::Framebuffer,
-        clear_values: &[vk::ClearValue],
-        render_area: vk::Rect2D,
-    ) -> Result<ComputePassEncoder> {
-        let encoder = ComputePassEncoder {
             context: self.context.clone(),
             buffer: self.buffer,
         };
@@ -381,42 +347,6 @@ impl RenderPassEncoder {
     ) {
         let create_info = vk::RenderPassBeginInfo::builder()
             .render_pass(render_pass)
-            .framebuffer(frame_buffer)
-            .clear_values(clear_values)
-            .render_area(render_area);
-        let contents = vk::SubpassContents::INLINE;
-
-        unsafe {
-            self.context
-                .logical_device
-                .cmd_begin_render_pass(self.buffer, &create_info, contents)
-        };
-    }
-}
-
-/// Used to encode compute pass commands of a command buffer.
-pub struct ComputePassEncoder {
-    pub(crate) context: Arc<Context>,
-    pub(crate) buffer: vk::CommandBuffer,
-}
-
-impl Drop for ComputePassEncoder {
-    fn drop(&mut self) {
-        unsafe { self.context.logical_device.cmd_end_render_pass(self.buffer) };
-    }
-}
-
-impl ComputePassEncoder {
-    /// Begins a compute pass.
-    fn begin(
-        &self,
-        compute_pass: vk::RenderPass,
-        frame_buffer: vk::Framebuffer,
-        clear_values: &[vk::ClearValue],
-        render_area: vk::Rect2D,
-    ) {
-        let create_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(compute_pass)
             .framebuffer(frame_buffer)
             .clear_values(clear_values)
             .render_area(render_area);
