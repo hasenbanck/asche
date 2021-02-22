@@ -9,12 +9,15 @@ use ash::vk;
 use tracing::{debug, error, info, warn};
 
 pub use {
-    command::{CommandBuffer, CommandPool},
+    command::{
+        ComputeCommandBuffer, ComputeCommandPool, GraphicsCommandBuffer, GraphicsCommandPool,
+        TransferCommandBuffer, TransferCommandPool,
+    },
     context::Context,
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceDescriptor},
-    queue::Queue,
+    queue::{ComputeQueue, GraphicsQueue, TransferQueue},
 };
 
 pub(crate) mod command;
@@ -88,13 +91,23 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
 
 /// Type of a queue.
 #[derive(Copy, Clone)]
-pub enum QueueType {
+pub(crate) enum QueueType {
     /// Compute queue.
     Compute = 0,
     /// Graphics queue.
     Graphics,
     /// Transfer queue.
     Transfer,
+}
+
+impl std::fmt::Display for QueueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QueueType::Compute => f.write_str("Compute"),
+            QueueType::Graphics => f.write_str("Graphics"),
+            QueueType::Transfer => f.write_str("Transfer"),
+        }
+    }
 }
 
 /// Wraps a render pass.

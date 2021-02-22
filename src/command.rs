@@ -6,15 +6,65 @@ use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::vk::Handle;
 
-use crate::context::{Context, TagName};
+use crate::context::Context;
 use crate::{QueueType, RenderPass, Result};
 
+macro_rules! impl_command_pool {
+    (
+        #[doc = $doc:expr]
+        $pool_name:ident => $buffer_name:ident, $queue_type:expr
+    ) => {
+        #[doc = $doc]
+        pub struct $pool_name {
+            inner: CommandPool,
+        }
+
+        impl $pool_name {
+            /// Creates a new command pool.
+            pub(crate) fn new(context: Arc<Context>, family_index: u32, id: u64) -> Result<Self> {
+                let inner = CommandPool::new(context, $queue_type, family_index, id)?;
+                Ok(Self { inner })
+            }
+
+            /// Creates a new command buffer.
+            pub fn create_command_buffer(
+                &mut self,
+                timeline_wait_value: u64,
+                timeline_signal_value: u64,
+            ) -> Result<$buffer_name> {
+                let inner = self.inner
+                    .create_command_buffer(timeline_wait_value, timeline_signal_value)?;
+                Ok($buffer_name { inner })
+            }
+
+            /// Resets a command pool.
+            pub fn reset(&self) -> Result<()> {
+                self.inner.reset()
+            }
+        }
+    };
+}
+
+impl_command_pool!(
+    #[doc = "A command pool for the compute queue."]
+    ComputeCommandPool => ComputeCommandBuffer, QueueType::Compute
+);
+
+impl_command_pool!(
+    #[doc = "A command pool for the graphics queue."]
+    GraphicsCommandPool => GraphicsCommandBuffer, QueueType::Graphics
+);
+
+impl_command_pool!(
+    #[doc = "A command pool for the transfer queue."]
+    TransferCommandPool => TransferCommandBuffer, QueueType::Transfer
+);
+
 /// A wrapped command pool.
-pub struct CommandPool {
+struct CommandPool {
     context: Arc<Context>,
     raw: vk::CommandPool,
     queue_type: QueueType,
-    id: u64,
     command_buffer_counter: u64,
 }
 
@@ -32,20 +82,21 @@ impl CommandPool {
     /// Creates a new command pool.
     pub(crate) fn new(
         context: Arc<Context>,
-        raw: vk::CommandPool,
         queue_type: QueueType,
+        family_index: u32,
         id: u64,
     ) -> Result<Self> {
-        context.set_object_name(
-            &format!("command pool {}", id),
-            vk::ObjectType::COMMAND_POOL,
-            raw.as_raw(),
-        )?;
+        let command_pool_info =
+            vk::CommandPoolCreateInfo::builder().queue_family_index(family_index);
 
-        let bytes: [u8; 1] = unsafe { std::mem::transmute(queue_type as u8) };
-        context.set_object_tag(
-            TagName::QueueType,
-            &bytes,
+        let raw = unsafe {
+            context
+                .logical_device
+                .create_command_pool(&command_pool_info, None)?
+        };
+
+        context.set_object_name(
+            &format!("Command Pool {} {}", queue_type, id),
             vk::ObjectType::COMMAND_POOL,
             raw.as_raw(),
         )?;
@@ -54,12 +105,12 @@ impl CommandPool {
             context,
             raw,
             queue_type,
-            id,
             command_buffer_counter: 0,
         })
     }
 
     /// Creates a new command buffer.
+    #[inline]
     pub fn create_command_buffer(
         &mut self,
         timeline_wait_value: u64,
@@ -77,23 +128,10 @@ impl CommandPool {
         };
 
         self.context.set_object_name(
-            &format!("command buffer {}", self.command_buffer_counter,),
-            vk::ObjectType::COMMAND_BUFFER,
-            command_buffers[0].as_raw(),
-        )?;
-
-        let bytes: [u8; 8] = unsafe { std::mem::transmute(self.id) };
-        self.context.set_object_tag(
-            TagName::BufferPoolIndex,
-            &bytes,
-            vk::ObjectType::COMMAND_BUFFER,
-            command_buffers[0].as_raw(),
-        )?;
-
-        let bytes: [u8; 1] = unsafe { std::mem::transmute(self.queue_type as u8) };
-        self.context.set_object_tag(
-            TagName::QueueType,
-            &bytes,
+            &format!(
+                "Command Buffer {} {}",
+                self.queue_type, self.command_buffer_counter
+            ),
             vk::ObjectType::COMMAND_BUFFER,
             command_buffers[0].as_raw(),
         )?;
@@ -111,6 +149,7 @@ impl CommandPool {
     }
 
     /// Resets a command pool.
+    #[inline]
     pub fn reset(&self) -> Result<()> {
         unsafe {
             self.context
@@ -122,11 +161,59 @@ impl CommandPool {
     }
 }
 
+macro_rules! impl_command_buffer {
+    (
+        #[doc = $doc:expr]
+        $buffer_name:ident => $encoder_name:ident
+    ) => {
+
+        #[doc = $doc]
+        pub struct $buffer_name {
+            pub(crate) inner: CommandBuffer,
+        }
+
+        impl $buffer_name {
+            /// Records the command buffer actions with the help of an encoder.
+            pub fn record<F>(&self, exec: F) -> Result<()>
+            where
+                F: Fn(&$encoder_name) -> Result<()>,
+            {
+                let encoder = $encoder_name {
+                    context: self.inner.context.clone(),
+                    buffer: self.inner.buffer
+                };
+
+                encoder.begin()?;
+                exec(&encoder)?;
+                encoder.end()?;
+
+                Ok(())
+            }
+        }
+    }
+}
+
+impl_command_buffer!(
+    #[doc = "A command buffer for the compute queue."]
+    ComputeCommandBuffer => ComputeCommandEncoder
+);
+
+impl_command_buffer!(
+    #[doc = "A command buffer for the compute queue."]
+    GraphicsCommandBuffer => GraphicsCommandEncoder
+);
+
+impl_command_buffer!(
+    #[doc = "A command buffer for the transfer queue."]
+    TransferCommandBuffer => TransferCommandEncoder
+);
+
 /// A wrapped command buffer.
-pub struct CommandBuffer {
+pub(crate) struct CommandBuffer {
+    context: Arc<Context>,
+    pub(crate) buffer: vk::CommandBuffer,
     pub(crate) timeline_wait_value: u64,
     pub(crate) timeline_signal_value: u64,
-    pub(crate) encoder: CommandEncoder,
 }
 
 impl CommandBuffer {
@@ -137,57 +224,67 @@ impl CommandBuffer {
         timeline_signal_value: u64,
     ) -> Self {
         Self {
+            context,
+            buffer,
             timeline_wait_value,
             timeline_signal_value,
-            encoder: CommandEncoder { context, buffer },
         }
     }
-
-    /// Records the command buffer actions with the help of an encoder.
-    pub fn record<F>(&self, exec: F) -> Result<()>
-    where
-        F: Fn(&CommandEncoder) -> Result<()>,
-    {
-        self.encoder.begin()?;
-        exec(&self.encoder)?;
-        self.encoder.end()?;
-
-        Ok(())
-    }
 }
 
-/// Used to encode command for a command buffer.
-pub struct CommandEncoder {
-    pub(crate) context: Arc<Context>,
-    pub(crate) buffer: vk::CommandBuffer,
+/// Used to encode command for a compute command buffer.
+pub struct ComputeCommandEncoder {
+    context: Arc<Context>,
+    buffer: vk::CommandBuffer,
 }
 
-impl CommandEncoder {
+impl ComputeCommandEncoder {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
-        let info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe {
-            self.context
-                .logical_device
-                .begin_command_buffer(self.buffer, &info)?
-        };
-
-        Ok(())
+        begin(&self.context, self.buffer)
     }
 
     /// Ends a command buffer.
     fn end(&self) -> Result<()> {
-        unsafe {
-            self.context
-                .logical_device
-                .end_command_buffer(self.buffer)?
-        };
-
-        Ok(())
+        end(&self.context, self.buffer)
     }
 
-    /// Returns a renderpass encoder. Drop once finished recording.
+    /// Returns a compute pass encoder. Drop once finished recording.
+    pub fn begin_compute_pass(
+        &self,
+        compute_pass: &RenderPass,
+        frame_buffer: vk::Framebuffer,
+        clear_values: &[vk::ClearValue],
+        render_area: vk::Rect2D,
+    ) -> Result<ComputePassEncoder> {
+        let encoder = ComputePassEncoder {
+            context: self.context.clone(),
+            buffer: self.buffer,
+        };
+        encoder.begin(compute_pass.raw, frame_buffer, clear_values, render_area);
+
+        Ok(encoder)
+    }
+}
+
+/// Used to encode command for a graphics command buffer.
+pub struct GraphicsCommandEncoder {
+    context: Arc<Context>,
+    buffer: vk::CommandBuffer,
+}
+
+impl GraphicsCommandEncoder {
+    /// Begins a command buffer.
+    fn begin(&self) -> Result<()> {
+        begin(&self.context, self.buffer)
+    }
+
+    /// Ends a command buffer.
+    fn end(&self) -> Result<()> {
+        end(&self.context, self.buffer)
+    }
+
+    /// Returns a render pass encoder. Drop once finished recording.
     pub fn begin_render_pass(
         &self,
         render_pass: &RenderPass,
@@ -196,6 +293,23 @@ impl CommandEncoder {
         render_area: vk::Rect2D,
     ) -> Result<RenderPassEncoder> {
         let encoder = RenderPassEncoder {
+            context: self.context.clone(),
+            buffer: self.buffer,
+        };
+        encoder.begin(render_pass.raw, frame_buffer, clear_values, render_area);
+
+        Ok(encoder)
+    }
+
+    /// Returns a compute pass encoder. Drop once finished recording.
+    pub fn begin_compute_pass(
+        &self,
+        render_pass: &RenderPass,
+        frame_buffer: vk::Framebuffer,
+        clear_values: &[vk::ClearValue],
+        render_area: vk::Rect2D,
+    ) -> Result<ComputePassEncoder> {
+        let encoder = ComputePassEncoder {
             context: self.context.clone(),
             buffer: self.buffer,
         };
@@ -226,7 +340,25 @@ impl CommandEncoder {
     }
 }
 
-/// Used to encode renderpass commands of a command buffer.
+/// Used to encode command for a transfer command buffer.
+pub struct TransferCommandEncoder {
+    context: Arc<Context>,
+    buffer: vk::CommandBuffer,
+}
+
+impl TransferCommandEncoder {
+    /// Begins a command buffer.
+    fn begin(&self) -> Result<()> {
+        begin(&self.context, self.buffer)
+    }
+
+    /// Ends a command buffer.
+    fn end(&self) -> Result<()> {
+        end(&self.context, self.buffer)
+    }
+}
+
+/// Used to encode render pass commands of a command buffer.
 pub struct RenderPassEncoder {
     pub(crate) context: Arc<Context>,
     pub(crate) buffer: vk::CommandBuffer,
@@ -260,4 +392,56 @@ impl RenderPassEncoder {
                 .cmd_begin_render_pass(self.buffer, &create_info, contents)
         };
     }
+}
+
+/// Used to encode compute pass commands of a command buffer.
+pub struct ComputePassEncoder {
+    pub(crate) context: Arc<Context>,
+    pub(crate) buffer: vk::CommandBuffer,
+}
+
+impl Drop for ComputePassEncoder {
+    fn drop(&mut self) {
+        unsafe { self.context.logical_device.cmd_end_render_pass(self.buffer) };
+    }
+}
+
+impl ComputePassEncoder {
+    /// Begins a compute pass.
+    fn begin(
+        &self,
+        compute_pass: vk::RenderPass,
+        frame_buffer: vk::Framebuffer,
+        clear_values: &[vk::ClearValue],
+        render_area: vk::Rect2D,
+    ) {
+        let create_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(compute_pass)
+            .framebuffer(frame_buffer)
+            .clear_values(clear_values)
+            .render_area(render_area);
+        let contents = vk::SubpassContents::INLINE;
+
+        unsafe {
+            self.context
+                .logical_device
+                .cmd_begin_render_pass(self.buffer, &create_info, contents)
+        };
+    }
+}
+
+#[inline]
+fn begin(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
+    let info =
+        vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+    unsafe { context.logical_device.begin_command_buffer(buffer, &info)? };
+
+    Ok(())
+}
+
+#[inline]
+fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
+    unsafe { context.logical_device.end_command_buffer(buffer)? };
+
+    Ok(())
 }

@@ -5,7 +5,7 @@ use ash::version::DeviceV1_0;
 use ash::vk;
 
 use crate::context::Context;
-use crate::{Queue, Result};
+use crate::Result;
 
 /// Swapchain frame.
 pub struct SwapchainFrame {
@@ -150,7 +150,11 @@ impl Swapchain {
     }
 
     /// Queues the given frame into the graphic queue.
-    pub(crate) fn queue_frame(&self, frame: SwapchainFrame, graphic_queue: &Queue) -> Result<()> {
+    pub(crate) fn queue_frame(
+        &self,
+        frame: SwapchainFrame,
+        graphic_queue: vk::Queue,
+    ) -> Result<()> {
         let wait_semaphors = [self.present_complete_semaphore];
         let swapchains = [self.raw];
         let image_indices = [frame.index];
@@ -159,10 +163,7 @@ impl Swapchain {
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        unsafe {
-            self.loader
-                .queue_present(graphic_queue.raw, &present_info)?
-        };
+        unsafe { self.loader.queue_present(graphic_queue, &present_info)? };
 
         Ok(())
     }

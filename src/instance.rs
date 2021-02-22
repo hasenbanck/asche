@@ -6,7 +6,10 @@ use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, level_filters::LevelFilter, warn};
 
-use crate::{AscheError, Device, DeviceDescriptor, QueuePriorityDescriptor, Result};
+use crate::{
+    AscheError, ComputeQueue, Device, DeviceDescriptor, GraphicsQueue, QueuePriorityDescriptor,
+    Result, TransferQueue,
+};
 
 /// Describes how the instance should be configured.
 pub struct InstanceDescriptor<'a> {
@@ -83,7 +86,10 @@ impl Instance {
     }
 
     /// Requests a new Vulkan device.
-    pub fn request_device(self, device_descriptor: &DeviceDescriptor) -> Result<Device> {
+    pub fn request_device(
+        self,
+        device_descriptor: &DeviceDescriptor,
+    ) -> Result<(Device, (ComputeQueue, GraphicsQueue, TransferQueue))> {
         Device::new(self, device_descriptor)
     }
 

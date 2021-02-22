@@ -23,11 +23,11 @@ fn main() -> Result<(), asche::AscheError> {
         handle: &window.raw_window_handle(),
     })?;
 
-    let device = instance.request_device(&asche::DeviceDescriptor {
+    let (device, (_, graphics_queue, _)) = instance.request_device(&asche::DeviceDescriptor {
         ..Default::default()
     })?;
 
-    let mut app = Application::new(device, window)?;
+    let mut app = Application::new(device, graphics_queue, window)?;
 
     event_loop.run(move |event, _, control_flow| match event {
         winit::event::Event::WindowEvent {
@@ -48,10 +48,11 @@ fn main() -> Result<(), asche::AscheError> {
 
 struct Application {
     device: asche::Device,
+    graphics_queue: asche::GraphicsQueue,
+    graphics_command_pool: asche::GraphicsCommandPool,
     window: winit::window::Window,
     extent: vk::Extent2D,
     _pipeline: asche::Pipeline,
-    command_pool: asche::CommandPool,
     render_pass: asche::RenderPass,
     frame_counter: u64,
 }
@@ -59,6 +60,7 @@ struct Application {
 impl Application {
     fn new(
         mut device: asche::Device,
+        mut graphics_queue: asche::GraphicsQueue,
         window: winit::window::Window,
     ) -> Result<Self, asche::AscheError> {
         let extent = vk::Extent2D {
@@ -179,14 +181,15 @@ impl Application {
             .subpass(0);
         let pipeline = device.create_graphics_pipeline("simple pipeline", pipeline_info)?;
 
-        let command_pool = device.create_command_pool(asche::QueueType::Graphics)?;
+        let graphics_command_pool = graphics_queue.create_command_pool()?;
 
         Ok(Self {
             device,
+            graphics_queue,
+            graphics_command_pool,
             window,
             extent,
             _pipeline: pipeline,
-            command_pool,
             render_pass,
             frame_counter: 0,
         })
@@ -196,17 +199,12 @@ impl Application {
         let frame_offset = self.frame_counter * Timeline::RenderEnd as u64;
         let frame = self.device.get_next_frame()?;
 
-        let render_buffer = self.command_pool.create_command_buffer(
+        let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             Timeline::RenderStart.with_offset(frame_offset),
             Timeline::RenderEnd.with_offset(frame_offset),
         )?;
 
-        // TODO Implement three timeline counters for each queue! All queue actions should then
-        //      have their own queue_type argument. Maybe dedicated, user facing queue struct
-        //      would be more ergonomic! (create command buffer, execute, wait, get value etc.)
-        //      A command pool would need to be created by the queue?
-
-        render_buffer.record(|encoder| {
+        graphics_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: self.extent,
@@ -231,14 +229,13 @@ impl Application {
             Ok(())
         })?;
 
-        self.device
-            .execute(asche::QueueType::Graphics, &render_buffer)?;
-        self.device
+        self.graphics_queue.execute(&graphics_buffer)?;
+        self.graphics_queue
             .wait_for_timeline_value(Timeline::RenderEnd.with_offset(frame_offset))?;
 
-        self.command_pool.reset()?;
+        self.graphics_command_pool.reset()?;
 
-        self.device.queue_frame(frame)?;
+        self.device.queue_frame(&self.graphics_queue, frame)?;
         self.frame_counter += 1;
 
         Ok(())
