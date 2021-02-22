@@ -5,7 +5,7 @@
 
 Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
 
-This crate targets Vulkan 1.2.
+This crate targets Vulkan 1.2 and heavily uses timeline semaphores.
 
 ## Status
 
@@ -23,7 +23,7 @@ In 99.95% of the cases the answer to this question is "No".
 
 ## Credits
 
-The instance and device initialization code is a hard copy from the gfx-rs crate.
+The instance and device creation is heavily inspired by the gfx-rs crate.
 
 ## License
 

@@ -4,7 +4,7 @@ use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
 use ash::vk::Handle;
 #[cfg(feature = "tracing")]
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::command::CommandPool;
 use crate::context::Context;
@@ -58,7 +58,6 @@ impl Default for DeviceDescriptor {
 /// Abstracts a Vulkan device.
 pub struct Device {
     context: Arc<Context>,
-    allocator: vk_alloc::Allocator,
     swapchain: Option<Swapchain>,
     graphics_queue: Queue,
     transfer_queue: Queue,
@@ -73,6 +72,7 @@ pub struct Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
+            self.context.logical_device.device_wait_idle().unwrap();
             self.context
                 .logical_device
                 .destroy_semaphore(self.timeline, None)
@@ -100,27 +100,35 @@ impl Device {
             );
         }
 
-        let (logical_device, (graphics_queue, transfer_queue, compute_queue)) =
+        let (logical_device, family_ids, queues) =
             instance.create_logical_device(physical_device, &descriptor.queue_priority)?;
 
         #[cfg(feature = "tracing")]
         info!("Created logical device and queues");
-
-        let allocator = vk_alloc::Allocator::new(
-            &instance.raw,
-            physical_device,
-            &logical_device,
-            &vk_alloc::AllocatorDescriptor::default(),
-        );
-
-        #[cfg(feature = "tracing")]
-        debug!("Created default memory allocator");
 
         let context = Arc::new(Context {
             instance,
             logical_device,
             physical_device,
         });
+
+        let compute_queue = Queue {
+            context: context.clone(),
+            family_index: family_ids[0],
+            raw: queues[0],
+        };
+
+        let graphics_queue = Queue {
+            context: context.clone(),
+            family_index: family_ids[1],
+            raw: queues[1],
+        };
+
+        let transfer_queue = Queue {
+            context: context.clone(),
+            family_index: family_ids[2],
+            raw: queues[2],
+        };
 
         let mut create_info = vk::SemaphoreTypeCreateInfo::builder()
             .semaphore_type(vk::SemaphoreType::TIMELINE)
@@ -134,7 +142,6 @@ impl Device {
 
         let mut device = Device {
             context,
-            allocator,
             graphics_queue,
             transfer_queue,
             compute_queue,
@@ -149,6 +156,11 @@ impl Device {
         device.recreate_swapchain(None)?;
 
         Ok(device)
+    }
+
+    /// Returns a reference to the context.
+    pub fn context(&self) -> &Context {
+        &self.context
     }
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
@@ -258,11 +270,16 @@ impl Device {
         swapchain.queue_frame(frame, &self.graphics_queue)
     }
 
-    /// Executes a command buffer on a queue.
+    /// Executes a command buffer on a queue. Command buffer needs to originate from the same queue family as the queue.
     pub fn execute(&self, queue_type: QueueType, command_buffer: &CommandBuffer) -> Result<()> {
-        let semaphores = [self.timeline];
+        // TODO support multiple timelines
+        let (queue, semaphores) = match queue_type {
+            QueueType::Compute => (self.compute_queue.raw, [self.timeline]),
+            QueueType::Graphics => (self.graphics_queue.raw, [self.timeline]),
+            QueueType::Transfer => (self.transfer_queue.raw, [self.timeline]),
+        };
 
-        let stage_masks = [ash::vk::PipelineStageFlags::ALL_GRAPHICS];
+        let stage_masks = [ash::vk::PipelineStageFlags::ALL_COMMANDS];
         let command_buffers = [command_buffer.encoder.buffer];
         let wait_values = [command_buffer.timeline_wait_value];
         let signal_values = [command_buffer.timeline_signal_value];
@@ -279,34 +296,28 @@ impl Device {
             .push_next(&mut timeline_info);
 
         unsafe {
-            match queue_type {
-                QueueType::Compute => {
-                    self.context.logical_device.queue_submit(
-                        self.compute_queue.raw,
-                        &[submit_info.build()],
-                        vk::Fence::null(),
-                    )?;
-                }
-                QueueType::Graphics => {
-                    self.context.logical_device.queue_submit(
-                        self.graphics_queue.raw,
-                        &[submit_info.build()],
-                        vk::Fence::null(),
-                    )?;
-                }
-                QueueType::Transfer => {
-                    self.context.logical_device.queue_submit(
-                        self.transfer_queue.raw,
-                        &[submit_info.build()],
-                        vk::Fence::null(),
-                    )?;
-                }
-            }
+            self.context.logical_device.queue_submit(
+                queue,
+                &[submit_info.build()],
+                vk::Fence::null(),
+            )?
         };
 
         Ok(())
     }
 
+    /// TODO select queue.
+    /// Query a timeline value.
+    pub fn query_timeline_value(&self) -> Result<u64> {
+        let value = unsafe {
+            self.context
+                .logical_device
+                .get_semaphore_counter_value(self.timeline)?
+        };
+        Ok(value)
+    }
+
+    /// TODO select queue.
     /// Sets a timeline value.
     pub fn set_timeline_value(&self, timeline_value: u64) -> Result<()> {
         let signal_info = vk::SemaphoreSignalInfo::builder()
@@ -318,6 +329,7 @@ impl Device {
         Ok(())
     }
 
+    /// TODO select queue.
     /// Waits until the timeline has reached the value.
     pub fn wait_for_timeline_value(&self, timeline_value: u64) -> Result<()> {
         let semaphores = [self.timeline];

@@ -10,18 +10,19 @@ use tracing::{debug, error, info, warn};
 
 pub use {
     command::{CommandBuffer, CommandPool},
+    context::Context,
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceDescriptor},
+    queue::Queue,
 };
-
-use crate::context::Context;
 
 pub(crate) mod command;
 pub(crate) mod context;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;
+pub(crate) mod queue;
 pub(crate) mod swapchain;
 
 pub(crate) type Result<T> = std::result::Result<T, AscheError>;
@@ -94,12 +95,6 @@ pub enum QueueType {
     Graphics,
     /// Transfer queue.
     Transfer,
-}
-
-/// Abstracts a Vulkan queue.
-pub struct Queue {
-    pub(crate) family_index: u32,
-    pub(crate) raw: vk::Queue,
 }
 
 /// Wraps a render pass.

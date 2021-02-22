@@ -6,7 +6,7 @@ use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, level_filters::LevelFilter, warn};
 
-use crate::{AscheError, Device, DeviceDescriptor, Queue, QueuePriorityDescriptor, Result};
+use crate::{AscheError, Device, DeviceDescriptor, QueuePriorityDescriptor, Result};
 
 /// Describes how the instance should be configured.
 pub struct InstanceDescriptor<'a> {
@@ -21,7 +21,8 @@ pub struct InstanceDescriptor<'a> {
 /// Initializes the all Vulkan resources needed to create a device.
 pub struct Instance {
     _entry: ash::Entry,
-    pub(crate) raw: ash::Instance,
+    /// The raw Vulkan instance.
+    pub raw: ash::Instance,
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) surface: vk::SurfaceKHR,
     pub(crate) layers: Vec<&'static CStr>,
@@ -324,13 +325,19 @@ impl Instance {
         Ok(chosen)
     }
 
-    /// Creates a new logical device. Returns the logical device and three separate queues with the
-    /// types vk::QueueFlags::GRAPHICS, vk::QueueFlags::TRANSFER and vk::QueueFlags::COMPUTE.
+    /// Creates a new logical device. Returns the logical device, and the queue families and the Vulkan queues.
+    /// We have three queues in the following order:
+    ///  * Compute queue
+    ///  * Graphics queue
+    ///  * Transfer queue
+    ///
+    /// The compute and graphics queue use dedicated queue families if provided by the implementation.
+    /// The graphics queue is guaranteed to be able to write the the surface.
     pub(crate) fn create_logical_device(
         &self,
         physical_device: vk::PhysicalDevice,
         priorities: &QueuePriorityDescriptor,
-    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
+    ) -> Result<(ash::Device, [u32; 3], [vk::Queue; 3])> {
         let queue_family_properties = unsafe {
             self.raw
                 .get_physical_device_queue_family_properties(physical_device)
@@ -352,7 +359,7 @@ impl Instance {
             &queue_family_properties,
         )?;
 
-        self.create_queues_and_device(
+        self.create_logical_device_and_queues(
             physical_device,
             priorities,
             graphics_queue_family_id,
@@ -361,14 +368,14 @@ impl Instance {
         )
     }
 
-    fn create_queues_and_device(
+    fn create_logical_device_and_queues(
         &self,
         physical_device: vk::PhysicalDevice,
         priorities: &QueuePriorityDescriptor,
         graphics_queue_family_id: u32,
         transfer_queue_family_id: u32,
         compute_queue_family_id: u32,
-    ) -> Result<(ash::Device, (Queue, Queue, Queue))> {
+    ) -> Result<(ash::Device, [u32; 3], [vk::Queue; 3])> {
         // If some queue families point to the same ID, we need to create only one
         // `vk::DeviceQueueCreateInfo` for them.
         if graphics_queue_family_id == transfer_queue_family_id
@@ -392,20 +399,12 @@ impl Instance {
 
             Ok((
                 logical_device,
-                (
-                    Queue {
-                        family_index: graphics_queue_family_id,
-                        raw: g_q,
-                    },
-                    Queue {
-                        family_index: transfer_queue_family_id,
-                        raw: t_q,
-                    },
-                    Queue {
-                        family_index: compute_queue_family_id,
-                        raw: c_q,
-                    },
-                ),
+                [
+                    compute_queue_family_id,
+                    graphics_queue_family_id,
+                    transfer_queue_family_id,
+                ],
+                [c_q, g_q, t_q],
             ))
         } else if graphics_queue_family_id != transfer_queue_family_id
             && transfer_queue_family_id == compute_queue_family_id
@@ -428,20 +427,12 @@ impl Instance {
 
             Ok((
                 logical_device,
-                (
-                    Queue {
-                        family_index: graphics_queue_family_id,
-                        raw: g_q,
-                    },
-                    Queue {
-                        family_index: transfer_queue_family_id,
-                        raw: t_q,
-                    },
-                    Queue {
-                        family_index: compute_queue_family_id,
-                        raw: c_q,
-                    },
-                ),
+                [
+                    compute_queue_family_id,
+                    graphics_queue_family_id,
+                    transfer_queue_family_id,
+                ],
+                [c_q, g_q, t_q],
             ))
         } else if graphics_queue_family_id == compute_queue_family_id
             && graphics_queue_family_id != transfer_queue_family_id
@@ -464,20 +455,12 @@ impl Instance {
 
             Ok((
                 logical_device,
-                (
-                    Queue {
-                        family_index: graphics_queue_family_id,
-                        raw: g_q,
-                    },
-                    Queue {
-                        family_index: transfer_queue_family_id,
-                        raw: t_q,
-                    },
-                    Queue {
-                        family_index: compute_queue_family_id,
-                        raw: c_q,
-                    },
-                ),
+                [
+                    compute_queue_family_id,
+                    graphics_queue_family_id,
+                    transfer_queue_family_id,
+                ],
+                [c_q, g_q, t_q],
             ))
         } else if graphics_queue_family_id == transfer_queue_family_id
             && transfer_queue_family_id == compute_queue_family_id
@@ -494,20 +477,12 @@ impl Instance {
 
             Ok((
                 logical_device,
-                (
-                    Queue {
-                        family_index: graphics_queue_family_id,
-                        raw: g_q,
-                    },
-                    Queue {
-                        family_index: transfer_queue_family_id,
-                        raw: t_q,
-                    },
-                    Queue {
-                        family_index: compute_queue_family_id,
-                        raw: c_q,
-                    },
-                ),
+                [
+                    compute_queue_family_id,
+                    graphics_queue_family_id,
+                    transfer_queue_family_id,
+                ],
+                [c_q, g_q, t_q],
             ))
         } else {
             // Case: G,T,C
@@ -532,20 +507,12 @@ impl Instance {
 
             Ok((
                 logical_device,
-                (
-                    Queue {
-                        family_index: graphics_queue_family_id,
-                        raw: g_q,
-                    },
-                    Queue {
-                        family_index: transfer_queue_family_id,
-                        raw: t_q,
-                    },
-                    Queue {
-                        family_index: compute_queue_family_id,
-                        raw: c_q,
-                    },
-                ),
+                [
+                    compute_queue_family_id,
+                    graphics_queue_family_id,
+                    transfer_queue_family_id,
+                ],
+                [c_q, g_q, t_q],
             ))
         }
     }

@@ -1,5 +1,3 @@
-use std::sync::mpsc::RecvTimeoutError::Timeout;
-
 use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
 use vk_shader_macros::include_glsl;
@@ -181,7 +179,7 @@ impl Application {
             .subpass(0);
         let pipeline = device.create_graphics_pipeline("simple pipeline", pipeline_info)?;
 
-        let mut command_pool = device.create_command_pool(asche::QueueType::Graphics)?;
+        let command_pool = device.create_command_pool(asche::QueueType::Graphics)?;
 
         Ok(Self {
             device,
@@ -202,6 +200,12 @@ impl Application {
             Timeline::RenderStart.with_offset(frame_offset),
             Timeline::RenderEnd.with_offset(frame_offset),
         )?;
+
+        // TODO Implement three timeline counters for each queue! All queue actions should then
+        //      have their own queue_type argument. Maybe dedicated, user facing queue struct
+        //      would be more ergonomic! (create command buffer, execute, wait, get value etc.)
+        //      A command pool would need to be created by the queue?
+
         render_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },

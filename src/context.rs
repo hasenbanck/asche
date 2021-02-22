@@ -5,11 +5,14 @@ use ash::vk;
 
 use crate::{Instance, Result};
 
-/// The device context..
-pub(crate) struct Context {
-    pub(crate) instance: Instance,
-    pub(crate) logical_device: ash::Device,
-    pub(crate) physical_device: vk::PhysicalDevice,
+/// The Vulkan context.
+pub struct Context {
+    /// The wrapped Vulkan instance.
+    pub instance: Instance,
+    /// The raw logical Vulkan device.
+    pub logical_device: ash::Device,
+    /// The raw physical Vulkan device.
+    pub physical_device: vk::PhysicalDevice,
 }
 
 impl Drop for Context {
