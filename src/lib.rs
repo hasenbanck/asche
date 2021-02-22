@@ -149,7 +149,7 @@ impl Drop for PipelineLayout {
 /// Wraps a pipeline.
 pub struct Pipeline {
     pub(crate) context: Arc<Context>,
-    /// The raw ck::Pipeline.
+    /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
 }
 

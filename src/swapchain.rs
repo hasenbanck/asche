@@ -9,8 +9,7 @@ use crate::Result;
 
 /// Swapchain frame.
 pub struct SwapchainFrame {
-    pub view: vk::ImageView,
-    pub index: u32,
+    pub(crate) index: u32,
 }
 
 /// Abstracts a Vulkan swapchain.
@@ -134,10 +133,7 @@ impl Swapchain {
                 vk::Fence::null(),
             )?
         };
-        Ok(SwapchainFrame {
-            view: self.image_views[index as usize],
-            index,
-        })
+        Ok(SwapchainFrame { index })
     }
 
     /// Gets the framebuffer for a renderpass.
