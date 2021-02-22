@@ -54,7 +54,9 @@ impl Default for DeviceDescriptor {
     }
 }
 
-/// Abstracts a Vulkan device. Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
+/// A Vulkan device.
+///
+/// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
 pub struct Device {
     context: Arc<Context>,
     swapchain: Option<Swapchain>,
@@ -78,7 +80,7 @@ impl Device {
     ///  * Graphics queue
     ///  * Transfer queue
     ///
-    /// The compute and graphics queue use dedicated queue families if provided by the implementation.
+    /// The compute and transfer queue use dedicated queue families if provided by the implementation.
     /// The graphics queue is guaranteed to be able to write the the surface.
     pub(crate) fn new(
         instance: Instance,

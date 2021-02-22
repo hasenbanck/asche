@@ -10,14 +10,16 @@ use tracing::{debug, error, info, warn};
 
 pub use {
     command::{
-        ComputeCommandBuffer, ComputeCommandPool, GraphicsCommandBuffer, GraphicsCommandPool,
-        TransferCommandBuffer, TransferCommandPool,
+        ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool, ComputePassEncoder,
+        GraphicsCommandBuffer, GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder,
+        TransferCommandBuffer, TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceDescriptor},
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
+    swapchain::SwapchainFrame,
 };
 
 pub(crate) mod command;
