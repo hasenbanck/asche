@@ -6,7 +6,7 @@ fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
         .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
-        .with_title("asche - simple example")
+        .with_title("asche - triangle example")
         .with_resizable(false)
         .build(&event_loop)
         .unwrap();
@@ -18,7 +18,7 @@ fn main() -> Result<(), asche::AscheError> {
         .init();
 
     let instance = asche::Instance::new(&asche::InstanceDescriptor {
-        app_name: "simple example",
+        app_name: "triangle example",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &window.raw_window_handle(),
     })?;
@@ -52,7 +52,7 @@ struct Application {
     graphics_command_pool: asche::GraphicsCommandPool,
     window: winit::window::Window,
     extent: vk::Extent2D,
-    _pipeline: asche::GraphicsPipeline,
+    graphics_pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
     frame_counter: u64,
 }
@@ -71,11 +71,11 @@ impl Application {
         // Shader
         let vert_module = device.create_shader_module(
             "vertex module",
-            include_glsl!("./examples/simple/shaders/simple.vert"),
+            include_glsl!("./examples/triangle/shaders/triangle.vert"),
         )?;
         let frag_module = device.create_shader_module(
             "fragment module",
-            include_glsl!("./examples/simple/shaders/simple.frag"),
+            include_glsl!("./examples/triangle/shaders/triangle.frag"),
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
@@ -180,7 +180,7 @@ impl Application {
             .layout(pipeline_layout.raw)
             .render_pass(render_pass.raw)
             .subpass(0);
-        let pipeline = device.create_graphics_pipeline("simple pipeline", pipeline_info)?;
+        let pipeline = device.create_graphics_pipeline("triangle pipeline", pipeline_info)?;
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
@@ -190,7 +190,7 @@ impl Application {
             graphics_command_pool,
             window,
             extent,
-            _pipeline: pipeline,
+            graphics_pipeline: pipeline,
             render_pass,
             frame_counter: 0,
         })
@@ -213,7 +213,7 @@ impl Application {
 
             let frame_buffer = self.device.get_frame_buffer(&self.render_pass, &frame)?;
 
-            let _pass = encoder.begin_render_pass(
+            let pass = encoder.begin_render_pass(
                 &self.render_pass,
                 frame_buffer,
                 &[vk::ClearValue {
@@ -226,6 +226,9 @@ impl Application {
                     extent: self.extent,
                 },
             )?;
+
+            pass.cmd_bind_pipeline(&self.graphics_pipeline);
+            pass.cmd_draw(3, 1, 0, 0);
 
             Ok(())
         })?;

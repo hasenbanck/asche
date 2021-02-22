@@ -10,9 +10,9 @@ use tracing::{debug, error, info, warn};
 
 pub use {
     command::{
-        ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool, ComputePassEncoder,
-        GraphicsCommandBuffer, GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder,
-        TransferCommandBuffer, TransferCommandEncoder, TransferCommandPool,
+        ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool, GraphicsCommandBuffer,
+        GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder, TransferCommandBuffer,
+        TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
     device::{Device, DeviceDescriptor, QueuePriorityDescriptor},

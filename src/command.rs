@@ -7,7 +7,7 @@ use ash::vk;
 use ash::vk::Handle;
 
 use crate::context::Context;
-use crate::{QueueType, RenderPass, Result};
+use crate::{ComputePipeline, GraphicsPipeline, QueueType, RenderPass, Result};
 
 macro_rules! impl_command_pool {
     (
@@ -248,6 +248,18 @@ impl ComputeCommandEncoder {
     fn end(&self) -> Result<()> {
         end(&self.context, self.buffer)
     }
+
+    /// Binds a pipeline.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    pub fn cmd_bind_pipeline(&self, compute_pipeline: &ComputePipeline) {
+        cmd_bind_pipeline(
+            &self.context,
+            self.buffer,
+            vk::PipelineBindPoint::COMPUTE,
+            compute_pipeline.raw,
+        )
+    }
 }
 
 /// Used to encode command for a graphics command buffer.
@@ -304,6 +316,18 @@ impl GraphicsCommandEncoder {
                 .cmd_set_scissor(self.buffer, 0, &[rect]);
         };
     }
+
+    /// Binds a pipeline.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    pub fn cmd_bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+        cmd_bind_pipeline(
+            &self.context,
+            self.buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            graphics_pipeline.raw,
+        )
+    }
 }
 
 /// Used to encode command for a transfer command buffer.
@@ -358,6 +382,39 @@ impl RenderPassEncoder {
                 .cmd_begin_render_pass(self.buffer, &create_info, contents)
         };
     }
+
+    /// Binds a pipeline.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    pub fn cmd_bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+        cmd_bind_pipeline(
+            &self.context,
+            self.buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            graphics_pipeline.raw,
+        )
+    }
+
+    /// Draws primitives.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDraw.html
+    pub fn cmd_draw(
+        &self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) {
+        unsafe {
+            self.context.logical_device.cmd_draw(
+                self.buffer,
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            )
+        };
+    }
 }
 
 #[inline]
@@ -374,4 +431,18 @@ fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
     unsafe { context.logical_device.end_command_buffer(buffer)? };
 
     Ok(())
+}
+
+#[inline]
+fn cmd_bind_pipeline(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    pipeline_bind_point: vk::PipelineBindPoint,
+    pipeline: vk::Pipeline,
+) {
+    unsafe {
+        context
+            .logical_device
+            .cmd_bind_pipeline(buffer, pipeline_bind_point, pipeline)
+    };
 }
