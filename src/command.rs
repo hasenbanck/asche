@@ -86,8 +86,9 @@ impl CommandPool {
         family_index: u32,
         id: u64,
     ) -> Result<Self> {
-        let command_pool_info =
-            vk::CommandPoolCreateInfo::builder().queue_family_index(family_index);
+        let command_pool_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(family_index)
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
         let raw = unsafe {
             context
@@ -138,6 +139,7 @@ impl CommandPool {
 
         let command_buffer = CommandBuffer::new(
             self.context.clone(),
+            self.raw,
             command_buffers[0],
             timeline_wait_value,
             timeline_signal_value,
@@ -189,6 +191,11 @@ macro_rules! impl_command_buffer {
 
                 Ok(())
             }
+
+            /// Resets a command buffer.
+            pub fn reset(&self) -> Result<()> {
+                self.inner.reset()
+            }
         }
     }
 }
@@ -211,6 +218,7 @@ impl_command_buffer!(
 /// A wrapped command buffer.
 pub(crate) struct CommandBuffer {
     context: Arc<Context>,
+    pool: vk::CommandPool,
     pub(crate) buffer: vk::CommandBuffer,
     pub(crate) timeline_wait_value: u64,
     pub(crate) timeline_signal_value: u64,
@@ -219,16 +227,39 @@ pub(crate) struct CommandBuffer {
 impl CommandBuffer {
     pub(crate) fn new(
         context: Arc<Context>,
+        pool: vk::CommandPool,
         buffer: vk::CommandBuffer,
         timeline_wait_value: u64,
         timeline_signal_value: u64,
     ) -> Self {
         Self {
             context,
+            pool,
             buffer,
             timeline_wait_value,
             timeline_signal_value,
         }
+    }
+
+    #[inline]
+    pub fn reset(&self) -> Result<()> {
+        unsafe {
+            self.context
+                .logical_device
+                .reset_command_buffer(self.buffer, vk::CommandBufferResetFlags::empty())?
+        };
+
+        Ok(())
+    }
+}
+
+impl Drop for CommandBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.context
+                .logical_device
+                .free_command_buffers(self.pool, &[self.buffer])
+        };
     }
 }
 
