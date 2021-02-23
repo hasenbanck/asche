@@ -15,8 +15,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut compiler = shaderc::Compiler::new().ok_or("can't create shaderc compiler")?;
     let mut options = shaderc::CompileOptions::new().unwrap();
     options.set_source_language(shaderc::SourceLanguage::GLSL);
-    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-    options.set_warnings_as_errors();
+
+    #[cfg(debug_assertions)]
+    {
+        options.set_optimization_level(shaderc::OptimizationLevel::Zero);
+        options.set_warnings_as_errors();
+        options.set_generate_debug_info();
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    }
 
     for entry in read_dir(GLSL_PATH)? {
         let entry = entry?;
