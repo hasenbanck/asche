@@ -6,7 +6,7 @@ fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
         .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
-        .with_title("asche - triangle example")
+        .with_title("asche - cube example")
         .with_resizable(false)
         .build(&event_loop)
         .unwrap();
@@ -19,7 +19,7 @@ fn main() -> Result<(), asche::AscheError> {
     }
 
     let instance = asche::Instance::new(asche::InstanceConfiguration {
-        app_name: "triangle example",
+        app_name: "cube example",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &window.raw_window_handle(),
         extensions: vec![],
@@ -73,11 +73,11 @@ impl Application {
         // Shader
         let vert_module = device.create_shader_module(
             "vertex module",
-            include_glsl!("./examples/triangle/shaders/triangle.vert"),
+            include_glsl!("./examples/cube/shaders/cube.vert"),
         )?;
         let frag_module = device.create_shader_module(
             "fragment module",
-            include_glsl!("./examples/triangle/shaders/triangle.frag"),
+            include_glsl!("./examples/cube/shaders/cube.frag"),
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
@@ -182,7 +182,7 @@ impl Application {
             .layout(pipeline_layout.raw)
             .render_pass(render_pass.raw)
             .subpass(0);
-        let pipeline = device.create_graphics_pipeline("triangle pipeline", pipeline_info)?;
+        let pipeline = device.create_graphics_pipeline("cube pipeline", pipeline_info)?;
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
