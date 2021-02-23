@@ -1,13 +1,13 @@
 use std::ffi::CStr;
 
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0, InstanceV1_1};
 use ash::vk;
 use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
 use tracing::{error, info, warn};
 
 #[cfg(debug_assertions)]
-use crate::debug::debug_utils_callback;
+use crate::vk_debug::debug_utils_callback;
 use crate::{
     AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
 };
@@ -176,8 +176,9 @@ impl Instance {
 
         #[cfg(feature = "tracing")]
         {
+            info!("Loading instance extensions:");
             for extension in extensions.iter() {
-                info!("Loading instance extension: {:?}", extension);
+                info!("- {:?}", extension);
             }
         }
 
@@ -329,15 +330,31 @@ impl Instance {
     pub(crate) fn find_physical_device(
         &self,
         device_type: vk::PhysicalDeviceType,
-    ) -> Result<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)> {
+    ) -> Result<(
+        vk::PhysicalDevice,
+        vk::PhysicalDeviceProperties,
+        vk::PhysicalDeviceDriverProperties,
+    )> {
         let physical_devices = unsafe { self.raw.enumerate_physical_devices()? };
 
-        let mut chosen: Option<(vk::PhysicalDevice, vk::PhysicalDeviceProperties)> = None;
+        let mut chosen = None;
         for device in physical_devices {
-            let properties = unsafe { self.raw.get_physical_device_properties(device) };
+            let mut physical_device_driver_properties =
+                vk::PhysicalDeviceDriverProperties::default();
+            let mut physical_device_properties = vk::PhysicalDeviceProperties2::builder()
+                .push_next(&mut physical_device_driver_properties);
 
-            if properties.device_type == device_type {
-                chosen = Some((device, properties))
+            unsafe {
+                self.raw
+                    .get_physical_device_properties2(device, &mut physical_device_properties)
+            };
+
+            if physical_device_properties.properties.device_type == device_type {
+                chosen = Some((
+                    device,
+                    physical_device_properties.properties,
+                    physical_device_driver_properties,
+                ))
             }
         }
         let chosen = chosen.ok_or(AscheError::RequestDeviceError)?;
@@ -554,8 +571,9 @@ impl Instance {
 
         #[cfg(feature = "tracing")]
         {
+            info!("Loading device extensions:");
             for extension in device_extensions.iter() {
-                info!("Loading device extension: {:?}", extension);
+                info!("- {:?}", extension);
             }
         }
 
@@ -598,6 +616,8 @@ impl Instance {
             self.raw
                 .create_device(physical_device, &device_create_info, None)?
         };
+
+        report_device_features(features, features11, features12);
 
         Ok(logical_device)
     }
@@ -681,19 +701,19 @@ impl Instance {
 
         if let Some(id) = queue_id {
             #[cfg(feature = "tracing")]
-            info!("Found {:?} queue family with ID {}", target_family, id);
+            info!("Selected {:?} queue has family index {}", target_family, id);
 
             Ok(id)
         } else {
             match target_family {
+                vk::QueueFlags::COMPUTE => {
+                    Err(AscheError::QueueFamilyNotFound("compute".to_string()))
+                }
                 vk::QueueFlags::GRAPHICS => {
                     Err(AscheError::QueueFamilyNotFound("graphic".to_string()))
                 }
                 vk::QueueFlags::TRANSFER => {
                     Err(AscheError::QueueFamilyNotFound("transfer".to_string()))
-                }
-                vk::QueueFlags::COMPUTE => {
-                    Err(AscheError::QueueFamilyNotFound("compute".to_string()))
                 }
                 _ => panic!("Unhandled vk::QueueFlags value"),
             }
@@ -713,3 +733,159 @@ impl Drop for Instance {
         };
     }
 }
+
+macro_rules! impl_report_device_features {
+    (
+        VulkanV1 {
+        $($field1:ident)*
+        }
+        VulkanV1_1 {
+        $($field11:ident)*
+        }
+        VulkanV1_2 {
+        $($field12:ident)*
+        }
+    ) => {
+        fn report_device_features(
+            features: vk::PhysicalDeviceFeaturesBuilder,
+            features11: vk::PhysicalDeviceVulkan11FeaturesBuilder,
+            features12: vk::PhysicalDeviceVulkan12FeaturesBuilder,
+        ) {
+            info!("Enabling Vulkan 1.0 device features:");
+            $(if features.$field1 != 0 {
+                info!(concat!("- ", stringify!($field1)))
+            })*
+            info!("Enabling Vulkan 1.1 device features:");
+            $(if features11.$field11 != 0 {
+                info!(concat!("- ", stringify!($field11)))
+            })*
+            info!("Enabling Vulkan 1.2 device features:");
+            $(if features12.$field12 != 0 {
+                info!(concat!("- ", stringify!($field12)))
+            })*
+        }
+    };
+}
+
+impl_report_device_features!(
+    VulkanV1 {
+        robust_buffer_access
+        full_draw_index_uint32
+        image_cube_array
+        independent_blend
+        geometry_shader
+        tessellation_shader
+        sample_rate_shading
+        dual_src_blend
+        logic_op
+        multi_draw_indirect
+        draw_indirect_first_instance
+        depth_clamp
+        depth_bias_clamp
+        fill_mode_non_solid
+        depth_bounds
+        wide_lines
+        large_points
+        alpha_to_one
+        multi_viewport
+        sampler_anisotropy
+        texture_compression_etc2
+        texture_compression_astc_ldr
+        texture_compression_bc
+        occlusion_query_precise
+        pipeline_statistics_query
+        vertex_pipeline_stores_and_atomics
+        fragment_stores_and_atomics
+        shader_tessellation_and_geometry_point_size
+        shader_image_gather_extended
+        shader_storage_image_extended_formats
+        shader_storage_image_multisample
+        shader_storage_image_read_without_format
+        shader_storage_image_write_without_format
+        shader_uniform_buffer_array_dynamic_indexing
+        shader_sampled_image_array_dynamic_indexing
+        shader_storage_buffer_array_dynamic_indexing
+        shader_storage_image_array_dynamic_indexing
+        shader_clip_distance
+        shader_cull_distance
+        shader_float64
+        shader_int64
+        shader_int16
+        shader_resource_residency
+        shader_resource_min_lod
+        sparse_binding
+        sparse_residency_buffer
+        sparse_residency_image2_d
+        sparse_residency_image3_d
+        sparse_residency2_samples
+        sparse_residency4_samples
+        sparse_residency8_samples
+        sparse_residency16_samples
+        sparse_residency_aliased
+        variable_multisample_rate
+        inherited_queries
+    }
+    VulkanV1_1 {
+        storage_buffer16_bit_access
+        uniform_and_storage_buffer16_bit_access
+        storage_push_constant16
+        storage_input_output16
+        multiview
+        multiview_geometry_shader
+        multiview_tessellation_shader
+        variable_pointers_storage_buffer
+        variable_pointers
+        protected_memory
+        sampler_ycbcr_conversion
+        shader_draw_parameters
+    }
+    VulkanV1_2 {
+        sampler_mirror_clamp_to_edge
+        draw_indirect_count
+        storage_buffer8_bit_access
+        uniform_and_storage_buffer8_bit_access
+        storage_push_constant8
+        shader_buffer_int64_atomics
+        shader_shared_int64_atomics
+        shader_float16
+        shader_int8
+        descriptor_indexing
+        shader_input_attachment_array_dynamic_indexing
+        shader_uniform_texel_buffer_array_dynamic_indexing
+        shader_storage_texel_buffer_array_dynamic_indexing
+        shader_uniform_buffer_array_non_uniform_indexing
+        shader_sampled_image_array_non_uniform_indexing
+        shader_storage_buffer_array_non_uniform_indexing
+        shader_storage_image_array_non_uniform_indexing
+        shader_input_attachment_array_non_uniform_indexing
+        shader_uniform_texel_buffer_array_non_uniform_indexing
+        shader_storage_texel_buffer_array_non_uniform_indexing
+        descriptor_binding_uniform_buffer_update_after_bind
+        descriptor_binding_sampled_image_update_after_bind
+        descriptor_binding_storage_image_update_after_bind
+        descriptor_binding_storage_buffer_update_after_bind
+        descriptor_binding_uniform_texel_buffer_update_after_bind
+        descriptor_binding_storage_texel_buffer_update_after_bind
+        descriptor_binding_update_unused_while_pending
+        descriptor_binding_partially_bound
+        descriptor_binding_variable_descriptor_count
+        runtime_descriptor_array
+        sampler_filter_minmax
+        scalar_block_layout
+        imageless_framebuffer
+        uniform_buffer_standard_layout
+        shader_subgroup_extended_types
+        separate_depth_stencil_layouts
+        host_query_reset
+        timeline_semaphore
+        buffer_device_address
+        buffer_device_address_capture_replay
+        buffer_device_address_multi_device
+        vulkan_memory_model
+        vulkan_memory_model_device_scope
+        vulkan_memory_model_availability_visibility_chains
+        shader_output_viewport_index
+        shader_output_layer
+        subgroup_broadcast_dynamic_id
+    }
+);

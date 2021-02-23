@@ -100,7 +100,7 @@ impl Device {
         instance: Instance,
         configuration: DeviceConfiguration,
     ) -> Result<(Self, (ComputeQueue, GraphicsQueue, TransferQueue))> {
-        let (physical_device, physical_device_properties) =
+        let (physical_device, physical_device_properties, physical_device_driver_properties) =
             instance.find_physical_device(configuration.device_type)?;
 
         #[cfg(feature = "tracing")]
@@ -111,9 +111,29 @@ impl Device {
                 }
                 .to_str()?,
             );
+
             info!(
                 "Selected physical device: {} ({:?})",
                 name, physical_device_properties.device_type
+            );
+
+            let driver_name = String::from(
+                unsafe {
+                    std::ffi::CStr::from_ptr(physical_device_driver_properties.driver_name.as_ptr())
+                }
+                .to_str()?,
+            );
+
+            let driver_version = String::from(
+                unsafe {
+                    std::ffi::CStr::from_ptr(physical_device_driver_properties.driver_info.as_ptr())
+                }
+                .to_str()?,
+            );
+
+            info!(
+                "Driver version of selected device: {} ({})",
+                driver_name, driver_version
             );
         }
 

@@ -22,13 +22,13 @@ pub use {
 
 pub(crate) mod command;
 pub(crate) mod context;
-#[cfg(debug_assertions)]
-pub(crate) mod debug;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;
 pub(crate) mod queue;
 pub(crate) mod swapchain;
+#[cfg(debug_assertions)]
+pub(crate) mod vk_debug;
 
 pub(crate) type Result<T> = std::result::Result<T, AscheError>;
 
