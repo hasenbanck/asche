@@ -1,5 +1,4 @@
 //! Implements the device context.
-
 use ash::version::DeviceV1_0;
 use ash::vk;
 
@@ -23,6 +22,7 @@ impl Drop for Context {
 
 impl Context {
     /// Sets a debug name for an object.
+    #[cfg(debug_assertions)]
     pub(crate) fn set_object_name(
         &self,
         name: &str,
@@ -39,6 +39,18 @@ impl Context {
                 .debug_utils
                 .debug_utils_set_object_name(self.logical_device.handle(), &info)?
         };
+
+        Ok(())
+    }
+
+    /// Sets a debug name for an object.
+    #[cfg(not(debug_assertions))]
+    pub(crate) fn set_object_name(
+        &self,
+        _name: &str,
+        _object_type: vk::ObjectType,
+        _object_handle: u64,
+    ) -> Result<()> {
         Ok(())
     }
 }

@@ -4,8 +4,10 @@ use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
 use raw_window_handle::RawWindowHandle;
 #[cfg(feature = "tracing")]
-use tracing::{error, info, level_filters::LevelFilter, warn};
+use tracing::{error, info, warn};
 
+#[cfg(debug_assertions)]
+use crate::debug::debug_utils_callback;
 use crate::{
     AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
 };
@@ -30,7 +32,9 @@ pub struct Instance {
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) surface: vk::SurfaceKHR,
     pub(crate) layers: Vec<&'static CStr>,
+    #[cfg(debug_assertions)]
     pub(crate) debug_utils: ash::extensions::ext::DebugUtils,
+    #[cfg(debug_assertions)]
     pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
@@ -73,6 +77,7 @@ impl Instance {
         let (surface, surface_loader) =
             Self::create_surface(&entry, &instance, configuration.handle)?;
 
+        #[cfg(debug_assertions)]
         let (debug_utils, debug_messenger) =
             Self::create_debug_utils(&entry, instance_extensions, &instance)?;
 
@@ -82,7 +87,9 @@ impl Instance {
             layers,
             surface,
             surface_loader,
+            #[cfg(debug_assertions)]
             debug_utils,
+            #[cfg(debug_assertions)]
             debug_messenger,
         })
     }
@@ -95,6 +102,7 @@ impl Instance {
         Device::new(self, device_configuration)
     }
 
+    #[cfg(debug_assertions)]
     fn create_debug_utils(
         entry: &ash::Entry,
         instance_extensions: Vec<vk::ExtensionProperties>,
@@ -110,7 +118,7 @@ impl Instance {
             let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
                 .message_severity(Self::vulkan_log_level())
                 .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-                .pfn_user_callback(Some(crate::debug_utils_callback));
+                .pfn_user_callback(Some(debug_utils_callback));
 
             let callback = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
             Ok((ext, callback))
@@ -119,9 +127,11 @@ impl Instance {
         }
     }
 
+    #[cfg(debug_assertions)]
     fn vulkan_log_level() -> vk::DebugUtilsMessageSeverityFlagsEXT {
         #[cfg(feature = "tracing")]
         {
+            use tracing::level_filters::LevelFilter;
             match tracing::level_filters::STATIC_MAX_LEVEL {
                 LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
                 LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
@@ -188,9 +198,9 @@ impl Instance {
 
     fn create_layers(instance_layers: Vec<vk::LayerProperties>) -> Vec<&'static CStr> {
         let mut layers: Vec<&'static CStr> = Vec::new();
-        if cfg!(debug_assertions) {
-            layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
-        }
+
+        #[cfg(debug_assertions)]
+        layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
 
         // Only keep available layers.
         layers.retain(|&layer| {
@@ -235,6 +245,8 @@ impl Instance {
         if cfg!(target_os = "macos") {
             extensions.push(ash::extensions::mvk::MacOSSurface::name());
         }
+
+        #[cfg(debug_assertions)]
         extensions.push(ash::extensions::ext::DebugUtils::name());
 
         // Only keep available extensions.
@@ -554,6 +566,8 @@ impl Instance {
             .map(|&s| s.as_ptr())
             .collect::<Vec<_>>();
 
+        // TODO query with vkGetPhysicalDeviceFeatures() if device features are available!
+
         let features = if let Some(features) = configuration.features_v1_0.take() {
             features
         } else {
@@ -690,6 +704,7 @@ impl Instance {
 impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
+            #[cfg(debug_assertions)]
             self.debug_utils
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
 

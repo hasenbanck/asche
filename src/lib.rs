@@ -5,8 +5,6 @@ use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 use ash::vk;
-#[cfg(feature = "tracing")]
-use tracing::{debug, error, info, warn};
 
 pub use {
     command::{
@@ -24,6 +22,8 @@ pub use {
 
 pub(crate) mod command;
 pub(crate) mod context;
+#[cfg(debug_assertions)]
+pub(crate) mod debug;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;
@@ -31,65 +31,6 @@ pub(crate) mod queue;
 pub(crate) mod swapchain;
 
 pub(crate) type Result<T> = std::result::Result<T, AscheError>;
-
-/// Callback function for the debug utils logging.
-pub(crate) unsafe extern "system" fn debug_utils_callback(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _p_user_data: *mut std::ffi::c_void,
-) -> vk::Bool32 {
-    if std::thread::panicking() {
-        return vk::FALSE;
-    }
-
-    let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
-    let ty = format!("{:?}", message_type);
-
-    #[cfg(feature = "tracing")]
-    {
-        match message_severity {
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
-                error!("{} - {:?}", ty, message)
-            }
-            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
-                warn!("{} - {:?}", ty, message)
-            }
-            vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
-                info!("{} - {:?}", ty, message)
-            }
-            vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
-                debug!("{} - {:?}", ty, message)
-            }
-            _ => {
-                warn!("{} - {:?}", ty, message);
-            }
-        }
-    }
-
-    #[cfg(not(feature = "tracing"))]
-    {
-        match message_severity {
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
-                println!("ERROR: {} - {:?}", ty, message)
-            }
-            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
-                println!("WARN: {} - {:?}", ty, message)
-            }
-            vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
-                println!("INFO: {} - {:?}", ty, message)
-            }
-            vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
-                println!("DEBUG: {} - {:?}", ty, message)
-            }
-            _ => {
-                println!("WARN: {} - {:?}", ty, message);
-            }
-        }
-    }
-
-    vk::FALSE
-}
 
 /// Type of a queue.
 #[derive(Copy, Clone)]

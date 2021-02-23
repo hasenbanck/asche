@@ -95,6 +95,7 @@ impl Device {
     ///
     /// The compute and transfer queue use dedicated queue families if provided by the implementation.
     /// The graphics queue is guaranteed to be able to write the the surface.
+    #[allow(unused_variables)]
     pub(crate) fn new(
         instance: Instance,
         configuration: DeviceConfiguration,
@@ -177,6 +178,8 @@ impl Device {
                     self.context.instance.surface,
                 )
         }?;
+
+        // TODO test supported preset mode vkGetPhysicalDeviceSurfacePresentModesKHR()
 
         let mut image_count = capabilities.min_image_count + 1;
         if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {

@@ -13,9 +13,10 @@ fn main() -> Result<(), asche::AscheError> {
 
     // Log level is based on RUST_LOG env var.
     #[cfg(feature = "tracing")]
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    {
+        let filter = tracing_subscriber::EnvFilter::from_default_env();
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+    }
 
     let instance = asche::Instance::new(asche::InstanceConfiguration {
         app_name: "triangle example",
