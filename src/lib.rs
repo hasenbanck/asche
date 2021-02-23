@@ -15,9 +15,9 @@ pub use {
         TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
-    device::{Device, DeviceDescriptor, QueuePriorityDescriptor},
+    device::{Device, DeviceConfiguration, QueuePriorityDescriptor},
     error::AscheError,
-    instance::{Instance, InstanceDescriptor},
+    instance::{Instance, InstanceConfiguration},
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     swapchain::SwapchainFrame,
 };

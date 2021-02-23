@@ -17,13 +17,14 @@ fn main() -> Result<(), asche::AscheError> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    let instance = asche::Instance::new(&asche::InstanceDescriptor {
+    let instance = asche::Instance::new(asche::InstanceConfiguration {
         app_name: "triangle example",
         app_version: ash::vk::make_version(1, 0, 0),
         handle: &window.raw_window_handle(),
+        extensions: vec![],
     })?;
 
-    let (device, (_, graphics_queue, _)) = instance.request_device(&asche::DeviceDescriptor {
+    let (device, (_, graphics_queue, _)) = instance.request_device(asche::DeviceConfiguration {
         ..Default::default()
     })?;
 

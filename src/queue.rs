@@ -156,7 +156,7 @@ impl Queue {
         let timeline_wait_values = [command_buffer.timeline_wait_value];
         let timeline_signal_values = [command_buffer.timeline_signal_value];
         let command_buffers = [command_buffer.buffer];
-        let wait_dst_stage_mask = [ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE];
+        let wait_dst_stage_mask = [ash::vk::PipelineStageFlags::TOP_OF_PIPE];
 
         let mut timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
             .wait_semaphore_values(&timeline_wait_values)

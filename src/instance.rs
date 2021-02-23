@@ -7,18 +7,19 @@ use raw_window_handle::RawWindowHandle;
 use tracing::{error, info, level_filters::LevelFilter, warn};
 
 use crate::{
-    AscheError, ComputeQueue, Device, DeviceDescriptor, GraphicsQueue, QueuePriorityDescriptor,
-    Result, TransferQueue,
+    AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
 };
 
 /// Describes how the instance should be configured.
-pub struct InstanceDescriptor<'a> {
+pub struct InstanceConfiguration<'a> {
     /// Name of the application.
     pub app_name: &'a str,
     /// Version of the application. Use `ash::vk::make_version()` to create the version number.
     pub app_version: u32,
     /// Raw window handle.
     pub handle: &'a raw_window_handle::RawWindowHandle,
+    /// Instance extensions to load.
+    pub extensions: Vec<&'static CStr>,
 }
 
 /// Initializes the all Vulkan resources needed to create a device.
@@ -35,18 +36,18 @@ pub struct Instance {
 
 impl Instance {
     /// Creates a new `Instance`.
-    pub fn new(descriptor: &InstanceDescriptor) -> Result<Instance> {
+    pub fn new(configuration: InstanceConfiguration) -> Result<Instance> {
         let entry = ash::Entry::new()?;
 
         let engine_name = std::ffi::CString::new("asche")?;
-        let app_name = std::ffi::CString::new(descriptor.app_name.to_owned())?;
+        let app_name = std::ffi::CString::new(configuration.app_name.to_owned())?;
 
         #[cfg(feature = "tracing")]
-        info!("Requesting Vulkan API version: 1.2",);
+        info!("Requesting Vulkan API version: 1.2");
 
         let app_info = vk::ApplicationInfo::builder()
             .application_name(&app_name)
-            .application_version(descriptor.app_version)
+            .application_version(configuration.app_version)
             .engine_name(&engine_name)
             .engine_version(vk::make_version(0, 1, 0))
             .api_version(vk::make_version(1, 2, 0));
@@ -66,10 +67,11 @@ impl Instance {
             AscheError::Unspecified(format!("Unable to enumerate instance layers: {:?}", e))
         })?;
 
-        let extensions = Self::create_instance_extensions(&instance_extensions);
+        let extensions = Self::create_instance_extensions(&configuration, &instance_extensions);
         let layers = Self::create_layers(instance_layers);
         let instance = Self::create_instance(&entry, &app_info, &extensions, &layers)?;
-        let (surface, surface_loader) = Self::create_surface(&entry, &instance, descriptor.handle)?;
+        let (surface, surface_loader) =
+            Self::create_surface(&entry, &instance, configuration.handle)?;
 
         let (debug_utils, debug_messenger) =
             Self::create_debug_utils(&entry, instance_extensions, &instance)?;
@@ -88,9 +90,9 @@ impl Instance {
     /// Requests a new Vulkan device.
     pub fn request_device(
         self,
-        device_descriptor: &DeviceDescriptor,
+        device_configuration: DeviceConfiguration,
     ) -> Result<(Device, (ComputeQueue, GraphicsQueue, TransferQueue))> {
-        Device::new(self, device_descriptor)
+        Device::new(self, device_configuration)
     }
 
     fn create_debug_utils(
@@ -207,8 +209,11 @@ impl Instance {
         layers
     }
 
-    fn create_instance_extensions(instance_extensions: &[vk::ExtensionProperties]) -> Vec<&CStr> {
-        let mut extensions: Vec<&'static CStr> = Vec::new();
+    fn create_instance_extensions(
+        configuration: &InstanceConfiguration,
+        instance_extensions: &[vk::ExtensionProperties],
+    ) -> Vec<&'static CStr> {
+        let mut extensions: Vec<&'static CStr> = configuration.extensions.clone();
         extensions.push(ash::extensions::khr::Surface::name());
 
         // Platform-specific WSI extensions
@@ -230,9 +235,6 @@ impl Instance {
         if cfg!(target_os = "macos") {
             extensions.push(ash::extensions::mvk::MacOSSurface::name());
         }
-
-        extensions.push(vk::KhrGetPhysicalDeviceProperties2Fn::name());
-
         extensions.push(ash::extensions::ext::DebugUtils::name());
 
         // Only keep available extensions.
@@ -342,7 +344,7 @@ impl Instance {
     pub(crate) fn create_logical_device(
         &self,
         physical_device: vk::PhysicalDevice,
-        priorities: &QueuePriorityDescriptor,
+        configuration: DeviceConfiguration,
     ) -> Result<(ash::Device, [u32; 3], [vk::Queue; 3])> {
         let queue_family_properties = unsafe {
             self.raw
@@ -367,7 +369,7 @@ impl Instance {
 
         self.create_logical_device_and_queues(
             physical_device,
-            priorities,
+            configuration,
             graphics_queue_family_id,
             transfer_queue_family_id,
             compute_queue_family_id,
@@ -377,11 +379,13 @@ impl Instance {
     fn create_logical_device_and_queues(
         &self,
         physical_device: vk::PhysicalDevice,
-        priorities: &QueuePriorityDescriptor,
+        configuration: DeviceConfiguration,
         graphics_queue_family_id: u32,
         transfer_queue_family_id: u32,
         compute_queue_family_id: u32,
     ) -> Result<(ash::Device, [u32; 3], [vk::Queue; 3])> {
+        let priorities = &configuration.queue_priority;
+
         // If some queue families point to the same ID, we need to create only one
         // `vk::DeviceQueueCreateInfo` for them.
         if graphics_queue_family_id == transfer_queue_family_id
@@ -398,7 +402,8 @@ impl Instance {
                     .queue_priorities(&[priorities.compute])
                     .build(),
             ];
-            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let logical_device =
+                self.create_device(physical_device, configuration, &queue_infos)?;
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
@@ -426,7 +431,8 @@ impl Instance {
                     .queue_priorities(&[priorities.transfer, priorities.compute])
                     .build(),
             ];
-            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let logical_device =
+                self.create_device(physical_device, configuration, &queue_infos)?;
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
@@ -454,7 +460,8 @@ impl Instance {
                     .queue_priorities(&[priorities.transfer])
                     .build(),
             ];
-            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let logical_device =
+                self.create_device(physical_device, configuration, &queue_infos)?;
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
@@ -476,7 +483,8 @@ impl Instance {
                 .queue_family_index(graphics_queue_family_id)
                 .queue_priorities(&[priorities.graphics, priorities.transfer, priorities.compute])
                 .build()];
-            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let logical_device =
+                self.create_device(physical_device, configuration, &queue_infos)?;
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 2) };
@@ -506,7 +514,8 @@ impl Instance {
                     .queue_priorities(&[priorities.compute])
                     .build(),
             ];
-            let logical_device = self.create_device(physical_device, &queue_infos)?;
+            let logical_device =
+                self.create_device(physical_device, configuration, &queue_infos)?;
             let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
             let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
             let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
@@ -526,9 +535,10 @@ impl Instance {
     fn create_device(
         &self,
         physical_device: vk::PhysicalDevice,
+        mut configuration: DeviceConfiguration,
         queue_infos: &[vk::DeviceQueueCreateInfo],
     ) -> Result<ash::Device> {
-        let device_extensions = self.create_device_extensions(physical_device)?;
+        let device_extensions = self.create_device_extensions(physical_device, &configuration)?;
 
         #[cfg(feature = "tracing")]
         {
@@ -537,19 +547,30 @@ impl Instance {
             }
         }
 
-        let features = vk::PhysicalDeviceFeatures::builder().robust_buffer_access(true);
-
-        let mut features11 = vk::PhysicalDeviceVulkan11Features::builder();
-        let mut features12 = vk::PhysicalDeviceVulkan12Features::builder()
-            .timeline_semaphore(true)
-            .buffer_device_address(true);
-
         let layer_pointers = self.layers.iter().map(|&s| s.as_ptr()).collect::<Vec<_>>();
 
         let extension_pointers = device_extensions
             .iter()
             .map(|&s| s.as_ptr())
             .collect::<Vec<_>>();
+
+        let features = if let Some(features) = configuration.features_v1_0.take() {
+            features
+        } else {
+            vk::PhysicalDeviceFeatures::builder()
+        };
+        let mut features11 = if let Some(features) = configuration.features_v1_1.take() {
+            features
+        } else {
+            vk::PhysicalDeviceVulkan11Features::builder()
+        };
+        let mut features12 = if let Some(features) = configuration.features_v1_2.take() {
+            features
+        } else {
+            vk::PhysicalDeviceVulkan12Features::builder()
+        };
+
+        features12 = features12.timeline_semaphore(true);
 
         let device_create_info = vk::DeviceCreateInfo::builder()
             .queue_create_infos(queue_infos)
@@ -567,8 +588,12 @@ impl Instance {
         Ok(logical_device)
     }
 
-    fn create_device_extensions(&self, physical_device: vk::PhysicalDevice) -> Result<Vec<&CStr>> {
-        let mut extensions: Vec<&'static CStr> = Vec::new();
+    fn create_device_extensions(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        configuration: &DeviceConfiguration,
+    ) -> Result<Vec<&CStr>> {
+        let mut extensions: Vec<&'static CStr> = configuration.extensions.clone();
 
         extensions.push(ash::extensions::khr::Swapchain::name());
 

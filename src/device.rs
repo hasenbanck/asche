@@ -1,3 +1,4 @@
+use std::ffi::CStr;
 use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
@@ -25,7 +26,7 @@ pub struct QueuePriorityDescriptor {
 }
 
 /// Describes how the device should be configured.
-pub struct DeviceDescriptor {
+pub struct DeviceConfiguration<'a> {
     /// The device type that is requested.
     pub device_type: vk::PhysicalDeviceType,
     /// The image format of the swapchain.
@@ -36,9 +37,17 @@ pub struct DeviceDescriptor {
     pub presentation_mode: vk::PresentModeKHR,
     /// The priorities of the queues.
     pub queue_priority: QueuePriorityDescriptor,
+    /// Device extensions to load.
+    pub extensions: Vec<&'static CStr>,
+    /// Vulkan 1.0 features.
+    pub features_v1_0: Option<vk::PhysicalDeviceFeaturesBuilder<'a>>,
+    /// Vulkan 1.0 features.
+    pub features_v1_1: Option<vk::PhysicalDeviceVulkan11FeaturesBuilder<'a>>,
+    /// Vulkan 1.1 features
+    pub features_v1_2: Option<vk::PhysicalDeviceVulkan12FeaturesBuilder<'a>>,
 }
 
-impl Default for DeviceDescriptor {
+impl<'a> Default for DeviceConfiguration<'a> {
     fn default() -> Self {
         Self {
             device_type: vk::PhysicalDeviceType::DISCRETE_GPU,
@@ -50,6 +59,10 @@ impl Default for DeviceDescriptor {
                 transfer: 1.0,
                 compute: 1.0,
             },
+            extensions: vec![],
+            features_v1_0: None,
+            features_v1_1: None,
+            features_v1_2: None,
         }
     }
 }
@@ -84,10 +97,10 @@ impl Device {
     /// The graphics queue is guaranteed to be able to write the the surface.
     pub(crate) fn new(
         instance: Instance,
-        descriptor: &DeviceDescriptor,
+        configuration: DeviceConfiguration,
     ) -> Result<(Self, (ComputeQueue, GraphicsQueue, TransferQueue))> {
         let (physical_device, physical_device_properties) =
-            instance.find_physical_device(descriptor.device_type)?;
+            instance.find_physical_device(configuration.device_type)?;
 
         #[cfg(feature = "tracing")]
         {
@@ -103,8 +116,12 @@ impl Device {
             );
         }
 
+        let presentation_mode = configuration.presentation_mode;
+        let swapchain_format = configuration.swapchain_format;
+        let swapchain_color_space = configuration.swapchain_color_space;
+
         let (logical_device, family_ids, queues) =
-            instance.create_logical_device(physical_device, &descriptor.queue_priority)?;
+            instance.create_logical_device(physical_device, configuration)?;
 
         #[cfg(feature = "tracing")]
         info!("Created logical device and queues");
@@ -123,9 +140,9 @@ impl Device {
         let mut device = Device {
             context,
             graphic_queue_family_index,
-            presentation_mode: descriptor.presentation_mode,
-            swapchain_format: descriptor.swapchain_format,
-            swapchain_color_space: descriptor.swapchain_color_space,
+            presentation_mode,
+            swapchain_format,
+            swapchain_color_space,
             swapchain: None,
         };
 
