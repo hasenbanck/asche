@@ -337,6 +337,39 @@ impl Instance {
     )> {
         let physical_devices = unsafe { self.raw.enumerate_physical_devices()? };
 
+        // We try to find our preferred device type.
+        let mut chosen = self.find_physical_device_inner_loop(device_type, &physical_devices);
+
+        // We try to fall back to the next best thing.
+        if chosen.is_none() {
+            if device_type == vk::PhysicalDeviceType::DISCRETE_GPU {
+                chosen = self.find_physical_device_inner_loop(
+                    vk::PhysicalDeviceType::INTEGRATED_GPU,
+                    &physical_devices,
+                );
+            }
+            if device_type == vk::PhysicalDeviceType::INTEGRATED_GPU {
+                chosen = self.find_physical_device_inner_loop(
+                    vk::PhysicalDeviceType::DISCRETE_GPU,
+                    &physical_devices,
+                );
+            }
+        }
+
+        let chosen = chosen.ok_or(AscheError::RequestDeviceError)?;
+
+        Ok(chosen)
+    }
+
+    fn find_physical_device_inner_loop(
+        &self,
+        device_type: vk::PhysicalDeviceType,
+        physical_devices: &[vk::PhysicalDevice],
+    ) -> Option<(
+        vk::PhysicalDevice,
+        vk::PhysicalDeviceProperties,
+        vk::PhysicalDeviceDriverProperties,
+    )> {
         let mut chosen = None;
         for device in physical_devices {
             let mut physical_device_driver_properties =
@@ -346,20 +379,18 @@ impl Instance {
 
             unsafe {
                 self.raw
-                    .get_physical_device_properties2(device, &mut physical_device_properties)
+                    .get_physical_device_properties2(*device, &mut physical_device_properties)
             };
 
             if physical_device_properties.properties.device_type == device_type {
                 chosen = Some((
-                    device,
+                    *device,
                     physical_device_properties.properties,
                     physical_device_driver_properties,
                 ))
             }
         }
-        let chosen = chosen.ok_or(AscheError::RequestDeviceError)?;
-
-        Ok(chosen)
+        chosen
     }
 
     /// Creates a new logical device. Returns the logical device, and the queue families and the Vulkan queues.
