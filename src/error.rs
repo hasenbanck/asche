@@ -28,6 +28,9 @@ pub enum AscheError {
     /// The selected format / color space for the swapchain is not supported by the device.
     SwapchainFormatIncompatible,
 
+    /// The selected presentation mode is unsupported.
+    PresentationModeUnsupported,
+
     /// Swapchain is not initialized.
     SwapchainNotInitialized,
 
@@ -68,6 +71,9 @@ impl std::fmt::Display for AscheError {
             }
             AscheError::SwapchainNotInitialized => {
                 write!(f, "swapchain is not initialized")
+            }
+            AscheError::PresentationModeUnsupported => {
+                write!(f, "the selected presentation mode is unsupported")
             }
             AscheError::Unspecified(message) => {
                 write!(f, "{}", message)

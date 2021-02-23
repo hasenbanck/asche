@@ -186,8 +186,8 @@ impl Device {
                 .get_physical_device_surface_formats(
                     self.context.physical_device,
                     self.context.instance.surface,
-                )
-        }?;
+                )?
+        };
 
         let capabilities = unsafe {
             self.context
@@ -196,10 +196,18 @@ impl Device {
                 .get_physical_device_surface_capabilities(
                     self.context.physical_device,
                     self.context.instance.surface,
-                )
-        }?;
+                )?
+        };
 
-        // TODO test supported preset mode vkGetPhysicalDeviceSurfacePresentModesKHR()
+        let presentation_mode = unsafe {
+            self.context
+                .instance
+                .surface_loader
+                .get_physical_device_surface_present_modes(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                )?
+        };
 
         let mut image_count = capabilities.min_image_count + 1;
         if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
@@ -227,6 +235,11 @@ impl Device {
             })
             .ok_or(AscheError::SwapchainFormatIncompatible)?;
 
+        let presentation_mode = *presentation_mode
+            .iter()
+            .find(|m| **m == self.presentation_mode)
+            .ok_or(AscheError::PresentationModeUnsupported)?;
+
         let old_swapchain = self.swapchain.take();
 
         let swapchain = Swapchain::new(
@@ -237,7 +250,7 @@ impl Device {
                 pre_transform,
                 format: format.format,
                 color_space: format.color_space,
-                presentation_mode: self.presentation_mode,
+                presentation_mode,
                 image_count,
             },
             old_swapchain,
