@@ -1,4 +1,5 @@
 use std::ffi::CStr;
+use std::io::Cursor;
 use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
@@ -398,8 +399,10 @@ impl Device {
     }
 
     /// Creates a new shader module using the provided SPIR-V code.
-    pub fn create_shader_module(&self, name: &str, sprirv_code: &[u32]) -> Result<ShaderModule> {
-        let create_info = vk::ShaderModuleCreateInfo::builder().code(sprirv_code);
+    pub fn create_shader_module(&self, name: &str, shader_data: &[u8]) -> Result<ShaderModule> {
+        let mut reader = Cursor::new(shader_data);
+        let code = ash::util::read_spv(&mut reader)?;
+        let create_info = vk::ShaderModuleCreateInfo::builder().code(&code);
         let module = unsafe {
             self.context
                 .logical_device

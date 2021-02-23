@@ -5,6 +5,8 @@ use ash::vk;
 /// Errors that asche can throw.
 #[derive(Debug)]
 pub enum AscheError {
+    /// A std::io::Error.
+    IoError(std::io::Error),
     /// A std::ffi::NulError.
     NulError(std::ffi::NulError),
     /// A std::str::Utf8Error.
@@ -44,6 +46,9 @@ pub enum AscheError {
 impl std::fmt::Display for AscheError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            AscheError::IoError(err) => {
+                write!(f, "{:?}", err.source())
+            }
             AscheError::NulError(err) => {
                 write!(f, "{:?}", err.source())
             }
@@ -59,7 +64,6 @@ impl std::fmt::Display for AscheError {
             AscheError::VkResult(err) => {
                 write!(f, "{:?}", err.source())
             }
-
             AscheError::DebugUtilsMissing => {
                 write!(f, "can't load the debug utils extension")
             }
@@ -98,6 +102,12 @@ impl std::error::Error for AscheError {
             AscheError::VkResult(ref e) => Some(e),
             _ => None,
         }
+    }
+}
+
+impl From<std::io::Error> for AscheError {
+    fn from(err: std::io::Error) -> AscheError {
+        AscheError::IoError(err)
     }
 }
 

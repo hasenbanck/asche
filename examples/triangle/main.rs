@@ -1,6 +1,9 @@
+use std::io::Cursor;
+
 use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
-use vk_shader_macros::include_glsl;
+
+use bytemuck::cast_slice;
 
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
@@ -73,11 +76,11 @@ impl Application {
         // Shader
         let vert_module = device.create_shader_module(
             "vertex module",
-            include_glsl!("./examples/triangle/shaders/triangle.vert"),
+            include_bytes!("../../gen/shader/triangle.vert.spv"),
         )?;
         let frag_module = device.create_shader_module(
             "fragment module",
-            include_glsl!("./examples/triangle/shaders/triangle.frag"),
+            include_bytes!("../../gen/shader/triangle.frag.spv"),
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();

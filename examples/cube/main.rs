@@ -1,6 +1,5 @@
 use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
-use vk_shader_macros::include_glsl;
 
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
@@ -73,11 +72,11 @@ impl Application {
         // Shader
         let vert_module = device.create_shader_module(
             "vertex module",
-            include_glsl!("./examples/cube/shaders/cube.vert"),
+            include_bytes!("../../gen/shader/cube.vert.spv"),
         )?;
         let frag_module = device.create_shader_module(
             "fragment module",
-            include_glsl!("./examples/cube/shaders/cube.frag"),
+            include_bytes!("../../gen/shader/cube.frag.spv"),
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
