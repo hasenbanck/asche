@@ -470,6 +470,36 @@ impl RenderPassEncoder {
         )
     }
 
+    /// Binds an index buffer.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
+    pub fn cmd_bind_index_buffer(
+        &self,
+        index_buffer: vk::Buffer,
+        offset: u64,
+        index_type: vk::IndexType,
+    ) {
+        cmd_bind_index_buffer(&self.context, self.buffer, index_buffer, offset, index_type)
+    }
+
+    /// Binds vertex buffers.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
+    pub fn cmd_bind_vertex_buffer(
+        &self,
+        first_binding: u32,
+        vertex_buffers: &[vk::Buffer],
+        offsets: &[u64],
+    ) {
+        cmd_bind_vertex_buffer(
+            &self.context,
+            self.buffer,
+            first_binding,
+            vertex_buffers,
+            offsets,
+        )
+    }
+
     /// Draws primitives.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDraw.html
@@ -506,6 +536,39 @@ fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
     unsafe { context.logical_device.end_command_buffer(buffer)? };
 
     Ok(())
+}
+
+#[inline]
+fn cmd_bind_index_buffer(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    index_buffer: vk::Buffer,
+    offset: u64,
+    index_type: vk::IndexType,
+) {
+    unsafe {
+        context
+            .logical_device
+            .cmd_bind_index_buffer(buffer, index_buffer, offset, index_type)
+    };
+}
+
+#[inline]
+fn cmd_bind_vertex_buffer(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    first_binding: u32,
+    vertex_buffers: &[vk::Buffer],
+    offsets: &[u64],
+) {
+    unsafe {
+        context.logical_device.cmd_bind_vertex_buffers(
+            buffer,
+            first_binding,
+            vertex_buffers,
+            offsets,
+        )
+    };
 }
 
 #[inline]

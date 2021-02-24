@@ -319,6 +319,10 @@ impl Application {
             )?;
 
             pass.cmd_bind_pipeline(&self.graphics_pipeline);
+
+            pass.cmd_bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
+            pass.cmd_bind_vertex_buffer(0, &[self.vertex_buffer[0].raw], &[0]);
+
             pass.cmd_draw(3, 1, 0, 0);
 
             Ok(())
