@@ -2,19 +2,20 @@ use std::ffi::CStr;
 use std::io::Cursor;
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, DeviceV1_1};
 use ash::vk;
 use ash::vk::Handle;
 use parking_lot::Mutex;
 #[cfg(feature = "tracing")]
 use tracing::info;
+use vk_alloc::AllocationInfo;
 
 use crate::context::Context;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, ComputeQueue, GraphicsPipeline, GraphicsQueue, PipelineLayout, RenderPass, Result,
-    ShaderModule, TransferQueue,
+    AscheError, Buffer, ComputeQueue, GraphicsPipeline, GraphicsQueue, PipelineLayout, RenderPass,
+    Result, ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -75,7 +76,9 @@ impl<'a> Default for DeviceConfiguration<'a> {
 pub struct Device {
     context: Arc<Context>,
     swapchain: Option<Swapchain>,
+    compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
+    transfer_queue_family_index: u32,
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
@@ -163,14 +166,15 @@ impl Device {
             allocator: Mutex::new(allocator),
         });
 
-        let graphic_queue_family_index = family_ids[1];
         let compute_queue = ComputeQueue::new(context.clone(), family_ids[0], queues[0])?;
         let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1])?;
         let transfer_queue = TransferQueue::new(context.clone(), family_ids[2], queues[2])?;
 
         let mut device = Device {
             context,
-            graphic_queue_family_index,
+            compute_queue_family_index: family_ids[0],
+            graphic_queue_family_index: family_ids[1],
+            transfer_queue_family_index: family_ids[2],
             presentation_mode,
             swapchain_format,
             swapchain_color_space,
@@ -424,6 +428,74 @@ impl Device {
         Ok(ShaderModule {
             context: self.context.clone(),
             raw: module,
+        })
+    }
+
+    /// Creates a new buffer.
+    pub fn create_buffer(
+        &self,
+        buffer_usage: vk::BufferUsageFlags,
+        memory_location: vk_alloc::MemoryLocation,
+        sharing_mode: vk::SharingMode,
+        queues: vk::QueueFlags,
+        size: u64,
+        flags: Option<vk::BufferCreateFlags>,
+    ) -> Result<Buffer> {
+        let mut families = Vec::with_capacity(3);
+
+        if queues.contains(vk::QueueFlags::COMPUTE) {
+            families.push(self.compute_queue_family_index)
+        }
+        if queues.contains(vk::QueueFlags::GRAPHICS) {
+            families.push(self.graphic_queue_family_index)
+        }
+        if queues.contains(vk::QueueFlags::TRANSFER) {
+            families.push(self.transfer_queue_family_index)
+        }
+
+        // Removes dupes if queues share family ids.
+        families.sort_unstable();
+        families.dedup();
+
+        let create_info = vk::BufferCreateInfo::builder()
+            .queue_family_indices(&families)
+            .sharing_mode(sharing_mode)
+            .usage(buffer_usage)
+            .size(size);
+
+        let create_info = if let Some(flags) = flags {
+            create_info.flags(flags)
+        } else {
+            create_info
+        };
+
+        let raw = unsafe {
+            self.context
+                .logical_device
+                .create_buffer(&create_info, None)?
+        };
+
+        let allocation = self
+            .context
+            .allocator
+            .lock()
+            .allocate_memory_for_buffer(raw, memory_location)?;
+
+        let bind_infos = vk::BindBufferMemoryInfo::builder()
+            .buffer(raw)
+            .memory(allocation.memory())
+            .memory_offset(allocation.offset());
+
+        unsafe {
+            self.context
+                .logical_device
+                .bind_buffer_memory2(&[bind_infos.build()])?
+        };
+
+        Ok(Buffer {
+            context: self.context.clone(),
+            raw,
+            allocation,
         })
     }
 }

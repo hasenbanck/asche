@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use ash::version::{DeviceV1_0, DeviceV1_1, DeviceV1_2};
+use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
 use ash::vk::Handle;
-use vk_alloc::AllocationInfo;
 
 use crate::command::CommandBuffer;
 use crate::{
-    Buffer, ComputeCommandBuffer, ComputeCommandPool, Context, GraphicsCommandBuffer,
-    GraphicsCommandPool, QueueType, Result, TransferCommandBuffer, TransferCommandPool,
+    ComputeCommandBuffer, ComputeCommandPool, Context, GraphicsCommandBuffer, GraphicsCommandPool,
+    QueueType, Result, TransferCommandBuffer, TransferCommandPool,
 };
 
 macro_rules! impl_queue {
@@ -63,17 +62,6 @@ macro_rules! impl_queue {
             /// Wait for the given timeline value.
             pub fn wait_for_timeline_value(&self, timeline_value: u64) -> Result<()> {
                 self.inner.wait_for_timeline_value(timeline_value)
-            }
-
-            /// Creates a new buffer.
-            pub fn create_buffer(
-                &self,
-                buffer_usage: vk::BufferUsageFlags,
-                memory_location: vk_alloc::MemoryLocation,
-                size: u64,
-                flags: Option<vk::BufferCreateFlags>,
-            ) -> Result<Buffer> {
-                self.inner.create_buffer(buffer_usage, size, flags, memory_location)
             }
         }
     };
@@ -228,56 +216,5 @@ impl Queue {
         };
 
         Ok(())
-    }
-
-    #[inline]
-    fn create_buffer(
-        &self,
-        buffer_usage: vk::BufferUsageFlags,
-        size: u64,
-        flags: Option<vk::BufferCreateFlags>,
-        memory_location: vk_alloc::MemoryLocation,
-    ) -> Result<Buffer> {
-        let families = [self.family_index];
-        let create_info = vk::BufferCreateInfo::builder()
-            .queue_family_indices(&families)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .usage(buffer_usage)
-            .size(size);
-
-        let create_info = if let Some(flags) = flags {
-            create_info.flags(flags)
-        } else {
-            create_info
-        };
-
-        let raw = unsafe {
-            self.context
-                .logical_device
-                .create_buffer(&create_info, None)?
-        };
-
-        let allocation = self
-            .context
-            .allocator
-            .lock()
-            .allocate_memory_for_buffer(raw, memory_location)?;
-
-        let bind_infos = vk::BindBufferMemoryInfo::builder()
-            .buffer(raw)
-            .memory(allocation.memory())
-            .memory_offset(allocation.offset());
-
-        unsafe {
-            self.context
-                .logical_device
-                .bind_buffer_memory2(&[bind_infos.build()])?
-        };
-
-        Ok(Buffer {
-            context: self.context.clone(),
-            raw,
-            allocation,
-        })
     }
 }

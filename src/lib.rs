@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-//! Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
+//! Provides an abstraction layer above ash to easier use Vulkan in Rust.
 
 use std::sync::Arc;
 

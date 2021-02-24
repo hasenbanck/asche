@@ -3,8 +3,6 @@ use bytemuck::{Pod, Zeroable};
 use raw_window_handle::HasRawWindowHandle;
 use vk_alloc::AllocationInfo;
 
-use asche::Buffer;
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -156,8 +154,31 @@ impl Application {
             device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
 
         // Pipeline
+        let vertex_binding_descriptions = [vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride(std::mem::size_of::<Vertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build()];
+
+        let vertex_attribute_descriptions = [
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(0)
+                .offset(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(1)
+                .offset(12)
+                .format(vk::Format::R32G32_SFLOAT)
+                .build(),
+        ];
+
         let shader_stages = vec![vertexshader_stage.build(), fragmentshader_stage.build()];
-        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder();
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
+            .vertex_binding_descriptions(&vertex_binding_descriptions)
+            .vertex_attribute_descriptions(&vertex_attribute_descriptions);
         let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder()
@@ -243,10 +264,12 @@ impl Application {
         &mut self,
         buffer_data: &[u8],
         buffer_type: vk::BufferUsageFlags,
-    ) -> Result<Buffer, asche::AscheError> {
-        let mut stagging_buffer = self.transfer_queue.create_buffer(
+    ) -> Result<asche::Buffer, asche::AscheError> {
+        let mut stagging_buffer = self.device.create_buffer(
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_alloc::MemoryLocation::CpuToGpu,
+            vk::SharingMode::CONCURRENT,
+            vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
             buffer_data.len() as u64,
             None,
         )?;
@@ -257,9 +280,12 @@ impl Application {
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
 
-        let dst_buffer = self.transfer_queue.create_buffer(
+        // TODO How to do a exclusive access with ownership transfer?
+        let dst_buffer = self.device.create_buffer(
             buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
             vk_alloc::MemoryLocation::GpuOnly,
+            vk::SharingMode::CONCURRENT,
+            vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
             stagging_buffer.allocation.size(),
             None,
         )?;

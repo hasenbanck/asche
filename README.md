@@ -11,7 +11,7 @@ Vulkan 1.2.
 
 Used features:
 
-- "buffer device_address"
+- "buffer device address"
 - "timeline_semaphores"
 
 ## Status
