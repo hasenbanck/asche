@@ -264,6 +264,26 @@ impl ComputeCommandEncoder {
         end(&self.context, self.buffer)
     }
 
+    /// Copies data between two buffer.
+    pub fn cmd_copy_buffer(
+        &self,
+        src_buffer: &Buffer,
+        dst_buffer: &Buffer,
+        src_offset: u64,
+        dst_offset: u64,
+        size: u64,
+    ) {
+        cmd_copy_buffer(
+            &self.context,
+            self.buffer,
+            src_buffer.raw,
+            dst_buffer.raw,
+            src_offset,
+            dst_offset,
+            size,
+        )
+    }
+
     /// Binds a pipeline.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
@@ -292,6 +312,26 @@ impl GraphicsCommandEncoder {
     /// Ends a command buffer.
     fn end(&self) -> Result<()> {
         end(&self.context, self.buffer)
+    }
+
+    /// Copies data between two buffer.
+    pub fn cmd_copy_buffer(
+        &self,
+        src_buffer: &Buffer,
+        dst_buffer: &Buffer,
+        src_offset: u64,
+        dst_offset: u64,
+        size: u64,
+    ) {
+        cmd_copy_buffer(
+            &self.context,
+            self.buffer,
+            src_buffer.raw,
+            dst_buffer.raw,
+            src_offset,
+            dst_offset,
+            size,
+        )
     }
 
     /// Returns a render pass encoder. Drop once finished recording.

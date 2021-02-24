@@ -74,6 +74,8 @@ struct Application {
     render_pass: asche::RenderPass,
     frame_counter: u64,
     transfer_counter: u64,
+    vertex_buffer: Vec<asche::Buffer>,
+    index_buffer: Vec<asche::Buffer>,
 }
 
 impl Application {
@@ -215,19 +217,24 @@ impl Application {
             render_pass,
             frame_counter: 0,
             transfer_counter: 0,
+            vertex_buffer: vec![],
+            index_buffer: vec![],
         };
 
         let (vertex_data, index_data) = create_cube_data();
 
-        app.create_buffer(
+        let vertex_buffer = app.create_buffer(
             &bytemuck::cast_slice(&vertex_data),
             vk::BufferUsageFlags::VERTEX_BUFFER,
         )?;
 
-        app.create_buffer(
+        let index_buffer = app.create_buffer(
             &bytemuck::cast_slice(&index_data),
             vk::BufferUsageFlags::INDEX_BUFFER,
         )?;
+
+        app.vertex_buffer.push(vertex_buffer);
+        app.index_buffer.push(index_buffer);
 
         Ok(app)
     }
