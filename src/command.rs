@@ -9,7 +9,6 @@ use ash::vk::Handle;
 use crate::context::Context;
 use crate::{Buffer, ComputePipeline, GraphicsPipeline, QueueType, RenderPass, Result};
 
-// TODO function to set the timeline values
 macro_rules! impl_command_pool {
     (
         #[doc = $doc:expr]
@@ -191,6 +190,11 @@ macro_rules! impl_command_buffer {
 
                 Ok(())
             }
+
+            /// Sets the timeline values of a command buffer.
+            pub fn set_timeline_values(&mut self, wait_value: u64, signal_value: u64) {
+                self.inner.set_timeline_values(wait_value, signal_value)
+            }
         }
     }
 }
@@ -234,6 +238,12 @@ impl CommandBuffer {
             timeline_wait_value,
             timeline_signal_value,
         }
+    }
+
+    #[inline]
+    fn set_timeline_values(&mut self, wait_value: u64, signal_value: u64) {
+        self.timeline_wait_value = wait_value;
+        self.timeline_signal_value = signal_value;
     }
 }
 
