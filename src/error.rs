@@ -17,6 +17,8 @@ pub enum AscheError {
     InstanceError(ash::InstanceError),
     /// A ash::vk::Result.
     VkResult(ash::vk::Result),
+    /// A vk_alloc::AllocatorError.
+    VkAllocError(vk_alloc::AllocatorError),
 
     /// Can't load the debug utils extension.
     DebugUtilsMissing,
@@ -62,6 +64,9 @@ impl std::fmt::Display for AscheError {
                 write!(f, "{:?}", err.source())
             }
             AscheError::VkResult(err) => {
+                write!(f, "{:?}", err.source())
+            }
+            AscheError::VkAllocError(err) => {
                 write!(f, "{:?}", err.source())
             }
             AscheError::DebugUtilsMissing => {
@@ -144,5 +149,11 @@ impl From<ash::vk::Result> for AscheError {
 impl From<(Vec<vk::Pipeline>, ash::vk::Result)> for AscheError {
     fn from(err: (Vec<vk::Pipeline>, vk::Result)) -> Self {
         AscheError::VkResult(err.1)
+    }
+}
+
+impl From<vk_alloc::AllocatorError> for AscheError {
+    fn from(err: vk_alloc::AllocatorError) -> AscheError {
+        AscheError::VkAllocError(err)
     }
 }

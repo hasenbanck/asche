@@ -3,7 +3,7 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Provides an abstraction layer above ash to easier use Vulkan in Rust with minimal dependencies.
+Provides an abstraction layer above ash to easier use Vulkan in Rust.
 
 ## Requirements
 
@@ -11,6 +11,7 @@ Vulkan 1.2.
 
 Used features:
 
+- "buffer device_address"
 - "timeline_semaphores"
 
 ## Status

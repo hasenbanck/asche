@@ -133,3 +133,25 @@ impl Drop for ShaderModule {
         };
     }
 }
+
+/// Wraps a buffer.
+pub struct Buffer {
+    pub(crate) context: Arc<Context>,
+    /// The raw allocation.
+    pub allocation: vk_alloc::Allocation,
+    /// The raw Vulkan buffer.
+    pub raw: vk::Buffer,
+}
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.context
+                .allocator
+                .lock()
+                .free(&self.allocation)
+                .expect("can't free buffer allocation");
+            self.context.logical_device.destroy_buffer(self.raw, None);
+        };
+    }
+}

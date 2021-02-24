@@ -634,7 +634,9 @@ impl Instance {
             vk::PhysicalDeviceVulkan12Features::builder()
         };
 
-        features12 = features12.timeline_semaphore(true);
+        features12 = features12
+            .buffer_device_address(true)
+            .timeline_semaphore(true);
 
         check_features(
             &physical_features.features,

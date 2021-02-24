@@ -1,6 +1,7 @@
 //! Implements the device context.
 use ash::version::DeviceV1_0;
 use ash::vk;
+use parking_lot::Mutex;
 
 use crate::{Instance, Result};
 
@@ -12,10 +13,13 @@ pub struct Context {
     pub logical_device: ash::Device,
     /// The raw physical Vulkan device.
     pub physical_device: vk::PhysicalDevice,
+    /// The memory allocator.
+    pub allocator: Mutex<vk_alloc::Allocator>,
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
+        self.allocator.lock().free_all();
         unsafe { self.logical_device.destroy_device(None) };
     }
 }

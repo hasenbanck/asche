@@ -5,6 +5,7 @@ use std::sync::Arc;
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::vk::Handle;
+use parking_lot::Mutex;
 #[cfg(feature = "tracing")]
 use tracing::info;
 
@@ -148,10 +149,18 @@ impl Device {
         #[cfg(feature = "tracing")]
         info!("Created logical device and queues");
 
+        let allocator = vk_alloc::Allocator::new(
+            &instance.raw,
+            physical_device,
+            &logical_device,
+            &vk_alloc::AllocatorDescriptor::default(),
+        );
+
         let context = Arc::new(Context {
             instance,
             logical_device,
             physical_device,
+            allocator: Mutex::new(allocator),
         });
 
         let graphic_queue_family_index = family_ids[1];

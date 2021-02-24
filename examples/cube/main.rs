@@ -1,5 +1,20 @@
 use ash::vk;
+use bytemuck::{Pod, Zeroable};
 use raw_window_handle::HasRawWindowHandle;
+use vk_alloc::AllocationInfo;
+
+use asche::Buffer;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Vertex {
+    position: [f32; 4],
+    tex_coord: [f32; 2],
+}
+
+unsafe impl Pod for Vertex {}
+
+unsafe impl Zeroable for Vertex {}
 
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
@@ -24,11 +39,12 @@ fn main() -> Result<(), asche::AscheError> {
         extensions: vec![],
     })?;
 
-    let (device, (_, graphics_queue, _)) = instance.request_device(asche::DeviceConfiguration {
-        ..Default::default()
-    })?;
+    let (device, (_, graphics_queue, transfer_queue)) =
+        instance.request_device(asche::DeviceConfiguration {
+            ..Default::default()
+        })?;
 
-    let mut app = Application::new(device, graphics_queue, window)?;
+    let mut app = Application::new(device, graphics_queue, transfer_queue, window)?;
 
     event_loop.run(move |event, _, control_flow| match event {
         winit::event::Event::WindowEvent {
@@ -50,18 +66,21 @@ fn main() -> Result<(), asche::AscheError> {
 struct Application {
     device: asche::Device,
     graphics_queue: asche::GraphicsQueue,
+    transfer_queue: asche::TransferQueue,
     graphics_command_pool: asche::GraphicsCommandPool,
     window: winit::window::Window,
     extent: vk::Extent2D,
     graphics_pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
     frame_counter: u64,
+    transfer_counter: u64,
 }
 
 impl Application {
     fn new(
         mut device: asche::Device,
         mut graphics_queue: asche::GraphicsQueue,
+        transfer_queue: asche::TransferQueue,
         window: winit::window::Window,
     ) -> Result<Self, asche::AscheError> {
         let extent = vk::Extent2D {
@@ -185,16 +204,80 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
-        Ok(Self {
+        let mut app = Self {
             device,
             graphics_queue,
+            transfer_queue,
             graphics_command_pool,
             window,
             extent,
             graphics_pipeline: pipeline,
             render_pass,
             frame_counter: 0,
-        })
+            transfer_counter: 0,
+        };
+
+        let (vertex_data, index_data) = create_cube_data();
+
+        app.create_buffer(
+            &bytemuck::cast_slice(&vertex_data),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        )?;
+
+        app.create_buffer(
+            &bytemuck::cast_slice(&index_data),
+            vk::BufferUsageFlags::INDEX_BUFFER,
+        )?;
+
+        Ok(app)
+    }
+
+    fn create_buffer(
+        &mut self,
+        buffer_data: &[u8],
+        buffer_type: vk::BufferUsageFlags,
+    ) -> Result<Buffer, asche::AscheError> {
+        let mut stagging_buffer = self.transfer_queue.create_buffer(
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk_alloc::MemoryLocation::CpuToGpu,
+            buffer_data.len() as u64,
+            None,
+        )?;
+
+        let stagging_slice = stagging_buffer
+            .allocation
+            .mapped_slice_mut()
+            .expect("staging buffer allocation was not mapped");
+        stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
+
+        let dst_buffer = self.transfer_queue.create_buffer(
+            buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
+            vk_alloc::MemoryLocation::GpuOnly,
+            stagging_buffer.allocation.size(),
+            None,
+        )?;
+
+        let mut transfer_pool = self.transfer_queue.create_command_pool()?;
+        let transfer_buffer = transfer_pool
+            .create_command_buffer(self.transfer_counter, self.transfer_counter + 1)?;
+
+        transfer_buffer.record(|encoder| {
+            encoder.cmd_copy_buffer(
+                &stagging_buffer,
+                &dst_buffer,
+                0,
+                0,
+                buffer_data.len() as u64,
+            );
+            Ok(())
+        })?;
+        self.transfer_counter += 1;
+
+        self.transfer_queue.execute(&transfer_buffer)?;
+        self.transfer_queue
+            .wait_for_timeline_value(self.transfer_counter)?;
+
+        Ok(dst_buffer)
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
@@ -257,4 +340,112 @@ impl Timeline {
     fn with_offset(&self, offset: u64) -> u64 {
         *self as u64 + offset
     }
+}
+
+fn create_cube_data() -> (Vec<Vertex>, Vec<u32>) {
+    let vertex_data = [
+        Vertex {
+            position: [-1.0, -1.0, 1.0, 1.0],
+            tex_coord: [0.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, 1.0, 1.0],
+            tex_coord: [1.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, 1.0, 1.0],
+            tex_coord: [1.0, 1.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, 1.0, 1.0],
+            tex_coord: [0.0, 1.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, -1.0, 1.0],
+            tex_coord: [1.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, -1.0, 1.0],
+            tex_coord: [0.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, -1.0, 1.0],
+            tex_coord: [0.0, 1.0],
+        },
+        Vertex {
+            position: [-1.0, -1.0, -1.0, 1.0],
+            tex_coord: [1.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, -1.0, 1.0],
+            tex_coord: [0.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, -1.0, 1.0],
+            tex_coord: [1.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, 1.0, 1.0],
+            tex_coord: [1.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, 1.0, 1.0],
+            tex_coord: [0.0, 1.0],
+        },
+        Vertex {
+            position: [-1.0, -1.0, 1.0, 1.0],
+            tex_coord: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, 1.0, 1.0],
+            tex_coord: [0.0, 0.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, -1.0, 1.0],
+            tex_coord: [0.0, 1.0],
+        },
+        Vertex {
+            position: [-1.0, -1.0, -1.0, 1.0],
+            tex_coord: [1.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, -1.0, 1.0],
+            tex_coord: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, -1.0, 1.0],
+            tex_coord: [0.0, 0.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, 1.0, 1.0],
+            tex_coord: [0.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, 1.0, 1.0],
+            tex_coord: [1.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, 1.0, 1.0],
+            tex_coord: [0.0, 0.0],
+        },
+        Vertex {
+            position: [-1.0, -1.0, 1.0, 1.0],
+            tex_coord: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-1.0, -1.0, -1.0, 1.0],
+            tex_coord: [1.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, -1.0, 1.0],
+            tex_coord: [0.0, 1.0],
+        },
+    ];
+
+    let index_data: &[u32] = &[
+        0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 8, 9, 10, 10, 11, 8, 12, 13, 14, 14, 15, 12, 16, 17,
+        18, 18, 19, 16, 20, 21, 22, 22, 23, 20,
+    ];
+
+    (vertex_data.to_vec(), index_data.to_vec())
 }

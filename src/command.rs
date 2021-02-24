@@ -7,8 +7,9 @@ use ash::vk;
 use ash::vk::Handle;
 
 use crate::context::Context;
-use crate::{ComputePipeline, GraphicsPipeline, QueueType, RenderPass, Result};
+use crate::{Buffer, ComputePipeline, GraphicsPipeline, QueueType, RenderPass, Result};
 
+// TODO function to set the timeline values
 macro_rules! impl_command_pool {
     (
         #[doc = $doc:expr]
@@ -86,9 +87,8 @@ impl CommandPool {
         family_index: u32,
         id: u64,
     ) -> Result<Self> {
-        let command_pool_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(family_index)
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+        let command_pool_info =
+            vk::CommandPoolCreateInfo::builder().queue_family_index(family_index);
 
         let raw = unsafe {
             context
@@ -191,27 +191,22 @@ macro_rules! impl_command_buffer {
 
                 Ok(())
             }
-
-            /// Resets a command buffer.
-            pub fn reset(&self) -> Result<()> {
-                self.inner.reset()
-            }
         }
     }
 }
 
 impl_command_buffer!(
-    #[doc = "A command buffer for the compute queue."]
+    #[doc = "A command buffer for the compute queue. Command buffer need to be reset using the parent pool."]
     ComputeCommandBuffer => ComputeCommandEncoder
 );
 
 impl_command_buffer!(
-    #[doc = "A command buffer for the compute queue."]
+    #[doc = "A command buffer for the compute queue. Command buffer need to be reset using the parent pool."]
     GraphicsCommandBuffer => GraphicsCommandEncoder
 );
 
 impl_command_buffer!(
-    #[doc = "A command buffer for the transfer queue."]
+    #[doc = "A command buffer for the transfer queue. Command buffer need to be reset using the parent pool."]
     TransferCommandBuffer => TransferCommandEncoder
 );
 
@@ -239,17 +234,6 @@ impl CommandBuffer {
             timeline_wait_value,
             timeline_signal_value,
         }
-    }
-
-    #[inline]
-    pub fn reset(&self) -> Result<()> {
-        unsafe {
-            self.context
-                .logical_device
-                .reset_command_buffer(self.buffer, vk::CommandBufferResetFlags::empty())?
-        };
-
-        Ok(())
     }
 }
 
@@ -377,6 +361,26 @@ impl TransferCommandEncoder {
     fn end(&self) -> Result<()> {
         end(&self.context, self.buffer)
     }
+
+    /// Copies data between two buffer.
+    pub fn cmd_copy_buffer(
+        &self,
+        src_buffer: &Buffer,
+        dst_buffer: &Buffer,
+        src_offset: u64,
+        dst_offset: u64,
+        size: u64,
+    ) {
+        cmd_copy_buffer(
+            &self.context,
+            self.buffer,
+            src_buffer.raw,
+            dst_buffer.raw,
+            src_offset,
+            dst_offset,
+            size,
+        )
+    }
 }
 
 /// Used to encode render pass commands of a command buffer.
@@ -475,5 +479,27 @@ fn cmd_bind_pipeline(
         context
             .logical_device
             .cmd_bind_pipeline(buffer, pipeline_bind_point, pipeline)
+    };
+}
+
+#[inline]
+fn cmd_copy_buffer(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    src_buffer: vk::Buffer,
+    dst_buffer: vk::Buffer,
+    src_offset: u64,
+    dst_offset: u64,
+    size: u64,
+) {
+    let regions = [vk::BufferCopy::builder()
+        .dst_offset(dst_offset)
+        .src_offset(src_offset)
+        .size(size)
+        .build()];
+    unsafe {
+        context
+            .logical_device
+            .cmd_copy_buffer(buffer, src_buffer, dst_buffer, &regions)
     };
 }
