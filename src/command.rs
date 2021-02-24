@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
 use ash::vk::Handle;
 
@@ -458,7 +458,7 @@ impl RenderPassEncoder {
         };
     }
 
-    /// Binds a pipeline.
+    /// Bind a pipeline object to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
     pub fn cmd_bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
@@ -470,7 +470,7 @@ impl RenderPassEncoder {
         )
     }
 
-    /// Binds an index buffer.
+    /// Bind an index buffer to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
     pub fn cmd_bind_index_buffer(
@@ -479,10 +479,17 @@ impl RenderPassEncoder {
         offset: u64,
         index_type: vk::IndexType,
     ) {
-        cmd_bind_index_buffer(&self.context, self.buffer, index_buffer, offset, index_type)
+        unsafe {
+            &self.context.logical_device.cmd_bind_index_buffer(
+                self.buffer,
+                index_buffer,
+                offset,
+                index_type,
+            )
+        };
     }
 
-    /// Binds vertex buffers.
+    /// Bind vertex buffers to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
     pub fn cmd_bind_vertex_buffer(
@@ -491,13 +498,14 @@ impl RenderPassEncoder {
         vertex_buffers: &[vk::Buffer],
         offsets: &[u64],
     ) {
-        cmd_bind_vertex_buffer(
-            &self.context,
-            self.buffer,
-            first_binding,
-            vertex_buffers,
-            offsets,
-        )
+        unsafe {
+            &self.context.logical_device.cmd_bind_vertex_buffers(
+                self.buffer,
+                first_binding,
+                vertex_buffers,
+                offsets,
+            )
+        };
     }
 
     /// Draws primitives.
@@ -520,6 +528,115 @@ impl RenderPassEncoder {
             )
         };
     }
+
+    /// Issue an indexed draw into a command buffer.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexed.html
+    pub fn cmd_draw_indexed(
+        &self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) {
+        unsafe {
+            self.context.logical_device.cmd_draw_indexed(
+                self.buffer,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            )
+        };
+    }
+
+    /// Perform an indexed indirect draw.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
+    pub fn cmd_draw_indexed_indirect(
+        &self,
+        buffer: &Buffer,
+        offset: u64,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            self.context.logical_device.cmd_draw_indexed_indirect(
+                self.buffer,
+                buffer.raw,
+                offset,
+                draw_count,
+                stride,
+            )
+        };
+    }
+
+    /// Perform an indexed indirect draw with the draw count sourced from a buffer.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
+    pub fn cmd_draw_indexed_indirect_count(
+        &self,
+        buffer: &Buffer,
+        offset: u64,
+        count_buffer: &Buffer,
+        count_buffer_offset: u64,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            self.context.logical_device.cmd_draw_indexed_indirect_count(
+                self.buffer,
+                buffer.raw,
+                offset,
+                count_buffer.raw,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        };
+    }
+
+    /// Perform an indexed indirect draw with the draw count sourced from a buffer.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
+    pub fn cmd_draw_indirect(&self, buffer: &Buffer, offset: u64, draw_count: u32, stride: u32) {
+        unsafe {
+            self.context.logical_device.cmd_draw_indirect(
+                self.buffer,
+                buffer.raw,
+                offset,
+                draw_count,
+                stride,
+            )
+        };
+    }
+
+    /// Perform an indexed indirect draw with the draw count sourced from a buffer.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCount.html
+    pub fn cmd_draw_indirect_count(
+        &self,
+        buffer: &Buffer,
+        offset: u64,
+        count_buffer: &Buffer,
+        count_buffer_offset: u64,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            self.context.logical_device.cmd_draw_indirect_count(
+                self.buffer,
+                buffer.raw,
+                offset,
+                count_buffer.raw,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        };
+    }
 }
 
 #[inline]
@@ -536,39 +653,6 @@ fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
     unsafe { context.logical_device.end_command_buffer(buffer)? };
 
     Ok(())
-}
-
-#[inline]
-fn cmd_bind_index_buffer(
-    context: &Context,
-    buffer: vk::CommandBuffer,
-    index_buffer: vk::Buffer,
-    offset: u64,
-    index_type: vk::IndexType,
-) {
-    unsafe {
-        context
-            .logical_device
-            .cmd_bind_index_buffer(buffer, index_buffer, offset, index_type)
-    };
-}
-
-#[inline]
-fn cmd_bind_vertex_buffer(
-    context: &Context,
-    buffer: vk::CommandBuffer,
-    first_binding: u32,
-    vertex_buffers: &[vk::Buffer],
-    offsets: &[u64],
-) {
-    unsafe {
-        context.logical_device.cmd_bind_vertex_buffers(
-            buffer,
-            first_binding,
-            vertex_buffers,
-            offsets,
-        )
-    };
 }
 
 #[inline]
