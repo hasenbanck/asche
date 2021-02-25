@@ -1,6 +1,6 @@
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use glam::f32::{Vec2, Vec3, Vec4};
+use glam::f32::{Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
 #[repr(C)]
@@ -68,7 +68,8 @@ struct Application {
     graphics_command_pool: asche::GraphicsCommandPool,
     window: winit::window::Window,
     extent: vk::Extent2D,
-    graphics_pipeline: asche::GraphicsPipeline,
+    pipeline: asche::GraphicsPipeline,
+    pipeline_layout: asche::PipelineLayout,
     render_pass: asche::RenderPass,
     frame_counter: u64,
     transfer_counter: u64,
@@ -150,7 +151,13 @@ impl Application {
             device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
 
         // Pipeline layout
-        let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
+        let push_constants_ranges = [vk::PushConstantRange::builder()
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(64)
+            .build()];
+        let pipeline_layout =
+            vk::PipelineLayoutCreateInfo::builder().push_constant_ranges(&push_constants_ranges);
         let pipeline_layout =
             device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
 
@@ -228,13 +235,14 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
-        let p_matrix = glam::f32::Mat4::perspective_infinite_reverse_rh(
+        let p_matrix = Mat4::perspective_infinite_reverse_rh(
             (70.0f32).to_radians(),
             extent.width as f32 / extent.height as f32,
             0.1,
         );
-        let v_matrix = glam::f32::Mat4::look_at_rh(
-            Vec3::new(0.0, -2.0, 0.0),
+        // TODO why is the z value negative?! Z positive should be UP!
+        let v_matrix = Mat4::look_at_rh(
+            Vec3::new(0.0, -3.0, -2.0),
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 1.0),
         );
@@ -248,7 +256,8 @@ impl Application {
             graphics_command_pool,
             window,
             extent,
-            graphics_pipeline: pipeline,
+            pipeline,
+            pipeline_layout,
             render_pass,
             frame_counter: 0,
             transfer_counter: 0,
@@ -338,6 +347,11 @@ impl Application {
 
         let frame_buffer = self.device.get_frame_buffer(&self.render_pass, &frame)?;
 
+        let m_matrix = Mat4::from_rotation_z(
+            (std::f32::consts::PI / 2.0) * (self.frame_counter as f32 / 60_f32).fract(),
+        );
+        let mvp_matrix = self.vp_matrix * m_matrix;
+
         graphics_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -358,10 +372,17 @@ impl Application {
                 },
             )?;
 
-            pass.cmd_bind_pipeline(&self.graphics_pipeline);
+            pass.cmd_bind_pipeline(&self.pipeline);
 
             pass.cmd_bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
             pass.cmd_bind_vertex_buffer(0, &[self.vertex_buffer[0].raw], &[0]);
+
+            pass.cmd_push_constants(
+                self.pipeline_layout.raw,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                bytemuck::cast_slice(mvp_matrix.as_ref()),
+            );
 
             pass.cmd_draw_indexed(36, 1, 0, 0, 0);
 
