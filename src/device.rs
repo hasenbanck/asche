@@ -69,14 +69,34 @@ impl<'a> Default for DeviceConfiguration<'a> {
     }
 }
 
+/// Shows if the device support access to the device memory using the base address register.
+pub enum BARSupport {
+    /// Device doesn't support BAR.
+    NotSupported,
+    /// Device supports BAR.
+    BAR,
+    /// Device supports resizable BAR.
+    ResizableBAR,
+}
+
+impl std::fmt::Display for BARSupport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BARSupport::NotSupported => f.write_str("No BAR support"),
+            BARSupport::BAR => f.write_str("BAR supported"),
+            BARSupport::ResizableBAR => f.write_str("Resizable BAR supported"),
+        }
+    }
+}
+
 /// A Vulkan device.
 ///
 /// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
 pub struct Device {
     /// The type of the physical device.
     pub device_type: vk::PhysicalDeviceType,
-    /// True if the physical device supports resizable base address register (Resizable BAR).
-    pub supports_resizable_bar: bool,
+    /// Shows if the device support access to the device memory using the base address register.
+    pub resizable_bar_support: BARSupport,
     context: Arc<Context>,
     swapchain: Option<Swapchain>,
     compute_queue_family_index: u32,
@@ -111,7 +131,7 @@ impl Device {
         let (physical_device, physical_device_properties, physical_device_driver_properties) =
             instance.find_physical_device(configuration.device_type)?;
 
-        let supports_resizable_bar =
+        let resizable_bar_support =
             query_support_resizable_bar(&instance, physical_device, &physical_device_properties);
 
         #[cfg(feature = "tracing")]
@@ -147,7 +167,7 @@ impl Device {
                 driver_name, driver_version
             );
 
-            info!("Resizable BAR support: {}", supports_resizable_bar);
+            info!("BAR support: {}", resizable_bar_support);
         }
 
         let presentation_mode = configuration.presentation_mode;
@@ -183,7 +203,7 @@ impl Device {
 
         let mut device = Device {
             device_type: physical_device_properties.device_type,
-            supports_resizable_bar,
+            resizable_bar_support,
             context,
             compute_queue_family_index: family_ids[0],
             graphic_queue_family_index: family_ids[1],
@@ -520,7 +540,7 @@ fn query_support_resizable_bar(
     instance: &Instance,
     device: vk::PhysicalDevice,
     device_properties: &vk::PhysicalDeviceProperties,
-) -> bool {
+) -> BARSupport {
     if device_properties.device_type != vk::PhysicalDeviceType::INTEGRATED_GPU {
         let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::builder();
         unsafe {
@@ -547,10 +567,14 @@ fn query_support_resizable_bar(
             let property = memory_properties.memory_properties.memory_heaps[*index as usize];
             // Normally BAR is at most 256 MiB, everything more must be resizable BAR.
             if property.size > 268435456 {
-                return true;
+                return BARSupport::ResizableBAR;
             }
+        }
+
+        if !heap_indices.is_empty() {
+            return BARSupport::BAR;
         }
     }
 
-    return false;
+    BARSupport::NotSupported
 }

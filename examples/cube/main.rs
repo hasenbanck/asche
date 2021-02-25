@@ -279,7 +279,6 @@ impl Application {
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
 
-        // TODO How to do a exclusive access with ownership transfer?
         let dst_buffer = self.device.create_buffer(
             buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
             vk_alloc::MemoryLocation::GpuOnly,

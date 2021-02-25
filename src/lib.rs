@@ -13,7 +13,7 @@ pub use {
         TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
-    device::{Device, DeviceConfiguration, QueuePriorityDescriptor},
+    device::{BARSupport, Device, DeviceConfiguration, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceConfiguration},
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
