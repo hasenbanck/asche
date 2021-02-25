@@ -1,7 +1,6 @@
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use raw_window_handle::HasRawWindowHandle;
-use vk_alloc::AllocationInfo;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -286,7 +285,7 @@ impl Application {
             vk_alloc::MemoryLocation::GpuOnly,
             vk::SharingMode::CONCURRENT,
             vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
-            stagging_buffer.allocation.size(),
+            stagging_buffer.allocation.size,
             None,
         )?;
 

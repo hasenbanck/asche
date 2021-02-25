@@ -18,7 +18,7 @@ ash = "0.31"
 raw-window-handle = "0.3"
 tracing = { version = "0.1", default-features = false, optional = true }
 parking_lot = "0.11"
-vk-alloc = { version = "0.2", features = ["vk-dedicated-allocation", "vk-buffer-device-address"] }
+vk-alloc = { version = "0.3", features = ["tracing", "vk-buffer-device-address"] }
 
 [dev-dependencies]
 bytemuck = "1.5"

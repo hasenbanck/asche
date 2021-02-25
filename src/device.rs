@@ -2,13 +2,12 @@ use std::ffi::CStr;
 use std::io::Cursor;
 use std::sync::Arc;
 
-use ash::version::{DeviceV1_0, DeviceV1_1};
+use ash::version::{DeviceV1_0, DeviceV1_1, InstanceV1_1};
 use ash::vk;
 use ash::vk::Handle;
 use parking_lot::Mutex;
 #[cfg(feature = "tracing")]
 use tracing::info;
-use vk_alloc::AllocationInfo;
 
 use crate::context::Context;
 use crate::instance::Instance;
@@ -74,6 +73,10 @@ impl<'a> Default for DeviceConfiguration<'a> {
 ///
 /// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
 pub struct Device {
+    /// The type of the physical device.
+    pub device_type: vk::PhysicalDeviceType,
+    /// True if the physical device supports resizable base address register (Resizable BAR).
+    pub supports_resizable_bar: bool,
     context: Arc<Context>,
     swapchain: Option<Swapchain>,
     compute_queue_family_index: u32,
@@ -108,6 +111,9 @@ impl Device {
         let (physical_device, physical_device_properties, physical_device_driver_properties) =
             instance.find_physical_device(configuration.device_type)?;
 
+        let supports_resizable_bar =
+            query_support_resizable_bar(&instance, physical_device, &physical_device_properties);
+
         #[cfg(feature = "tracing")]
         {
             let name = String::from(
@@ -140,17 +146,22 @@ impl Device {
                 "Driver version of selected device: {} ({})",
                 driver_name, driver_version
             );
+
+            info!("Resizable BAR support: {}", supports_resizable_bar);
         }
 
         let presentation_mode = configuration.presentation_mode;
         let swapchain_format = configuration.swapchain_format;
         let swapchain_color_space = configuration.swapchain_color_space;
 
+        #[cfg(feature = "tracing")]
+        info!("Creating logical device and queues");
+
         let (logical_device, family_ids, queues) =
             instance.create_logical_device(physical_device, configuration)?;
 
         #[cfg(feature = "tracing")]
-        info!("Created logical device and queues");
+        info!("Creating Vulkan memory allocator");
 
         let allocator = vk_alloc::Allocator::new(
             &instance.raw,
@@ -171,6 +182,8 @@ impl Device {
         let transfer_queue = TransferQueue::new(context.clone(), family_ids[2], queues[2])?;
 
         let mut device = Device {
+            device_type: physical_device_properties.device_type,
+            supports_resizable_bar,
             context,
             compute_queue_family_index: family_ids[0],
             graphic_queue_family_index: family_ids[1],
@@ -193,6 +206,12 @@ impl Device {
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
     pub fn recreate_swapchain(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
+        #[cfg(feature = "tracing")]
+        info!(
+            "Creating swapchain with format {:?} and color space {:?}",
+            self.swapchain_format, self.swapchain_color_space
+        );
+
         let formats = unsafe {
             self.context
                 .instance
@@ -271,10 +290,7 @@ impl Device {
         )?;
 
         #[cfg(feature = "tracing")]
-        info!(
-            "Created swapchain with format {:?}, color space {:?} and image count {}",
-            self.swapchain_format, self.swapchain_color_space, image_count
-        );
+        info!("Swapchain has {} image(s)", image_count);
 
         self.swapchain = Some(swapchain);
 
@@ -483,8 +499,8 @@ impl Device {
 
         let bind_infos = vk::BindBufferMemoryInfo::builder()
             .buffer(raw)
-            .memory(allocation.memory())
-            .memory_offset(allocation.offset());
+            .memory(allocation.device_memory)
+            .memory_offset(allocation.offset);
 
         unsafe {
             self.context
@@ -498,4 +514,43 @@ impl Device {
             allocation,
         })
     }
+}
+
+fn query_support_resizable_bar(
+    instance: &Instance,
+    device: vk::PhysicalDevice,
+    device_properties: &vk::PhysicalDeviceProperties,
+) -> bool {
+    if device_properties.device_type != vk::PhysicalDeviceType::INTEGRATED_GPU {
+        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::builder();
+        unsafe {
+            instance
+                .raw
+                .get_physical_device_memory_properties2(device, &mut memory_properties)
+        };
+
+        let heap_indices: Vec<u32> = memory_properties
+            .memory_properties
+            .memory_types
+            .iter()
+            .filter(|t| {
+                t.property_flags.contains(
+                    vk::MemoryPropertyFlags::DEVICE_LOCAL
+                        | vk::MemoryPropertyFlags::HOST_COHERENT
+                        | vk::MemoryPropertyFlags::HOST_VISIBLE,
+                )
+            })
+            .map(|t| t.heap_index)
+            .collect();
+
+        for index in heap_indices.iter() {
+            let property = memory_properties.memory_properties.memory_heaps[*index as usize];
+            // Normally BAR is at most 256 MiB, everything more must be resizable BAR.
+            if property.size > 268435456 {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
