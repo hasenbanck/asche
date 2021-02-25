@@ -305,6 +305,26 @@ impl ComputeCommandEncoder {
             compute_pipeline.raw,
         )
     }
+
+    /// Update the values of push constants.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
+    pub fn cmd_push_constants(
+        &self,
+        layout: vk::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8],
+    ) {
+        cmd_push_constants(
+            &self.context,
+            self.buffer,
+            layout,
+            stage_flags,
+            offset,
+            constants,
+        );
+    }
 }
 
 /// Used to encode command for a graphics command buffer.
@@ -490,7 +510,7 @@ impl RenderPassEncoder {
         index_type: vk::IndexType,
     ) {
         unsafe {
-            &self.context.logical_device.cmd_bind_index_buffer(
+            self.context.logical_device.cmd_bind_index_buffer(
                 self.buffer,
                 index_buffer,
                 offset,
@@ -509,13 +529,33 @@ impl RenderPassEncoder {
         offsets: &[u64],
     ) {
         unsafe {
-            &self.context.logical_device.cmd_bind_vertex_buffers(
+            self.context.logical_device.cmd_bind_vertex_buffers(
                 self.buffer,
                 first_binding,
                 vertex_buffers,
                 offsets,
             )
         };
+    }
+
+    /// Update the values of push constants.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
+    pub fn cmd_push_constants(
+        &self,
+        layout: vk::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8],
+    ) {
+        cmd_push_constants(
+            &self.context,
+            self.buffer,
+            layout,
+            stage_flags,
+            offset,
+            constants,
+        );
     }
 
     /// Draws primitives.
@@ -698,5 +738,21 @@ fn cmd_copy_buffer(
         context
             .logical_device
             .cmd_copy_buffer(buffer, src_buffer, dst_buffer, &regions)
+    };
+}
+
+#[inline]
+fn cmd_push_constants(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    layout: vk::PipelineLayout,
+    stage_flags: vk::ShaderStageFlags,
+    offset: u32,
+    constants: &[u8],
+) {
+    unsafe {
+        context
+            .logical_device
+            .cmd_push_constants(buffer, layout, stage_flags, offset, constants)
     };
 }

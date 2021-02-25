@@ -1,12 +1,13 @@
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
+use glam::f32::{Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
-    position: [f32; 4],
-    tex_coord: [f32; 2],
+    position: Vec4,
+    tex_coord: Vec2,
 }
 
 unsafe impl Pod for Vertex {}
@@ -73,6 +74,7 @@ struct Application {
     transfer_counter: u64,
     vertex_buffer: Vec<asche::Buffer>,
     index_buffer: Vec<asche::Buffer>,
+    vp_matrix: glam::f32::Mat4,
 }
 
 impl Application {
@@ -226,6 +228,19 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
+        let p_matrix = glam::f32::Mat4::perspective_infinite_reverse_rh(
+            (70.0f32).to_radians(),
+            extent.width as f32 / extent.height as f32,
+            0.1,
+        );
+        let v_matrix = glam::f32::Mat4::look_at_rh(
+            Vec3::new(0.0, -2.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        );
+
+        let vp_matrix = p_matrix * v_matrix;
+
         let mut app = Self {
             device,
             graphics_queue,
@@ -239,6 +254,7 @@ impl Application {
             transfer_counter: 0,
             vertex_buffer: vec![],
             index_buffer: vec![],
+            vp_matrix,
         };
 
         let (vertex_data, index_data) = create_cube_data();
@@ -380,100 +396,100 @@ impl Timeline {
 fn create_cube_data() -> (Vec<Vertex>, Vec<u32>) {
     let vertex_data = [
         Vertex {
-            position: [-1.0, -1.0, 1.0, 1.0],
-            tex_coord: [0.0, 0.0],
+            position: Vec4::new(-1.0, -1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 0.0),
         },
         Vertex {
-            position: [1.0, -1.0, 1.0, 1.0],
-            tex_coord: [1.0, 0.0],
+            position: Vec4::new(1.0, -1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 0.0),
         },
         Vertex {
-            position: [1.0, 1.0, 1.0, 1.0],
-            tex_coord: [1.0, 1.0],
+            position: Vec4::new(1.0, 1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 1.0),
         },
         Vertex {
-            position: [-1.0, 1.0, 1.0, 1.0],
-            tex_coord: [0.0, 1.0],
+            position: Vec4::new(-1.0, 1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 1.0),
         },
         Vertex {
-            position: [-1.0, 1.0, -1.0, 1.0],
-            tex_coord: [1.0, 0.0],
+            position: Vec4::new(-1.0, 1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 0.0),
         },
         Vertex {
-            position: [1.0, 1.0, -1.0, 1.0],
-            tex_coord: [0.0, 0.0],
+            position: Vec4::new(1.0, 1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 0.0),
         },
         Vertex {
-            position: [1.0, -1.0, -1.0, 1.0],
-            tex_coord: [0.0, 1.0],
+            position: Vec4::new(1.0, -1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 1.0),
         },
         Vertex {
-            position: [-1.0, -1.0, -1.0, 1.0],
-            tex_coord: [1.0, 1.0],
+            position: Vec4::new(-1.0, -1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 1.0),
         },
         Vertex {
-            position: [1.0, -1.0, -1.0, 1.0],
-            tex_coord: [0.0, 0.0],
+            position: Vec4::new(1.0, -1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 0.0),
         },
         Vertex {
-            position: [1.0, 1.0, -1.0, 1.0],
-            tex_coord: [1.0, 0.0],
+            position: Vec4::new(1.0, 1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 0.0),
         },
         Vertex {
-            position: [1.0, 1.0, 1.0, 1.0],
-            tex_coord: [1.0, 1.0],
+            position: Vec4::new(1.0, 1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 1.0),
         },
         Vertex {
-            position: [1.0, -1.0, 1.0, 1.0],
-            tex_coord: [0.0, 1.0],
+            position: Vec4::new(1.0, -1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 1.0),
         },
         Vertex {
-            position: [-1.0, -1.0, 1.0, 1.0],
-            tex_coord: [1.0, 0.0],
+            position: Vec4::new(-1.0, -1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 0.0),
         },
         Vertex {
-            position: [-1.0, 1.0, 1.0, 1.0],
-            tex_coord: [0.0, 0.0],
+            position: Vec4::new(-1.0, 1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 0.0),
         },
         Vertex {
-            position: [-1.0, 1.0, -1.0, 1.0],
-            tex_coord: [0.0, 1.0],
+            position: Vec4::new(-1.0, 1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 1.0),
         },
         Vertex {
-            position: [-1.0, -1.0, -1.0, 1.0],
-            tex_coord: [1.0, 1.0],
+            position: Vec4::new(-1.0, -1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 1.0),
         },
         Vertex {
-            position: [1.0, 1.0, -1.0, 1.0],
-            tex_coord: [1.0, 0.0],
+            position: Vec4::new(1.0, 1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 0.0),
         },
         Vertex {
-            position: [-1.0, 1.0, -1.0, 1.0],
-            tex_coord: [0.0, 0.0],
+            position: Vec4::new(-1.0, 1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 0.0),
         },
         Vertex {
-            position: [-1.0, 1.0, 1.0, 1.0],
-            tex_coord: [0.0, 1.0],
+            position: Vec4::new(-1.0, 1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 1.0),
         },
         Vertex {
-            position: [1.0, 1.0, 1.0, 1.0],
-            tex_coord: [1.0, 1.0],
+            position: Vec4::new(1.0, 1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 1.0),
         },
         Vertex {
-            position: [1.0, -1.0, 1.0, 1.0],
-            tex_coord: [0.0, 0.0],
+            position: Vec4::new(1.0, -1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 0.0),
         },
         Vertex {
-            position: [-1.0, -1.0, 1.0, 1.0],
-            tex_coord: [1.0, 0.0],
+            position: Vec4::new(-1.0, -1.0, 1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 0.0),
         },
         Vertex {
-            position: [-1.0, -1.0, -1.0, 1.0],
-            tex_coord: [1.0, 1.0],
+            position: Vec4::new(-1.0, -1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(1.0, 1.0),
         },
         Vertex {
-            position: [1.0, -1.0, -1.0, 1.0],
-            tex_coord: [0.0, 1.0],
+            position: Vec4::new(1.0, -1.0, -1.0, 1.0),
+            tex_coord: Vec2::new(0.0, 1.0),
         },
     ];
 
