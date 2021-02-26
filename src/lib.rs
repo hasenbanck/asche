@@ -215,7 +215,6 @@ pub struct RenderPassDepthAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
     pub attachment: vk::ImageView,
     /// Value used to clear the attachment.
-    // TODO can't this be optional?
     pub clear_value: vk::ClearValue,
 }
 

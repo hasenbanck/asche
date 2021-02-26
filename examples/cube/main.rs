@@ -99,11 +99,11 @@ impl Application {
 
         // Shader
         let vert_module = device.create_shader_module(
-            "vertex module",
+            "Vertex Shader Module",
             include_bytes!("../../gen/shader/cube.vert.spv"),
         )?;
         let frag_module = device.create_shader_module(
-            "fragment module",
+            "Fragment Shader Module",
             include_bytes!("../../gen/shader/cube.frag.spv"),
         )?;
 
@@ -193,7 +193,7 @@ impl Application {
 
         let depth_attachment_references = vk::AttachmentReference {
             attachment: 1,
-            layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
 
         let subpasses = [vk::SubpassDescription::builder()
@@ -313,7 +313,7 @@ impl Application {
             .render_pass(render_pass.raw)
             .subpass(0);
 
-        let pipeline = device.create_graphics_pipeline("cube pipeline", pipeline_info)?;
+        let pipeline = device.create_graphics_pipeline("Cube Pipeline", pipeline_info)?;
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 

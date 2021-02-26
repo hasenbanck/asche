@@ -1,6 +1,8 @@
 use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
 
+use asche::RenderPassColorAttachmentDescriptor;
+
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -71,11 +73,11 @@ impl Application {
 
         // Shader
         let vert_module = device.create_shader_module(
-            "vertex module",
+            "Vertex Shader Module",
             include_bytes!("../../gen/shader/triangle.vert.spv"),
         )?;
         let frag_module = device.create_shader_module(
-            "fragment module",
+            "Fragment Shader Module",
             include_bytes!("../../gen/shader/triangle.frag.spv"),
         )?;
 
@@ -181,7 +183,7 @@ impl Application {
             .layout(pipeline_layout.raw)
             .render_pass(render_pass.raw)
             .subpass(0);
-        let pipeline = device.create_graphics_pipeline("triangle pipeline", pipeline_info)?;
+        let pipeline = device.create_graphics_pipeline("Triangle Pipeline", pipeline_info)?;
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
@@ -206,8 +208,6 @@ impl Application {
             Timeline::RenderEnd.with_offset(frame_offset),
         )?;
 
-        let frame_buffer = self.device.get_frame_buffer(&self.render_pass, &frame)?;
-
         graphics_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -215,17 +215,18 @@ impl Application {
             });
 
             let pass = encoder.begin_render_pass(
+                &self.device,
                 &self.render_pass,
-                frame_buffer,
-                &[vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [1.0, 0.0, 1.0, 1.0],
+                &[&RenderPassColorAttachmentDescriptor {
+                    attachment: frame.view,
+                    clear_value: vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [1.0, 0.0, 1.0, 1.0],
+                        },
                     },
                 }],
-                vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: self.extent,
-                },
+                None,
+                self.extent,
             )?;
 
             pass.cmd_bind_pipeline(&self.graphics_pipeline);

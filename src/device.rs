@@ -343,16 +343,19 @@ impl Device {
         if let Some(depth_attachment) = depth_attachment {
             hasher.write_u64(depth_attachment.attachment.as_raw());
         }
-
         let hash = hasher.finish();
+
+        let mut created = false;
         let framebuffer = if let Some(framebuffer) = self.framebuffers.lock().get(&hash) {
             *framebuffer
         } else {
-            let fb =
-                self.create_framebuffer(render_pass, color_attachments, depth_attachment, extent)?;
-            self.framebuffers.lock().insert(hash, fb);
-            *self.framebuffers.lock().get(&hash).unwrap()
+            created = true;
+            self.create_framebuffer(render_pass, color_attachments, depth_attachment, extent)?
         };
+
+        if created {
+            self.framebuffers.lock().insert(hash, framebuffer);
+        }
 
         Ok(framebuffer)
     }
