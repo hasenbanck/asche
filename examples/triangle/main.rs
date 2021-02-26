@@ -1,8 +1,6 @@
 use ash::vk;
 use raw_window_handle::HasRawWindowHandle;
 
-use asche::RenderPassColorAttachmentDescriptor;
-
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -57,7 +55,8 @@ struct Application {
     extent: vk::Extent2D,
     graphics_pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
-    frame_counter: u64,
+    timeline: asche::TimelineSemaphore,
+    timeline_value: u64,
 }
 
 impl Application {
@@ -187,6 +186,9 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
+        let timeline_value = 0;
+        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
+
         Ok(Self {
             device,
             graphics_queue,
@@ -195,17 +197,18 @@ impl Application {
             extent,
             graphics_pipeline: pipeline,
             render_pass,
-            frame_counter: 0,
+            timeline,
+            timeline_value,
         })
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame_offset = self.frame_counter * Timeline::RenderEnd as u64;
         let frame = self.device.get_next_frame()?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
-            Timeline::RenderStart.with_offset(frame_offset),
-            Timeline::RenderEnd.with_offset(frame_offset),
+            &self.timeline,
+            Timeline::RenderStart.with_offset(self.timeline_value),
+            Timeline::RenderEnd.with_offset(self.timeline_value),
         )?;
 
         graphics_buffer.record(|encoder| {
@@ -217,7 +220,7 @@ impl Application {
             let pass = encoder.begin_render_pass(
                 &self.device,
                 &self.render_pass,
-                &[&RenderPassColorAttachmentDescriptor {
+                &[&asche::RenderPassColorAttachmentDescriptor {
                     attachment: frame.view,
                     clear_value: vk::ClearValue {
                         color: vk::ClearColorValue {
@@ -236,13 +239,15 @@ impl Application {
         })?;
 
         self.graphics_queue.execute(&graphics_buffer)?;
-        self.graphics_queue
-            .wait_for_timeline_value(Timeline::RenderEnd.with_offset(frame_offset))?;
+        self.graphics_queue.wait_for_timeline_value(
+            &self.timeline,
+            Timeline::RenderEnd.with_offset(self.timeline_value),
+        )?;
 
         self.graphics_command_pool.reset()?;
 
         self.device.queue_frame(&self.graphics_queue, frame)?;
-        self.frame_counter += 1;
+        self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())
     }

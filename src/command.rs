@@ -10,6 +10,7 @@ use crate::context::Context;
 use crate::{
     Buffer, ComputePipeline, Device, GraphicsPipeline, QueueType, RenderPass,
     RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
+    TimelineSemaphore,
 };
 
 macro_rules! impl_command_pool {
@@ -32,11 +33,12 @@ macro_rules! impl_command_pool {
             /// Creates a new command buffer.
             pub fn create_command_buffer(
                 &mut self,
+                timeline_semaphore: &TimelineSemaphore,
                 timeline_wait_value: u64,
                 timeline_signal_value: u64,
             ) -> Result<$buffer_name> {
                 let inner = self.inner
-                    .create_command_buffer(timeline_wait_value, timeline_signal_value)?;
+                    .create_command_buffer(timeline_semaphore.raw, timeline_wait_value, timeline_signal_value)?;
                 Ok($buffer_name { inner })
             }
 
@@ -116,6 +118,7 @@ impl CommandPool {
     #[inline]
     pub fn create_command_buffer(
         &mut self,
+        timeline_semaphore: vk::Semaphore,
         timeline_wait_value: u64,
         timeline_signal_value: u64,
     ) -> Result<CommandBuffer> {
@@ -143,6 +146,7 @@ impl CommandPool {
             self.context.clone(),
             self.raw,
             command_buffers[0],
+            timeline_semaphore,
             timeline_wait_value,
             timeline_signal_value,
         );
@@ -194,9 +198,9 @@ macro_rules! impl_command_buffer {
                 Ok(())
             }
 
-            /// Sets the timeline values of a command buffer.
-            pub fn set_timeline_values(&mut self, wait_value: u64, signal_value: u64) {
-                self.inner.set_timeline_values(wait_value, signal_value)
+            /// Sets the timeline semaphore of a command buffer.
+            pub fn set_timeline_semaphore(&mut self, timeline_semaphore: TimelineSemaphore, wait_value: u64, signal_value: u64) {
+                self.inner.set_timeline_semaphore(timeline_semaphore.raw, wait_value, signal_value)
             }
         }
     }
@@ -222,6 +226,7 @@ pub(crate) struct CommandBuffer {
     context: Arc<Context>,
     pool: vk::CommandPool,
     pub(crate) buffer: vk::CommandBuffer,
+    pub(crate) timeline_semaphore: vk::Semaphore,
     pub(crate) timeline_wait_value: u64,
     pub(crate) timeline_signal_value: u64,
 }
@@ -231,6 +236,7 @@ impl CommandBuffer {
         context: Arc<Context>,
         pool: vk::CommandPool,
         buffer: vk::CommandBuffer,
+        timeline_semaphore: vk::Semaphore,
         timeline_wait_value: u64,
         timeline_signal_value: u64,
     ) -> Self {
@@ -238,13 +244,20 @@ impl CommandBuffer {
             context,
             pool,
             buffer,
+            timeline_semaphore,
             timeline_wait_value,
             timeline_signal_value,
         }
     }
 
     #[inline]
-    fn set_timeline_values(&mut self, wait_value: u64, signal_value: u64) {
+    fn set_timeline_semaphore(
+        &mut self,
+        timeline_semaphore: vk::Semaphore,
+        wait_value: u64,
+        signal_value: u64,
+    ) {
+        self.timeline_semaphore = timeline_semaphore;
         self.timeline_wait_value = wait_value;
         self.timeline_signal_value = signal_value;
     }

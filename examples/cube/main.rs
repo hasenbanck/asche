@@ -3,11 +3,6 @@ use bytemuck::{Pod, Zeroable};
 use glam::f32::{Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
-use asche::{
-    BufferDescriptor, ImageDescriptor, ImageViewDescriptor, RenderPassColorAttachmentDescriptor,
-    RenderPassDepthAttachmentDescriptor,
-};
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -78,11 +73,11 @@ struct Application {
     render_pass: asche::RenderPass,
     _depth_image: asche::Image,
     depth_image_view: asche::ImageView,
-    frame_counter: u64,
-    transfer_counter: u64,
     vertex_buffer: Vec<asche::Buffer>,
     index_buffer: Vec<asche::Buffer>,
     vp_matrix: glam::f32::Mat4,
+    timeline: asche::TimelineSemaphore,
+    timeline_value: u64,
 }
 
 impl Application {
@@ -118,7 +113,7 @@ impl Application {
             .name(&mainfunctionname);
 
         // Depth image
-        let depth_image = device.create_image(&ImageDescriptor {
+        let depth_image = device.create_image(&asche::ImageDescriptor {
             name: "Depth Texture",
             usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
@@ -139,7 +134,7 @@ impl Application {
             flags: None,
         })?;
 
-        let depth_image_view = device.create_image_view(&ImageViewDescriptor {
+        let depth_image_view = device.create_image_view(&asche::ImageViewDescriptor {
             name: "Depth Texture View",
             image: &depth_image,
             view_type: vk::ImageViewType::TYPE_2D,
@@ -325,6 +320,9 @@ impl Application {
         let v_matrix = Mat4::look_at_rh(Vec3::new(0.0, 2.0, 3.0), Vec3::zero(), Vec3::unit_y());
         let vp_matrix = p_matrix * v_matrix;
 
+        let timeline_value = 0;
+        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
+
         let mut app = Self {
             device,
             graphics_queue,
@@ -337,11 +335,11 @@ impl Application {
             render_pass,
             _depth_image: depth_image,
             depth_image_view,
-            frame_counter: 0,
-            transfer_counter: 0,
             vertex_buffer: vec![],
             index_buffer: vec![],
             vp_matrix,
+            timeline,
+            timeline_value,
         };
 
         let (vertex_data, index_data) = create_cube_data();
@@ -370,7 +368,7 @@ impl Application {
         buffer_data: &[u8],
         buffer_type: vk::BufferUsageFlags,
     ) -> Result<asche::Buffer, asche::AscheError> {
-        let mut stagging_buffer = self.device.create_buffer(&BufferDescriptor {
+        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name: "Staging Buffer",
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
@@ -386,7 +384,7 @@ impl Application {
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
 
-        let dst_buffer = self.device.create_buffer(&BufferDescriptor {
+        let dst_buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name,
             usage: buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
@@ -397,8 +395,11 @@ impl Application {
         })?;
 
         let mut transfer_pool = self.transfer_queue.create_command_pool()?;
-        let transfer_buffer = transfer_pool
-            .create_command_buffer(self.transfer_counter, self.transfer_counter + 1)?;
+        let transfer_buffer = transfer_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
 
         transfer_buffer.record(|encoder| {
             encoder.cmd_copy_buffer(
@@ -410,27 +411,26 @@ impl Application {
             );
             Ok(())
         })?;
-        self.transfer_counter += 1;
+        self.timeline_value += 1;
 
         self.transfer_queue.execute(&transfer_buffer)?;
         self.transfer_queue
-            .wait_for_timeline_value(self.transfer_counter)?;
+            .wait_for_timeline_value(&self.timeline, self.timeline_value)?;
 
         Ok(dst_buffer)
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame_offset = self.frame_counter * Timeline::RenderEnd as u64;
         let frame = self.device.get_next_frame()?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
-            Timeline::RenderStart.with_offset(frame_offset),
-            Timeline::RenderEnd.with_offset(frame_offset),
+            &self.timeline,
+            Timeline::RenderStart.with_offset(self.timeline_value),
+            Timeline::RenderEnd.with_offset(self.timeline_value),
         )?;
 
-        let m_matrix = Mat4::from_rotation_y(
-            (std::f32::consts::PI / 2.0) * (self.frame_counter as f32 / 60_f32).fract(),
-        );
+        let m_matrix =
+            Mat4::from_rotation_y((std::f32::consts::PI) * self.timeline_value as f32 / 500.0);
         let mvp_matrix = self.vp_matrix * m_matrix;
 
         graphics_buffer.record(|encoder| {
@@ -442,7 +442,7 @@ impl Application {
             let pass = encoder.begin_render_pass(
                 &self.device,
                 &self.render_pass,
-                &[&RenderPassColorAttachmentDescriptor {
+                &[&asche::RenderPassColorAttachmentDescriptor {
                     attachment: frame.view,
                     clear_value: vk::ClearValue {
                         color: vk::ClearColorValue {
@@ -450,7 +450,7 @@ impl Application {
                         },
                     },
                 }],
-                Some(&RenderPassDepthAttachmentDescriptor {
+                Some(&asche::RenderPassDepthAttachmentDescriptor {
                     attachment: self.depth_image_view.raw,
                     clear_value: vk::ClearValue {
                         color: vk::ClearColorValue {
@@ -479,13 +479,15 @@ impl Application {
         })?;
 
         self.graphics_queue.execute(&graphics_buffer)?;
-        self.graphics_queue
-            .wait_for_timeline_value(Timeline::RenderEnd.with_offset(frame_offset))?;
+        self.graphics_queue.wait_for_timeline_value(
+            &self.timeline,
+            Timeline::RenderEnd.with_offset(self.timeline_value),
+        )?;
 
         self.graphics_command_pool.reset()?;
 
         self.device.queue_frame(&self.graphics_queue, frame)?;
-        self.frame_counter += 1;
+        self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())
     }

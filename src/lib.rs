@@ -264,7 +264,7 @@ impl Drop for Image {
 
 /// Wraps an image view.
 pub struct ImageView {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw Vulkan image view.
     pub raw: vk::ImageView,
 }
@@ -275,6 +275,22 @@ impl Drop for ImageView {
             self.context
                 .logical_device
                 .destroy_image_view(self.raw, None);
+        };
+    }
+}
+
+/// A wrapper timeline semaphore.
+pub struct TimelineSemaphore {
+    context: Arc<Context>,
+    pub(crate) raw: vk::Semaphore,
+}
+
+impl Drop for TimelineSemaphore {
+    fn drop(&mut self) {
+        unsafe {
+            self.context
+                .logical_device
+                .destroy_semaphore(self.raw, None);
         };
     }
 }

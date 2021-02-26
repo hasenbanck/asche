@@ -19,7 +19,7 @@ use crate::{
     AscheError, Buffer, BufferDescriptor, ComputeQueue, GraphicsPipeline, GraphicsQueue, Image,
     ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass,
     RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result, ShaderModule,
-    TransferQueue,
+    TimelineSemaphore, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -204,9 +204,11 @@ impl Device {
             allocator: Mutex::new(allocator),
         });
 
-        let compute_queue = ComputeQueue::new(context.clone(), family_ids[0], queues[0])?;
-        let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1])?;
-        let transfer_queue = TransferQueue::new(context.clone(), family_ids[2], queues[2])?;
+        let compute_queue = ComputeQueue::new(context.clone(), family_ids[0], queues[0]);
+        let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1]);
+        let transfer_queue = TransferQueue::new(context.clone(), family_ids[2], queues[2]);
+
+        // TODO create the queue debug names.
 
         let mut device = Device {
             device_type: physical_device_properties.device_type,
@@ -688,6 +690,31 @@ impl Device {
             .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.as_raw())?;
 
         Ok(ImageView {
+            context: self.context.clone(),
+            raw,
+        })
+    }
+
+    /// Creates a new timeline semaphore.
+    pub fn create_timeline_semaphore(
+        &self,
+        name: &str,
+        initial_value: u64,
+    ) -> Result<TimelineSemaphore> {
+        let mut create_info = vk::SemaphoreTypeCreateInfo::builder()
+            .semaphore_type(vk::SemaphoreType::TIMELINE)
+            .initial_value(initial_value);
+        let semaphore_info = vk::SemaphoreCreateInfo::builder().push_next(&mut create_info);
+        let raw = unsafe {
+            self.context
+                .logical_device
+                .create_semaphore(&semaphore_info, None)?
+        };
+
+        self.context
+            .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.as_raw())?;
+
+        Ok(TimelineSemaphore {
             context: self.context.clone(),
             raw,
         })
