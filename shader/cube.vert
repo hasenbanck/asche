@@ -16,4 +16,3 @@ void main() {
     gl_Position = PC.mvp * vec4(a_pos, 1.0);
     v_color = vec4(1.0, 1.0, 0.0, 1.0);
 }
-

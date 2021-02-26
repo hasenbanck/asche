@@ -1,6 +1,6 @@
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use glam::f32::{Mat4, Vec2, Vec3, Vec4};
+use glam::f32::{mat4, Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
 #[repr(C)]
@@ -235,18 +235,12 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
-        let p_matrix = Mat4::perspective_infinite_reverse_rh(
+        let p_matrix = perspective_infinite_reverse_rh_yup(
             (70.0f32).to_radians(),
             extent.width as f32 / extent.height as f32,
             0.1,
         );
-        // TODO why is the z value negative?! Z positive should be UP!
-        let v_matrix = Mat4::look_at_rh(
-            Vec3::new(0.0, -3.0, -2.0),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
-        );
-
+        let v_matrix = Mat4::look_at_rh(Vec3::new(0.0, 2.0, 3.0), Vec3::zero(), Vec3::unit_y());
         let vp_matrix = p_matrix * v_matrix;
 
         let mut app = Self {
@@ -347,7 +341,7 @@ impl Application {
 
         let frame_buffer = self.device.get_frame_buffer(&self.render_pass, &frame)?;
 
-        let m_matrix = Mat4::from_rotation_z(
+        let m_matrix = Mat4::from_rotation_y(
             (std::f32::consts::PI / 2.0) * (self.frame_counter as f32 / 60_f32).fract(),
         );
         let mvp_matrix = self.vp_matrix * m_matrix;
@@ -520,4 +514,16 @@ fn create_cube_data() -> (Vec<Vertex>, Vec<u32>) {
     ];
 
     (vertex_data.to_vec(), index_data.to_vec())
+}
+
+/// Right-handed with the the x-axis pointing right, y-axis pointing up, and z-axis pointing out of the screen for Vulkan NDC.
+#[inline]
+fn perspective_infinite_reverse_rh_yup(fov_y_radians: f32, aspect_ratio: f32, z_near: f32) -> Mat4 {
+    let f = 1.0 / (0.5 * fov_y_radians).tan();
+    Mat4::from_cols(
+        Vec4::new(f / aspect_ratio, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, -f, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 0.0, -1.0),
+        Vec4::new(0.0, 0.0, z_near, 0.0),
+    )
 }
