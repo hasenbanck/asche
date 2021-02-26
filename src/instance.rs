@@ -31,11 +31,11 @@ pub struct Instance {
     pub raw: ash::Instance,
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) surface: vk::SurfaceKHR,
-    pub(crate) layers: Vec<&'static CStr>,
+    layers: Vec<&'static CStr>,
     #[cfg(debug_assertions)]
     pub(crate) debug_utils: ash::extensions::ext::DebugUtils,
     #[cfg(debug_assertions)]
-    pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
+    debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl Instance {

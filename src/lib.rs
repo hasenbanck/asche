@@ -55,7 +55,7 @@ impl std::fmt::Display for QueueType {
 
 /// Wraps a render pass.
 pub struct RenderPass {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw vk::RenderPass
     pub raw: vk::RenderPass,
 }
@@ -72,7 +72,7 @@ impl Drop for RenderPass {
 
 /// Wraps a pipeline layout.
 pub struct PipelineLayout {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw vk::PipelineLayout
     pub raw: vk::PipelineLayout,
 }
@@ -89,7 +89,7 @@ impl Drop for PipelineLayout {
 
 /// Wraps a graphics pipeline.
 pub struct GraphicsPipeline {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
 }
@@ -104,7 +104,7 @@ impl Drop for GraphicsPipeline {
 
 /// Wraps a compute pipeline.
 pub struct ComputePipeline {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
 }
@@ -119,7 +119,7 @@ impl Drop for ComputePipeline {
 
 /// Wraps a shader module.
 pub struct ShaderModule {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw vk::ShaderModule.
     pub raw: vk::ShaderModule,
 }
@@ -220,7 +220,7 @@ pub struct RenderPassDepthAttachmentDescriptor {
 
 /// Wraps a buffer.
 pub struct Buffer {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw allocation.
     pub allocation: vk_alloc::Allocation,
     /// The raw Vulkan buffer.
@@ -242,7 +242,7 @@ impl Drop for Buffer {
 
 /// Wraps an image.
 pub struct Image {
-    pub(crate) context: Arc<Context>,
+    context: Arc<Context>,
     /// The raw allocation.
     pub allocation: vk_alloc::Allocation,
     /// The raw Vulkan image.

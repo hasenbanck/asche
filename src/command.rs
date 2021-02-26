@@ -187,7 +187,7 @@ macro_rules! impl_command_buffer {
                 F: Fn(&$encoder_name) -> Result<()>,
             {
                 let encoder = $encoder_name {
-                    context: self.inner.context.clone(),
+                    context: &self.inner.context,
                     buffer: self.inner.buffer
                 };
 
@@ -274,12 +274,12 @@ impl Drop for CommandBuffer {
 }
 
 /// Used to encode command for a compute command buffer.
-pub struct ComputeCommandEncoder {
-    context: Arc<Context>,
+pub struct ComputeCommandEncoder<'a> {
+    context: &'a Context,
     buffer: vk::CommandBuffer,
 }
 
-impl ComputeCommandEncoder {
+impl<'a> ComputeCommandEncoder<'a> {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
         begin(&self.context, self.buffer)
@@ -344,12 +344,12 @@ impl ComputeCommandEncoder {
 }
 
 /// Used to encode command for a graphics command buffer.
-pub struct GraphicsCommandEncoder {
-    context: Arc<Context>,
+pub struct GraphicsCommandEncoder<'a> {
+    context: &'a Context,
     buffer: vk::CommandBuffer,
 }
 
-impl GraphicsCommandEncoder {
+impl<'a> GraphicsCommandEncoder<'a> {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
         begin(&self.context, self.buffer)
@@ -390,7 +390,7 @@ impl GraphicsCommandEncoder {
         extent: vk::Extent2D,
     ) -> Result<RenderPassEncoder> {
         let encoder = RenderPassEncoder {
-            context: self.context.clone(),
+            context: &self.context,
             buffer: self.buffer,
         };
 
@@ -443,12 +443,12 @@ impl GraphicsCommandEncoder {
 }
 
 /// Used to encode command for a transfer command buffer.
-pub struct TransferCommandEncoder {
-    context: Arc<Context>,
+pub struct TransferCommandEncoder<'a> {
+    context: &'a Context,
     buffer: vk::CommandBuffer,
 }
 
-impl TransferCommandEncoder {
+impl<'a> TransferCommandEncoder<'a> {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
         begin(&self.context, self.buffer)
@@ -481,18 +481,18 @@ impl TransferCommandEncoder {
 }
 
 /// Used to encode render pass commands of a command buffer.
-pub struct RenderPassEncoder {
-    pub(crate) context: Arc<Context>,
-    pub(crate) buffer: vk::CommandBuffer,
+pub struct RenderPassEncoder<'a> {
+    context: &'a Context,
+    buffer: vk::CommandBuffer,
 }
 
-impl Drop for RenderPassEncoder {
+impl<'a> Drop for RenderPassEncoder<'a> {
     fn drop(&mut self) {
         unsafe { self.context.logical_device.cmd_end_render_pass(self.buffer) };
     }
 }
 
-impl RenderPassEncoder {
+impl<'a> RenderPassEncoder<'a> {
     /// Begins a render pass.
     fn begin(
         &self,
