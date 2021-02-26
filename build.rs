@@ -15,6 +15,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut compiler = shaderc::Compiler::new().ok_or("can't create shaderc compiler")?;
     let mut options = shaderc::CompileOptions::new().unwrap();
     options.set_source_language(shaderc::SourceLanguage::GLSL);
+    options.set_target_env(
+        shaderc::TargetEnv::Vulkan,
+        shaderc::EnvVersion::Vulkan1_2 as u32,
+    );
+    options.set_target_spirv(shaderc::SpirvVersion::V1_5);
 
     #[cfg(debug_assertions)]
     {

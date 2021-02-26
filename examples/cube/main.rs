@@ -1,6 +1,6 @@
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use glam::f32::{mat4, Mat4, Vec2, Vec3, Vec4};
+use glam::f32::{Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
 #[repr(C)]
