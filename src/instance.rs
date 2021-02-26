@@ -252,19 +252,9 @@ impl Instance {
 
         // Only keep available extensions.
         extensions.retain(|&ext| {
-            let found = instance_extensions
+            instance_extensions
                 .iter()
-                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext });
-            if found {
-                true
-            } else {
-                #[cfg(feature = "tracing")]
-                error!(
-                    "Unable to find instance extension: {}",
-                    ext.to_string_lossy()
-                );
-                false
-            }
+                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext })
         });
 
         extensions
@@ -701,16 +691,9 @@ impl Instance {
         }?;
 
         extensions.retain(|&ext| {
-            let found = device_extensions
+            device_extensions
                 .iter()
-                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext });
-            if found {
-                true
-            } else {
-                #[cfg(feature = "tracing")]
-                error!("Unable to find device extension: {}", ext.to_string_lossy());
-                false
-            }
+                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext })
         });
 
         Ok(extensions)
