@@ -1,4 +1,7 @@
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::ffi::CStr;
+use std::hash::Hasher;
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -13,8 +16,10 @@ use crate::context::Context;
 use crate::instance::Instance;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, Buffer, ComputeQueue, GraphicsPipeline, GraphicsQueue, PipelineLayout, RenderPass,
-    Result, ShaderModule, TransferQueue,
+    AscheError, Buffer, BufferDescriptor, ComputeQueue, GraphicsPipeline, GraphicsQueue, Image,
+    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass,
+    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result, ShaderModule,
+    TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -105,11 +110,13 @@ pub struct Device {
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
+    framebuffers: Mutex<HashMap<u64, vk::Framebuffer>>,
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
+            self.destroy_framebuffer();
             self.context.logical_device.device_wait_idle().unwrap();
         };
     }
@@ -212,6 +219,7 @@ impl Device {
             swapchain_format,
             swapchain_color_space,
             swapchain: None,
+            framebuffers: Default::default(),
         };
 
         device.recreate_swapchain(None)?;
@@ -226,6 +234,8 @@ impl Device {
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
     pub fn recreate_swapchain(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
+        self.destroy_framebuffer();
+
         #[cfg(feature = "tracing")]
         info!(
             "Creating swapchain with format {:?} and color space {:?}",
@@ -317,18 +327,72 @@ impl Device {
         Ok(())
     }
 
-    /// Gets the frame buffer for the given render pass and frame.
-    pub fn get_frame_buffer(
+    pub(crate) fn get_framebuffer(
         &self,
         render_pass: &RenderPass,
-        frame: &SwapchainFrame,
+        color_attachments: &[&RenderPassColorAttachmentDescriptor],
+        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
+        extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {
-        let swapchain = self
-            .swapchain
-            .as_ref()
-            .ok_or(AscheError::SwapchainNotInitialized)?;
+        // Calculate the hash for the renderpass / attachment combination.
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u64(render_pass.raw.as_raw());
+        for color_attachment in color_attachments {
+            hasher.write_u64(color_attachment.attachment.as_raw());
+        }
+        if let Some(depth_attachment) = depth_attachment {
+            hasher.write_u64(depth_attachment.attachment.as_raw());
+        }
 
-        Ok(swapchain.get_frame_buffer(render_pass.raw, frame.index))
+        let hash = hasher.finish();
+        let framebuffer = if let Some(framebuffer) = self.framebuffers.lock().get(&hash) {
+            *framebuffer
+        } else {
+            let fb =
+                self.create_framebuffer(render_pass, color_attachments, depth_attachment, extent)?;
+            self.framebuffers.lock().insert(hash, fb);
+            *self.framebuffers.lock().get(&hash).unwrap()
+        };
+
+        Ok(framebuffer)
+    }
+
+    fn create_framebuffer(
+        &self,
+        render_pass: &RenderPass,
+        color_attachments: &[&RenderPassColorAttachmentDescriptor],
+        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
+        extent: vk::Extent2D,
+    ) -> Result<vk::Framebuffer> {
+        let attachments: Vec<vk::ImageView> = color_attachments
+            .iter()
+            .map(|x| x.attachment)
+            .chain(depth_attachment.iter().map(|x| x.attachment))
+            .collect();
+
+        let framebuffer_info = vk::FramebufferCreateInfo::builder()
+            .render_pass(render_pass.raw)
+            .attachments(&attachments)
+            .width(extent.width)
+            .height(extent.height)
+            .layers(1);
+        let framebuffer = unsafe {
+            self.context
+                .logical_device
+                .create_framebuffer(&framebuffer_info, None)?
+        };
+
+        Ok(framebuffer)
+    }
+
+    fn destroy_framebuffer(&self) {
+        for (_, framebuffer) in self.framebuffers.lock().drain() {
+            unsafe {
+                self.context
+                    .logical_device
+                    .destroy_framebuffer(framebuffer, None);
+            }
+        }
     }
 
     /// Gets the next frame the program can render into.
@@ -355,18 +419,11 @@ impl Device {
         name: &str,
         renderpass_info: vk::RenderPassCreateInfoBuilder,
     ) -> Result<RenderPass> {
-        let swapchain = self
-            .swapchain
-            .as_mut()
-            .ok_or(AscheError::SwapchainNotInitialized)?;
-
         let renderpass = unsafe {
             self.context
                 .logical_device
                 .create_render_pass(&renderpass_info, None)?
         };
-
-        swapchain.create_renderpass_framebuffers(renderpass)?;
 
         self.context
             .set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.as_raw())?;
@@ -468,24 +525,16 @@ impl Device {
     }
 
     /// Creates a new buffer.
-    pub fn create_buffer(
-        &self,
-        buffer_usage: vk::BufferUsageFlags,
-        memory_location: vk_alloc::MemoryLocation,
-        sharing_mode: vk::SharingMode,
-        queues: vk::QueueFlags,
-        size: u64,
-        flags: Option<vk::BufferCreateFlags>,
-    ) -> Result<Buffer> {
+    pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> Result<Buffer> {
         let mut families = Vec::with_capacity(3);
 
-        if queues.contains(vk::QueueFlags::COMPUTE) {
+        if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
             families.push(self.compute_queue_family_index)
         }
-        if queues.contains(vk::QueueFlags::GRAPHICS) {
+        if descriptor.queues.contains(vk::QueueFlags::GRAPHICS) {
             families.push(self.graphic_queue_family_index)
         }
-        if queues.contains(vk::QueueFlags::TRANSFER) {
+        if descriptor.queues.contains(vk::QueueFlags::TRANSFER) {
             families.push(self.transfer_queue_family_index)
         }
 
@@ -495,11 +544,11 @@ impl Device {
 
         let create_info = vk::BufferCreateInfo::builder()
             .queue_family_indices(&families)
-            .sharing_mode(sharing_mode)
-            .usage(buffer_usage)
-            .size(size);
+            .sharing_mode(descriptor.sharing_mode)
+            .usage(descriptor.usage)
+            .size(descriptor.size);
 
-        let create_info = if let Some(flags) = flags {
+        let create_info = if let Some(flags) = descriptor.flags {
             create_info.flags(flags)
         } else {
             create_info
@@ -511,11 +560,15 @@ impl Device {
                 .create_buffer(&create_info, None)?
         };
 
+        #[cfg(debug_assertions)]
+        self.context
+            .set_object_name(&descriptor.name, vk::ObjectType::BUFFER, raw.as_raw())?;
+
         let allocation = self
             .context
             .allocator
             .lock()
-            .allocate_memory_for_buffer(raw, memory_location)?;
+            .allocate_memory_for_buffer(raw, descriptor.memory_location)?;
 
         let bind_infos = vk::BindBufferMemoryInfo::builder()
             .buffer(raw)
@@ -532,6 +585,108 @@ impl Device {
             context: self.context.clone(),
             raw,
             allocation,
+        })
+    }
+
+    /// Creates a new image.
+    pub fn create_image(&self, descriptor: &ImageDescriptor) -> Result<Image> {
+        let mut families = Vec::with_capacity(3);
+
+        if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
+            families.push(self.compute_queue_family_index)
+        }
+        if descriptor.queues.contains(vk::QueueFlags::GRAPHICS) {
+            families.push(self.graphic_queue_family_index)
+        }
+        if descriptor.queues.contains(vk::QueueFlags::TRANSFER) {
+            families.push(self.transfer_queue_family_index)
+        }
+
+        // Removes dupes if queues share family ids.
+        families.sort_unstable();
+        families.dedup();
+
+        let create_info = vk::ImageCreateInfo::builder()
+            .queue_family_indices(&families)
+            .sharing_mode(descriptor.sharing_mode)
+            .usage(descriptor.usage)
+            .extent(descriptor.extent)
+            .mip_levels(descriptor.mip_levels)
+            .format(descriptor.format)
+            .image_type(descriptor.image_type)
+            .array_layers(descriptor.array_layers)
+            .samples(descriptor.samples)
+            .tiling(descriptor.tiling)
+            .initial_layout(descriptor.initial_layout);
+
+        let create_info = if let Some(flags) = descriptor.flags {
+            create_info.flags(flags)
+        } else {
+            create_info
+        };
+
+        let raw = unsafe {
+            self.context
+                .logical_device
+                .create_image(&create_info, None)?
+        };
+
+        #[cfg(debug_assertions)]
+        self.context
+            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE, raw.as_raw())?;
+
+        let allocation = self
+            .context
+            .allocator
+            .lock()
+            .allocate_memory_for_image(raw, descriptor.memory_location)?;
+
+        let bind_infos = vk::BindImageMemoryInfo::builder()
+            .image(raw)
+            .memory(allocation.device_memory)
+            .memory_offset(allocation.offset);
+
+        unsafe {
+            self.context
+                .logical_device
+                .bind_image_memory2(&[bind_infos.build()])?
+        };
+
+        Ok(Image {
+            context: self.context.clone(),
+            raw,
+            allocation,
+        })
+    }
+
+    /// Creates a new image.
+    pub fn create_image_view(&self, descriptor: &ImageViewDescriptor) -> Result<ImageView> {
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(descriptor.image.raw)
+            .view_type(descriptor.view_type)
+            .format(descriptor.format)
+            .components(descriptor.components)
+            .subresource_range(descriptor.subresource_range);
+
+        let create_info = if let Some(flags) = descriptor.flags {
+            create_info.flags(flags)
+        } else {
+            create_info
+        };
+
+        let raw = unsafe {
+            self.context
+                .logical_device
+                .create_image_view(&create_info, None)?
+        };
+
+        #[cfg(debug_assertions)]
+        self.context
+            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.as_raw())?;
+
+        Ok(ImageView {
+            context: self.context.clone(),
+            raw,
         })
     }
 }

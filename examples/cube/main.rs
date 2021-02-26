@@ -3,6 +3,11 @@ use bytemuck::{Pod, Zeroable};
 use glam::f32::{Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
+use asche::{
+    BufferDescriptor, ImageDescriptor, ImageViewDescriptor, RenderPassColorAttachmentDescriptor,
+    RenderPassDepthAttachmentDescriptor,
+};
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -71,6 +76,8 @@ struct Application {
     pipeline: asche::GraphicsPipeline,
     pipeline_layout: asche::PipelineLayout,
     render_pass: asche::RenderPass,
+    _depth_image: asche::Image,
+    depth_image_view: asche::ImageView,
     frame_counter: u64,
     transfer_counter: u64,
     vertex_buffer: Vec<asche::Buffer>,
@@ -110,25 +117,88 @@ impl Application {
             .module(frag_module.raw)
             .name(&mainfunctionname);
 
+        // Depth image
+        let depth_image = device.create_image(&ImageDescriptor {
+            name: "Depth Texture",
+            usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queues: vk::QueueFlags::GRAPHICS,
+            image_type: vk::ImageType::TYPE_2D,
+            format: vk::Format::D32_SFLOAT,
+            extent: vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            },
+            mip_levels: 1,
+            array_layers: 1,
+            samples: vk::SampleCountFlags::TYPE_1,
+            tiling: vk::ImageTiling::OPTIMAL,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            flags: None,
+        })?;
+
+        let depth_image_view = device.create_image_view(&ImageViewDescriptor {
+            name: "Depth Texture View",
+            image: &depth_image,
+            view_type: vk::ImageViewType::TYPE_2D,
+            format: vk::Format::D32_SFLOAT,
+            components: vk::ComponentMapping {
+                r: vk::ComponentSwizzle::R,
+                g: vk::ComponentSwizzle::G,
+                b: vk::ComponentSwizzle::B,
+                a: vk::ComponentSwizzle::A,
+            },
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::DEPTH,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
+            flags: None,
+        })?;
+
         // Renderpass
-        let attachments = [vk::AttachmentDescription::builder()
-            .format(vk::Format::B8G8R8A8_SRGB)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .build()];
+        let attachments = [
+            // Color
+            vk::AttachmentDescription::builder()
+                .format(vk::Format::B8G8R8A8_SRGB)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .build(),
+            // Depth
+            vk::AttachmentDescription::builder()
+                .format(vk::Format::D32_SFLOAT)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .stencil_load_op(vk::AttachmentLoadOp::CLEAR)
+                .stencil_store_op(vk::AttachmentStoreOp::STORE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .build(),
+        ];
 
         let color_attachment_references = [vk::AttachmentReference {
             attachment: 0,
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         }];
 
+        let depth_attachment_references = vk::AttachmentReference {
+            attachment: 1,
+            layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+        };
+
         let subpasses = [vk::SubpassDescription::builder()
             .color_attachments(&color_attachment_references)
+            .depth_stencil_attachment(&depth_attachment_references)
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
             .build()];
 
@@ -216,8 +286,18 @@ impl Application {
                     | vk::ColorComponentFlags::A,
             )
             .build()];
+
         let color_blend_state =
             vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachments);
+
+        let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::ALWAYS)
+            .depth_bounds_test_enable(false)
+            .stencil_test_enable(false)
+            .min_depth_bounds(0.0)
+            .max_depth_bounds(1.0);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_stages)
@@ -228,9 +308,11 @@ impl Application {
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
+            .depth_stencil_state(&depth_stencil_state)
             .layout(pipeline_layout.raw)
             .render_pass(render_pass.raw)
             .subpass(0);
+
         let pipeline = device.create_graphics_pipeline("cube pipeline", pipeline_info)?;
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
@@ -253,6 +335,8 @@ impl Application {
             pipeline,
             pipeline_layout,
             render_pass,
+            _depth_image: depth_image,
+            depth_image_view,
             frame_counter: 0,
             transfer_counter: 0,
             vertex_buffer: vec![],
@@ -262,14 +346,16 @@ impl Application {
 
         let (vertex_data, index_data) = create_cube_data();
 
-        let vertex_buffer = app.create_buffer(
-            &bytemuck::cast_slice(&vertex_data),
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-        )?;
-
         let index_buffer = app.create_buffer(
+            "Index Buffer",
             &bytemuck::cast_slice(&index_data),
             vk::BufferUsageFlags::INDEX_BUFFER,
+        )?;
+
+        let vertex_buffer = app.create_buffer(
+            "Vertex Buffer",
+            &bytemuck::cast_slice(&vertex_data),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
         )?;
 
         app.vertex_buffer.push(vertex_buffer);
@@ -280,17 +366,19 @@ impl Application {
 
     fn create_buffer(
         &mut self,
+        name: &str,
         buffer_data: &[u8],
         buffer_type: vk::BufferUsageFlags,
     ) -> Result<asche::Buffer, asche::AscheError> {
-        let mut stagging_buffer = self.device.create_buffer(
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk_alloc::MemoryLocation::CpuToGpu,
-            vk::SharingMode::CONCURRENT,
-            vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
-            buffer_data.len() as u64,
-            None,
-        )?;
+        let mut stagging_buffer = self.device.create_buffer(&BufferDescriptor {
+            name: "Staging Buffer",
+            usage: vk::BufferUsageFlags::TRANSFER_SRC,
+            memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+            sharing_mode: vk::SharingMode::CONCURRENT,
+            queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
+            size: buffer_data.len() as u64,
+            flags: None,
+        })?;
 
         let stagging_slice = stagging_buffer
             .allocation
@@ -298,14 +386,15 @@ impl Application {
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
 
-        let dst_buffer = self.device.create_buffer(
-            buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
-            vk_alloc::MemoryLocation::GpuOnly,
-            vk::SharingMode::CONCURRENT,
-            vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
-            stagging_buffer.allocation.size,
-            None,
-        )?;
+        let dst_buffer = self.device.create_buffer(&BufferDescriptor {
+            name,
+            usage: buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: vk::SharingMode::CONCURRENT,
+            queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
+            size: stagging_buffer.allocation.size,
+            flags: None,
+        })?;
 
         let mut transfer_pool = self.transfer_queue.create_command_pool()?;
         let transfer_buffer = transfer_pool
@@ -339,8 +428,6 @@ impl Application {
             Timeline::RenderEnd.with_offset(frame_offset),
         )?;
 
-        let frame_buffer = self.device.get_frame_buffer(&self.render_pass, &frame)?;
-
         let m_matrix = Mat4::from_rotation_y(
             (std::f32::consts::PI / 2.0) * (self.frame_counter as f32 / 60_f32).fract(),
         );
@@ -353,17 +440,25 @@ impl Application {
             });
 
             let pass = encoder.begin_render_pass(
+                &self.device,
                 &self.render_pass,
-                frame_buffer,
-                &[vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [1.0, 0.0, 1.0, 1.0],
+                &[&RenderPassColorAttachmentDescriptor {
+                    attachment: frame.view,
+                    clear_value: vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [1.0, 0.0, 1.0, 1.0],
+                        },
                     },
                 }],
-                vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: self.extent,
-                },
+                Some(&RenderPassDepthAttachmentDescriptor {
+                    attachment: self.depth_image_view.raw,
+                    clear_value: vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [1.0, 0.0, 1.0, 1.0],
+                        },
+                    },
+                }),
+                self.extent,
             )?;
 
             pass.cmd_bind_pipeline(&self.pipeline);

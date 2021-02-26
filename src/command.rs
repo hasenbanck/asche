@@ -4,10 +4,13 @@ use std::sync::Arc;
 
 use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
-use ash::vk::Handle;
+use ash::vk::{Handle, Offset2D};
 
 use crate::context::Context;
-use crate::{Buffer, ComputePipeline, GraphicsPipeline, QueueType, RenderPass, Result};
+use crate::{
+    Buffer, ComputePipeline, Device, GraphicsPipeline, QueueType, RenderPass,
+    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
+};
 
 macro_rules! impl_command_pool {
     (
@@ -367,16 +370,27 @@ impl GraphicsCommandEncoder {
     /// Returns a render pass encoder. Drop once finished recording.
     pub fn begin_render_pass(
         &self,
+        device: &Device,
         render_pass: &RenderPass,
-        frame_buffer: vk::Framebuffer,
-        clear_values: &[vk::ClearValue],
-        render_area: vk::Rect2D,
+        color_attachments: &[&RenderPassColorAttachmentDescriptor],
+        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
+        extent: vk::Extent2D,
     ) -> Result<RenderPassEncoder> {
         let encoder = RenderPassEncoder {
             context: self.context.clone(),
             buffer: self.buffer,
         };
-        encoder.begin(render_pass.raw, frame_buffer, clear_values, render_area);
+
+        let framebuffer =
+            device.get_framebuffer(render_pass, color_attachments, depth_attachment, extent)?;
+
+        let clear_values: Vec<vk::ClearValue> = color_attachments
+            .iter()
+            .map(|x| x.clear_value)
+            .chain(depth_attachment.iter().map(|x| x.clear_value))
+            .collect();
+
+        encoder.begin(render_pass.raw, framebuffer, &clear_values, extent);
 
         Ok(encoder)
     }
@@ -470,15 +484,18 @@ impl RenderPassEncoder {
     fn begin(
         &self,
         render_pass: vk::RenderPass,
-        frame_buffer: vk::Framebuffer,
+        framebuffer: vk::Framebuffer,
         clear_values: &[vk::ClearValue],
-        render_area: vk::Rect2D,
+        extent: vk::Extent2D,
     ) {
         let create_info = vk::RenderPassBeginInfo::builder()
             .render_pass(render_pass)
-            .framebuffer(frame_buffer)
+            .framebuffer(framebuffer)
             .clear_values(clear_values)
-            .render_area(render_area);
+            .render_area(vk::Rect2D {
+                offset: Offset2D { x: 0, y: 0 },
+                extent,
+            });
         let contents = vk::SubpassContents::INLINE;
 
         unsafe {
