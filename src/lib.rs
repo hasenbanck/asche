@@ -13,6 +13,7 @@ pub use {
         TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
+    descriptor::{DescriptorPool, DescriptorSetLayout},
     device::{BARSupport, Device, DeviceConfiguration, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceConfiguration},
@@ -23,6 +24,7 @@ pub use {
 
 pub(crate) mod command;
 pub(crate) mod context;
+pub(crate) mod descriptor;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;

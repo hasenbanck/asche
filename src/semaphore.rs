@@ -23,7 +23,7 @@ impl Drop for TimelineSemaphore {
 
 impl TimelineSemaphore {
     /// Creates a new timeline semaphore.
-    pub(crate) fn new(context: &Arc<Context>, semaphore: vk::Semaphore) -> Self {
+    pub(crate) fn new(context: Arc<Context>, semaphore: vk::Semaphore) -> Self {
         Self {
             context: context.clone(),
             raw: semaphore,

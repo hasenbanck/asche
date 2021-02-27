@@ -13,9 +13,9 @@ use crate::instance::Instance;
 use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, Buffer, BufferDescriptor, ComputeQueue, GraphicsPipeline, GraphicsQueue, Image,
-    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass, Result,
-    ShaderModule, TransferQueue,
+    AscheError, Buffer, BufferDescriptor, ComputeQueue, DescriptorPool, DescriptorSetLayout,
+    GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView, ImageViewDescriptor,
+    PipelineLayout, RenderPass, Result, ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -428,6 +428,45 @@ impl Device {
         })
     }
 
+    /// Creates a descriptor pool.
+    pub fn create_descriptor_pool(
+        &mut self,
+        name: &str,
+        pool_info: vk::DescriptorPoolCreateInfoBuilder,
+    ) -> Result<DescriptorPool> {
+        let pool = unsafe {
+            self.context
+                .logical_device
+                .create_descriptor_pool(&pool_info, None)?
+        };
+
+        self.context
+            .set_object_name(name, vk::ObjectType::DESCRIPTOR_POOL, pool.as_raw())?;
+
+        Ok(DescriptorPool::new(self.context.clone(), pool))
+    }
+
+    /// Creates a descriptor set layout.
+    pub fn create_descriptor_set_layout(
+        &mut self,
+        name: &str,
+        layout_info: vk::DescriptorSetLayoutCreateInfoBuilder,
+    ) -> Result<DescriptorSetLayout> {
+        let layout = unsafe {
+            self.context
+                .logical_device
+                .create_descriptor_set_layout(&layout_info, None)?
+        };
+
+        self.context.set_object_name(
+            name,
+            vk::ObjectType::DESCRIPTOR_SET_LAYOUT,
+            layout.as_raw(),
+        )?;
+
+        Ok(DescriptorSetLayout::new(self.context.clone(), layout))
+    }
+
     /// Creates a new shader module using the provided SPIR-V code.
     pub fn create_shader_module(&self, name: &str, shader_data: &[u8]) -> Result<ShaderModule> {
         let mut reader = Cursor::new(shader_data);
@@ -633,7 +672,7 @@ impl Device {
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.as_raw())?;
 
-        Ok(TimelineSemaphore::new(&self.context, raw))
+        Ok(TimelineSemaphore::new(self.context.clone(), raw))
     }
 }
 

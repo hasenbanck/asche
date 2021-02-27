@@ -3,6 +3,8 @@ use bytemuck::{Pod, Zeroable};
 use glam::f32::{Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
+use asche::{DescriptorPool, DescriptorSetLayout};
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -80,6 +82,8 @@ struct Application {
     vp_matrix: glam::f32::Mat4,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
+    descriptor_set_layout: DescriptorSetLayout,
+    descriptor_pool: DescriptorPool,
 }
 
 impl Application {
@@ -215,14 +219,50 @@ impl Application {
         let render_pass =
             device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
 
+        // Descriptor set layout
+        let bindings = [
+            vk::DescriptorSetLayoutBinding::builder()
+                .binding(0)
+                .descriptor_count(1) // Used fore texture arrays
+                .descriptor_type(vk::DescriptorType::SAMPLER)
+                .build(),
+            vk::DescriptorSetLayoutBinding::builder()
+                .binding(1)
+                .descriptor_count(1)
+                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                .build(),
+        ];
+        let layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+        let descriptor_set_layout =
+            device.create_descriptor_set_layout("Cube Descriptor Set Layout", layout_info)?;
+
+        // Descriptor pool
+        let pool_sizes = [
+            vk::DescriptorPoolSize::builder()
+                .descriptor_count(1)
+                .ty(vk::DescriptorType::SAMPLER)
+                .build(),
+            vk::DescriptorPoolSize::builder()
+                .descriptor_count(1)
+                .ty(vk::DescriptorType::SAMPLED_IMAGE)
+                .build(),
+        ];
+        let pool_info = vk::DescriptorPoolCreateInfo::builder()
+            .max_sets(16)
+            .pool_sizes(&pool_sizes);
+        let descriptor_pool = device.create_descriptor_pool("Cube Descriptor Pool", pool_info)?;
+
         // Pipeline layout
         let push_constants_ranges = [vk::PushConstantRange::builder()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
             .size(64)
             .build()];
-        let pipeline_layout =
-            vk::PipelineLayoutCreateInfo::builder().push_constant_ranges(&push_constants_ranges);
+
+        let layouts = [descriptor_set_layout.raw];
+        let pipeline_layout = vk::PipelineLayoutCreateInfo::builder()
+            .push_constant_ranges(&push_constants_ranges)
+            .set_layouts(&layouts);
         let pipeline_layout =
             device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
 
@@ -262,7 +302,7 @@ impl Application {
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
             .line_width(1.0)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-            .cull_mode(vk::CullModeFlags::NONE)
+            .cull_mode(vk::CullModeFlags::BACK)
             .polygon_mode(vk::PolygonMode::FILL);
         let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
@@ -288,7 +328,7 @@ impl Application {
         let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder()
             .depth_test_enable(true)
             .depth_write_enable(true)
-            .depth_compare_op(vk::CompareOp::ALWAYS)
+            .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false)
             .min_depth_bounds(0.0)
@@ -339,6 +379,8 @@ impl Application {
             vp_matrix,
             timeline,
             timeline_value,
+            descriptor_set_layout,
+            descriptor_pool,
         };
 
         let (vertex_data, index_data) = create_cube_data();
