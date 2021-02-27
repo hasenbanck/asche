@@ -236,7 +236,7 @@ pub struct SamplerDescriptor<'a> {
     pub max_lod: f32,
     /// Border color.
     pub border_color: Option<vk::BorderColor>,
-    /// Un-normalized coordinates
+    /// Un-normalized coordinates.
     pub unnormalized_coordinates: bool,
     /// Optional flags.
     pub flags: Option<vk::SamplerCreateFlags>,

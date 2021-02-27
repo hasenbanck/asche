@@ -272,12 +272,12 @@ impl Application {
                 .binding(0)
                 .location(0)
                 .offset(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
+                .format(vk::Format::R32G32B32A32_SFLOAT)
                 .build(),
             vk::VertexInputAttributeDescription::builder()
                 .binding(0)
                 .location(1)
-                .offset(12)
+                .offset(16)
                 .format(vk::Format::R32G32_SFLOAT)
                 .build(),
         ];
@@ -513,7 +513,7 @@ impl Application {
                         base_array_layer: 0,
                         layer_count: 1,
                     },
-                    image_offset: vk::Offset3D::default(),
+                    image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                     image_extent: extent,
                 },
             );
