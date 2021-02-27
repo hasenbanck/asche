@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use arrayvec::ArrayVec;
 use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
 use ash::vk::{Handle, Offset2D};
@@ -400,11 +401,13 @@ impl<'a> GraphicsCommandEncoder<'a> {
             extent,
         )?;
 
-        let clear_values: Vec<vk::ClearValue> = color_attachments
+        // 64 byte array on the stack.
+        let mut clear_values = ArrayVec::<[vk::ClearValue; 4]>::new();
+        color_attachments
             .iter()
             .map(|x| x.clear_value)
             .chain(depth_attachment.iter().map(|x| x.clear_value))
-            .collect();
+            .for_each(|x| clear_values.push(x));
 
         encoder.begin(render_pass.raw, framebuffer, &clear_values, extent);
 

@@ -16,10 +16,10 @@ default = ["tracing"]
 [dependencies]
 ash = "0.31"
 raw-window-handle = "0.3"
+arrayvec = "0.5"
 tracing = { version = "0.1", default-features = false, optional = true }
 parking_lot = "0.11"
 vk-alloc = { version = "0.3", features = ["tracing", "vk-buffer-device-address"] }
-sharded-slab = "0.1"
 
 [dev-dependencies]
 glam = { version = "0.12", features = ["bytemuck"] }

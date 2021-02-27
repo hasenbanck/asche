@@ -338,6 +338,11 @@ impl Device {
         name: &str,
         renderpass_info: vk::RenderPassCreateInfoBuilder,
     ) -> Result<RenderPass> {
+        debug_assert!(
+            renderpass_info.attachment_count <= 4,
+            "Maximum size of attachments reached. This limit is artificial for the RenderpassEncoder.begin_render_pass() method."
+        );
+
         let renderpass = unsafe {
             self.context
                 .logical_device
