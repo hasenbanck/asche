@@ -17,6 +17,7 @@ pub use {
     error::AscheError,
     instance::{Instance, InstanceConfiguration},
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
+    semaphore::TimelineSemaphore,
     swapchain::SwapchainFrame,
 };
 
@@ -26,6 +27,7 @@ pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod instance;
 pub(crate) mod queue;
+pub(crate) mod semaphore;
 pub(crate) mod swapchain;
 #[cfg(debug_assertions)]
 pub(crate) mod vk_debug;
@@ -275,22 +277,6 @@ impl Drop for ImageView {
             self.context
                 .logical_device
                 .destroy_image_view(self.raw, None);
-        };
-    }
-}
-
-/// A wrapper timeline semaphore.
-pub struct TimelineSemaphore {
-    context: Arc<Context>,
-    pub(crate) raw: vk::Semaphore,
-}
-
-impl Drop for TimelineSemaphore {
-    fn drop(&mut self) {
-        unsafe {
-            self.context
-                .logical_device
-                .destroy_semaphore(self.raw, None);
         };
     }
 }

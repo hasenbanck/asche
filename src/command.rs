@@ -7,10 +7,10 @@ use ash::vk;
 use ash::vk::{Handle, Offset2D};
 
 use crate::context::Context;
+use crate::semaphore::TimelineSemaphore;
 use crate::{
     Buffer, ComputePipeline, Device, GraphicsPipeline, QueueType, RenderPass,
     RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
-    TimelineSemaphore,
 };
 
 macro_rules! impl_command_pool {

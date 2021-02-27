@@ -239,10 +239,8 @@ impl Application {
         })?;
 
         self.graphics_queue.execute(&graphics_buffer)?;
-        self.graphics_queue.wait_for_timeline_value(
-            &self.timeline,
-            Timeline::RenderEnd.with_offset(self.timeline_value),
-        )?;
+        self.timeline
+            .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 
         self.graphics_command_pool.reset()?;
 

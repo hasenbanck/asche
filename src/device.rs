@@ -14,12 +14,13 @@ use tracing::info;
 
 use crate::context::Context;
 use crate::instance::Instance;
+use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
     AscheError, Buffer, BufferDescriptor, ComputeQueue, GraphicsPipeline, GraphicsQueue, Image,
     ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass,
     RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result, ShaderModule,
-    TimelineSemaphore, TransferQueue,
+    TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -714,10 +715,7 @@ impl Device {
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.as_raw())?;
 
-        Ok(TimelineSemaphore {
-            context: self.context.clone(),
-            raw,
-        })
+        Ok(TimelineSemaphore::new(&self.context, raw))
     }
 }
 

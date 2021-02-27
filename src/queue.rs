@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use ash::version::{DeviceV1_0, DeviceV1_2};
+use ash::version::DeviceV1_0;
 use ash::vk;
 
 use crate::command::CommandBuffer;
 use crate::{
     ComputeCommandBuffer, ComputeCommandPool, Context, GraphicsCommandBuffer, GraphicsCommandPool,
-    Result, TimelineSemaphore, TransferCommandBuffer, TransferCommandPool,
+    Result, TransferCommandBuffer, TransferCommandPool,
 };
 
 macro_rules! impl_queue {
@@ -45,21 +45,6 @@ macro_rules! impl_queue {
             /// Executes a command buffer on a queue.
             pub fn execute(&self, command_buffer: &$buffer_name) -> Result<()> {
                 self.inner.execute(&command_buffer.inner)
-            }
-
-            /// Query the timeline value.
-            pub fn query_timeline_value(&self, timeline_semaphore: &TimelineSemaphore) -> Result<u64> {
-                self.inner.query_timeline_value(timeline_semaphore.raw)
-            }
-
-            /// Sets the timeline value.
-            pub fn set_timeline_value(&self, timeline_semaphore: &TimelineSemaphore, timeline_value: u64) -> Result<()> {
-                self.inner.set_timeline_value(timeline_semaphore.raw, timeline_value)
-            }
-
-            /// Wait for the given timeline value.
-            pub fn wait_for_timeline_value(&self, timeline_semaphore: &TimelineSemaphore, timeline_value: u64) -> Result<()> {
-                self.inner.wait_for_timeline_value(timeline_semaphore.raw, timeline_value)
             }
         }
     };
@@ -141,52 +126,6 @@ impl Queue {
                 &[submit_info.build()],
                 vk::Fence::null(),
             )?
-        };
-
-        Ok(())
-    }
-
-    #[inline]
-    fn query_timeline_value(&self, timeline_semaphore: vk::Semaphore) -> Result<u64> {
-        let value = unsafe {
-            self.context
-                .logical_device
-                .get_semaphore_counter_value(timeline_semaphore)?
-        };
-        Ok(value)
-    }
-
-    #[inline]
-    fn set_timeline_value(
-        &self,
-        timeline_semaphore: vk::Semaphore,
-        timeline_value: u64,
-    ) -> Result<()> {
-        let signal_info = vk::SemaphoreSignalInfo::builder()
-            .semaphore(timeline_semaphore)
-            .value(timeline_value);
-
-        unsafe { self.context.logical_device.signal_semaphore(&signal_info)? };
-
-        Ok(())
-    }
-
-    #[inline]
-    fn wait_for_timeline_value(
-        &self,
-        timeline_semaphore: vk::Semaphore,
-        timeline_value: u64,
-    ) -> Result<()> {
-        let semaphores = [timeline_semaphore];
-        let timeline_values = [timeline_value];
-        let wait_info = vk::SemaphoreWaitInfo::builder()
-            .semaphores(&semaphores)
-            .values(&timeline_values);
-
-        unsafe {
-            self.context
-                .logical_device
-                .wait_semaphores(&wait_info, 5000000000)? // 5 sec timeout
         };
 
         Ok(())

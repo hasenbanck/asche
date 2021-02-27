@@ -414,8 +414,7 @@ impl Application {
         self.timeline_value += 1;
 
         self.transfer_queue.execute(&transfer_buffer)?;
-        self.transfer_queue
-            .wait_for_timeline_value(&self.timeline, self.timeline_value)?;
+        self.timeline.wait_for_value(self.timeline_value)?;
 
         Ok(dst_buffer)
     }
@@ -479,10 +478,8 @@ impl Application {
         })?;
 
         self.graphics_queue.execute(&graphics_buffer)?;
-        self.graphics_queue.wait_for_timeline_value(
-            &self.timeline,
-            Timeline::RenderEnd.with_offset(self.timeline_value),
-        )?;
+        self.timeline
+            .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 
         self.graphics_command_pool.reset()?;
 
