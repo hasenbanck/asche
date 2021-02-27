@@ -15,12 +15,13 @@ unsafe impl Pod for Vertex {}
 unsafe impl Zeroable for Vertex {}
 
 fn main() -> Result<(), asche::AscheError> {
-    let event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::WindowBuilder::new()
-        .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
-        .with_title("asche - cube example")
-        .with_resizable(false)
-        .build(&event_loop)
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
+    let window = video_subsystem
+        .window("asche - cube example", 1920, 1080)
+        .vulkan()
+        .allow_highdpi()
+        .build()
         .unwrap();
 
     // Log level is based on RUST_LOG env var.
@@ -42,23 +43,25 @@ fn main() -> Result<(), asche::AscheError> {
             ..Default::default()
         })?;
 
-    let mut app = Application::new(device, graphics_queue, transfer_queue, window)?;
+    let mut app = Application::new(device, graphics_queue, transfer_queue, &window)?;
 
-    event_loop.run(move |event, _, control_flow| match event {
-        winit::event::Event::WindowEvent {
-            event: winit::event::WindowEvent::CloseRequested,
-            ..
-        } => {
-            *control_flow = winit::event_loop::ControlFlow::Exit;
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                sdl2::event::Event::Quit { .. }
+                | sdl2::event::Event::KeyDown {
+                    keycode: Some(sdl2::keyboard::Keycode::Escape),
+                    ..
+                } => break 'running,
+                _ => {}
+            }
         }
-        winit::event::Event::MainEventsCleared => {
-            app.window.request_redraw();
-        }
-        winit::event::Event::RedrawRequested(_) => {
-            app.render().unwrap();
-        }
-        _ => {}
-    });
+
+        app.render()?;
+    }
+
+    Ok(())
 }
 
 struct Application {
@@ -66,7 +69,6 @@ struct Application {
     graphics_queue: asche::GraphicsQueue,
     transfer_queue: asche::TransferQueue,
     graphics_command_pool: asche::GraphicsCommandPool,
-    window: winit::window::Window,
     extent: vk::Extent2D,
     pipeline: asche::GraphicsPipeline,
     pipeline_layout: asche::PipelineLayout,
@@ -85,12 +87,10 @@ impl Application {
         mut device: asche::Device,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
-        window: winit::window::Window,
+        window: &sdl2::video::Window,
     ) -> Result<Self, asche::AscheError> {
-        let extent = vk::Extent2D {
-            width: window.inner_size().width,
-            height: window.inner_size().height,
-        };
+        let (width, height) = window.size();
+        let extent = vk::Extent2D { width, height };
 
         // Shader
         let vert_module = device.create_shader_module(
@@ -328,7 +328,6 @@ impl Application {
             graphics_queue,
             transfer_queue,
             graphics_command_pool,
-            window,
             extent,
             pipeline,
             pipeline_layout,

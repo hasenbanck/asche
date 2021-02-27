@@ -19,12 +19,14 @@ raw-window-handle = "0.3"
 tracing = { version = "0.1", default-features = false, optional = true }
 parking_lot = "0.11"
 vk-alloc = { version = "0.3", features = ["tracing", "vk-buffer-device-address"] }
+sharded-slab = "0.1"
 
 [dev-dependencies]
 glam = { version = "0.12", features = ["bytemuck"] }
 bytemuck = "1.5"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
-winit = "0.24"
+# TODO "bundled" doesn't work on windows currently
+sdl2 = { version = "0.34", default-features = false, features = ["raw-window-handle"] }
 
 [build-dependencies]
 shaderc = "0.7"
