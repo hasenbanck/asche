@@ -194,7 +194,21 @@ impl Device {
         let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1]);
         let transfer_queue = TransferQueue::new(context.clone(), family_ids[2], queues[2]);
 
-        // TODO create the queue debug names.
+        context.set_object_name(
+            "Compute Queue",
+            vk::ObjectType::QUEUE,
+            compute_queue.inner.raw.as_raw(),
+        )?;
+        context.set_object_name(
+            "Graphics Queue",
+            vk::ObjectType::QUEUE,
+            graphics_queue.inner.raw.as_raw(),
+        )?;
+        context.set_object_name(
+            "Transfer Queue",
+            vk::ObjectType::QUEUE,
+            transfer_queue.inner.raw.as_raw(),
+        )?;
 
         let mut device = Device {
             device_type: physical_device_properties.device_type,
