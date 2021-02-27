@@ -3,8 +3,6 @@ use bytemuck::{Pod, Zeroable};
 use glam::f32::{Mat4, Vec2, Vec3, Vec4};
 use raw_window_handle::HasRawWindowHandle;
 
-use asche::{DescriptorPool, DescriptorSetLayout};
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -79,11 +77,13 @@ struct Application {
     depth_image_view: asche::ImageView,
     vertex_buffer: Vec<asche::Buffer>,
     index_buffer: Vec<asche::Buffer>,
+    textures: Vec<Texture>,
+    sampler: asche::Sampler,
     vp_matrix: glam::f32::Mat4,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
-    descriptor_set_layout: DescriptorSetLayout,
-    descriptor_pool: DescriptorPool,
+    descriptor_set_layout: asche::DescriptorSetLayout,
+    descriptor_pool: asche::DescriptorPool,
 }
 
 impl Application {
@@ -159,6 +159,12 @@ impl Application {
             flags: None,
         })?;
 
+        // Sampler
+        let sampler = device.create_sampler(&asche::SamplerDescriptor {
+            name: "Cube Texture Sampler",
+            ..Default::default()
+        })?;
+
         // Renderpass
         let attachments = [
             // Color
@@ -220,33 +226,21 @@ impl Application {
             device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
 
         // Descriptor set layout
-        let bindings = [
-            vk::DescriptorSetLayoutBinding::builder()
-                .binding(0)
-                .descriptor_count(1) // Used fore texture arrays
-                .descriptor_type(vk::DescriptorType::SAMPLER)
-                .build(),
-            vk::DescriptorSetLayoutBinding::builder()
-                .binding(1)
-                .descriptor_count(1)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .build(),
-        ];
+        let bindings = [vk::DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_count(1) // Used fore texture arrays
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build()];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
         let descriptor_set_layout =
             device.create_descriptor_set_layout("Cube Descriptor Set Layout", layout_info)?;
 
         // Descriptor pool
-        let pool_sizes = [
-            vk::DescriptorPoolSize::builder()
-                .descriptor_count(1)
-                .ty(vk::DescriptorType::SAMPLER)
-                .build(),
-            vk::DescriptorPoolSize::builder()
-                .descriptor_count(1)
-                .ty(vk::DescriptorType::SAMPLED_IMAGE)
-                .build(),
-        ];
+        let pool_sizes = [vk::DescriptorPoolSize::builder()
+            .descriptor_count(1)
+            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .build()];
         let pool_info = vk::DescriptorPoolCreateInfo::builder()
             .max_sets(16)
             .pool_sizes(&pool_sizes);
@@ -376,6 +370,8 @@ impl Application {
             depth_image_view,
             vertex_buffer: vec![],
             index_buffer: vec![],
+            textures: vec![],
+            sampler,
             vp_matrix,
             timeline,
             timeline_value,
@@ -383,8 +379,8 @@ impl Application {
             descriptor_pool,
         };
 
+        // Upload the model data
         let (vertex_data, index_data) = create_cube_data();
-
         let index_buffer = app.create_buffer(
             "Index Buffer",
             &bytemuck::cast_slice(&index_data),
@@ -400,7 +396,170 @@ impl Application {
         app.vertex_buffer.push(vertex_buffer);
         app.index_buffer.push(index_buffer);
 
+        // Upload the model texture
+        let texture_data = include_bytes!("fractal.dds");
+        let texture = app.create_texture("Cube Texture", texture_data)?;
+        app.textures.push(texture);
+
         Ok(app)
+    }
+
+    fn create_texture(
+        &mut self,
+        name: &str,
+        image_data: &[u8],
+    ) -> Result<Texture, asche::AscheError> {
+        let dds = ddsfile::Dds::read(&mut std::io::Cursor::new(&image_data)).unwrap();
+
+        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor {
+            name: "Staging Buffer",
+            usage: vk::BufferUsageFlags::TRANSFER_SRC,
+            memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+            sharing_mode: vk::SharingMode::CONCURRENT,
+            queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
+            size: dds.data.len() as u64,
+            flags: None,
+        })?;
+
+        let stagging_slice = stagging_buffer
+            .allocation
+            .mapped_slice_mut()
+            .expect("staging buffer allocation was not mapped");
+        stagging_slice[..dds.data.len()].clone_from_slice(bytemuck::cast_slice(&dds.data));
+
+        let extent = vk::Extent3D {
+            width: dds.header.width,
+            height: dds.header.height,
+            depth: 1,
+        };
+
+        let image = self.device.create_image(&asche::ImageDescriptor {
+            name,
+            usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: vk::SharingMode::CONCURRENT,
+            queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
+            image_type: vk::ImageType::TYPE_2D,
+            format: vk::Format::BC7_SRGB_BLOCK,
+            extent,
+            mip_levels: 1,
+            array_layers: 1,
+            samples: vk::SampleCountFlags::TYPE_1,
+            tiling: vk::ImageTiling::OPTIMAL,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            flags: None,
+        })?;
+
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+
+        let view = self.device.create_image_view(&asche::ImageViewDescriptor {
+            name: &format!("{} View", name),
+            image: &image,
+            view_type: vk::ImageViewType::TYPE_2D,
+            format: vk::Format::BC7_SRGB_BLOCK,
+            components: vk::ComponentMapping {
+                r: vk::ComponentSwizzle::R,
+                g: vk::ComponentSwizzle::G,
+                b: vk::ComponentSwizzle::B,
+                a: vk::ComponentSwizzle::A,
+            },
+            subresource_range,
+            flags: None,
+        })?;
+
+        let mut transfer_pool = self.transfer_queue.create_command_pool()?;
+        let transfer_buffer = transfer_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
+
+        transfer_buffer.record(|encoder| {
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .image(image.raw)
+                .subresource_range(subresource_range)
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE);
+
+            encoder.pipeline_barrier(
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier.build()],
+            );
+
+            encoder.copy_buffer_to_image(
+                &stagging_buffer,
+                &image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_row_length: 0,
+                    buffer_image_height: 0,
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    image_offset: vk::Offset3D::default(),
+                    image_extent: extent,
+                },
+            );
+            Ok(())
+        })?;
+        self.timeline_value += 1;
+        self.transfer_queue.execute(&transfer_buffer)?;
+
+        let graphics_buffer = self.graphics_command_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
+
+        graphics_buffer.record(|encoder| {
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image(image.raw)
+                .subresource_range(subresource_range)
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ);
+
+            encoder.pipeline_barrier(
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier.build()],
+            );
+
+            Ok(())
+        })?;
+
+        self.timeline_value += 1;
+        self.graphics_queue.execute(&graphics_buffer)?;
+
+        self.timeline.wait_for_value(self.timeline_value)?;
+
+        Ok(Texture {
+            _image: image,
+            view,
+        })
     }
 
     fn create_buffer(
@@ -443,7 +602,7 @@ impl Application {
         )?;
 
         transfer_buffer.record(|encoder| {
-            encoder.cmd_copy_buffer(
+            encoder.copy_buffer(
                 &stagging_buffer,
                 &dst_buffer,
                 0,
@@ -456,6 +615,9 @@ impl Application {
 
         self.transfer_queue.execute(&transfer_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
+
+        transfer_pool.reset()?;
+        self.graphics_command_pool.reset()?;
 
         Ok(dst_buffer)
     }
@@ -472,6 +634,28 @@ impl Application {
         let m_matrix =
             Mat4::from_rotation_y((std::f32::consts::PI) * self.timeline_value as f32 / 500.0);
         let mvp_matrix = self.vp_matrix * m_matrix;
+
+        let set = self
+            .descriptor_pool
+            .create_descriptor_set("Cube Descriptor Set", &self.descriptor_set_layout)?;
+
+        // TODO this could be a method on the descriptor set (with enums for buffer, images and samplers!)!
+        let texture = &self.textures[0];
+        let image_info = [vk::DescriptorImageInfo::builder()
+            .image_view(texture.view.raw)
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .sampler(self.sampler.raw)
+            .build()];
+
+        self.descriptor_pool.update_descriptor_set(
+            &[vk::WriteDescriptorSet::builder()
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .dst_set(set)
+                .image_info(&image_info)
+                .build()],
+            &[],
+        );
 
         graphics_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
@@ -500,19 +684,20 @@ impl Application {
                 self.extent,
             )?;
 
-            pass.cmd_bind_pipeline(&self.pipeline);
+            pass.bind_pipeline(&self.pipeline);
+            pass.bind_descriptor_set(&self.pipeline_layout, 0, set, &[]);
 
-            pass.cmd_bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
-            pass.cmd_bind_vertex_buffer(0, &[self.vertex_buffer[0].raw], &[0]);
+            pass.bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
+            pass.bind_vertex_buffer(0, &[self.vertex_buffer[0].raw], &[0]);
 
-            pass.cmd_push_constants(
+            pass.push_constants(
                 self.pipeline_layout.raw,
                 vk::ShaderStageFlags::VERTEX,
                 0,
                 bytemuck::cast_slice(mvp_matrix.as_ref()),
             );
 
-            pass.cmd_draw_indexed(36, 1, 0, 0, 0);
+            pass.draw_indexed(36, 1, 0, 0, 0);
 
             Ok(())
         })?;
@@ -522,6 +707,7 @@ impl Application {
             .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 
         self.graphics_command_pool.reset()?;
+        self.descriptor_pool.free_sets()?;
 
         self.device.queue_frame(&self.graphics_queue, frame)?;
         self.timeline_value += Timeline::RenderEnd as u64;
@@ -660,4 +846,9 @@ fn perspective_infinite_reverse_rh_yup(fov_y_radians: f32, aspect_ratio: f32, z_
         Vec4::new(0.0, 0.0, 0.0, -1.0),
         Vec4::new(0.0, 0.0, z_near, 0.0),
     )
+}
+
+struct Texture {
+    _image: asche::Image,
+    view: asche::ImageView,
 }

@@ -49,6 +49,29 @@ impl DescriptorPool {
 
         Ok(set)
     }
+
+    /// Creates a new descriptor set with the given `DescriptorSetLayout``.
+    pub fn update_descriptor_set(
+        &self,
+        writes: &[vk::WriteDescriptorSet],
+        copies: &[vk::CopyDescriptorSet],
+    ) {
+        unsafe {
+            self.context
+                .logical_device
+                .update_descriptor_sets(writes, copies);
+        };
+    }
+
+    /// Frees all descriptor sets allocated from the pool. Invalidates all descriptor sets from the pool.
+    pub fn free_sets(&self) -> Result<()> {
+        unsafe {
+            self.context
+                .logical_device
+                .reset_descriptor_pool(self.raw, vk::DescriptorPoolResetFlags::empty())?;
+        };
+        Ok(())
+    }
 }
 
 /// Wraps a descriptor set layout.

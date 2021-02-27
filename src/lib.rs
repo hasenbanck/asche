@@ -206,6 +206,65 @@ pub struct ImageViewDescriptor<'a> {
     pub flags: Option<vk::ImageViewCreateFlags>,
 }
 
+/// Describes how a sampler should be configured.
+pub struct SamplerDescriptor<'a> {
+    /// Name used for debugging.
+    pub name: &'a str,
+    /// Filter used for magnification.
+    pub mag_filter: vk::Filter,
+    /// Filter used for minification.
+    pub min_filter: vk::Filter,
+    /// Mipmap mode.
+    pub mipmap_mode: vk::SamplerMipmapMode,
+    /// Address mode U.
+    pub address_mode_u: vk::SamplerAddressMode,
+    /// Address mode V.
+    pub address_mode_v: vk::SamplerAddressMode,
+    /// Address mode W.
+    pub address_mode_w: vk::SamplerAddressMode,
+    /// Mipmap load bias.
+    pub mip_lod_bias: vk::SamplerMipmapMode,
+    /// Anisotropy filtering enabled.
+    pub anisotropy_enable: bool,
+    /// The anisotropy filter rate.
+    pub max_anisotropy: f32,
+    /// Optional Compare operation.
+    pub compare_op: Option<vk::CompareOp>,
+    /// Minimal LOD.
+    pub min_lod: f32,
+    /// Maximal LOD.
+    pub max_lod: f32,
+    /// Border color.
+    pub border_color: Option<vk::BorderColor>,
+    /// Un-normalized coordinates
+    pub unnormalized_coordinates: bool,
+    /// Optional flags.
+    pub flags: Option<vk::SamplerCreateFlags>,
+}
+
+impl<'a> Default for SamplerDescriptor<'a> {
+    fn default() -> Self {
+        Self {
+            name: "",
+            mag_filter: vk::Filter::LINEAR,
+            min_filter: vk::Filter::LINEAR,
+            mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+            address_mode_u: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            address_mode_v: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            address_mode_w: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            mip_lod_bias: vk::SamplerMipmapMode::LINEAR,
+            anisotropy_enable: false,
+            max_anisotropy: 0.0,
+            compare_op: Some(vk::CompareOp::LESS_OR_EQUAL),
+            min_lod: 0.0,
+            max_lod: std::f32::MAX,
+            border_color: None,
+            unnormalized_coordinates: false,
+            flags: None,
+        }
+    }
+}
+
 /// Describes a render pass color attachment. Used to create the framebuffer.
 pub struct RenderPassColorAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
@@ -279,6 +338,21 @@ impl Drop for ImageView {
             self.context
                 .logical_device
                 .destroy_image_view(self.raw, None);
+        };
+    }
+}
+
+/// Wraps a sampler.
+pub struct Sampler {
+    context: Arc<Context>,
+    /// The raw Vulkan sampler.
+    pub raw: vk::Sampler,
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.logical_device.destroy_sampler(self.raw, None);
         };
     }
 }

@@ -10,7 +10,7 @@ use ash::vk::{Handle, Offset2D};
 use crate::context::Context;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    Buffer, ComputePipeline, GraphicsPipeline, QueueType, RenderPass,
+    Buffer, ComputePipeline, GraphicsPipeline, Image, PipelineLayout, QueueType, RenderPass,
     RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
 };
 
@@ -283,16 +283,16 @@ pub struct ComputeCommandEncoder<'a> {
 impl<'a> ComputeCommandEncoder<'a> {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
-        begin(&self.context, self.buffer)
+        begin(self.context, self.buffer)
     }
 
     /// Ends a command buffer.
     fn end(&self) -> Result<()> {
-        end(&self.context, self.buffer)
+        end(self.context, self.buffer)
     }
 
     /// Copies data between two buffer.
-    pub fn cmd_copy_buffer(
+    pub fn copy_buffer(
         &self,
         src_buffer: &Buffer,
         dst_buffer: &Buffer,
@@ -300,8 +300,8 @@ impl<'a> ComputeCommandEncoder<'a> {
         dst_offset: u64,
         size: u64,
     ) {
-        cmd_copy_buffer(
-            &self.context,
+        copy_buffer(
+            self.context,
             self.buffer,
             src_buffer.raw,
             dst_buffer.raw,
@@ -311,35 +311,98 @@ impl<'a> ComputeCommandEncoder<'a> {
         )
     }
 
+    /// Copies data from a buffer to an image.
+    pub fn copy_buffer_to_image(
+        &self,
+        src_buffer: &Buffer,
+        dst_image: &Image,
+        dst_image_layout: vk::ImageLayout,
+        region: vk::BufferImageCopy,
+    ) {
+        copy_buffer_to_image(
+            self.context,
+            self.buffer,
+            src_buffer.raw,
+            dst_image.raw,
+            dst_image_layout,
+            region,
+        )
+    }
+
     /// Binds a pipeline.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
-    pub fn cmd_bind_pipeline(&self, compute_pipeline: &ComputePipeline) {
-        cmd_bind_pipeline(
-            &self.context,
+    pub fn bind_pipeline(&self, compute_pipeline: &ComputePipeline) {
+        bind_pipeline(
+            self.context,
             self.buffer,
             vk::PipelineBindPoint::COMPUTE,
             compute_pipeline.raw,
         )
     }
 
+    /// Binds a descriptor set.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
+    pub fn bind_descriptor_set(
+        &self,
+        layout: &PipelineLayout,
+        set: u32,
+        descriptor_set: vk::DescriptorSet,
+        dynamic_offsets: &[u32],
+    ) {
+        bind_descriptor_sets(
+            self.context,
+            self.buffer,
+            vk::PipelineBindPoint::COMPUTE,
+            layout.raw,
+            set,
+            descriptor_set,
+            dynamic_offsets,
+        )
+    }
+
     /// Update the values of push constants.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
-    pub fn cmd_push_constants(
+    pub fn push_constants(
         &self,
         layout: vk::PipelineLayout,
         stage_flags: vk::ShaderStageFlags,
         offset: u32,
         constants: &[u8],
     ) {
-        cmd_push_constants(
-            &self.context,
+        push_constants(
+            self.context,
             self.buffer,
             layout,
             stage_flags,
             offset,
             constants,
+        );
+    }
+
+    /// Insert a memory dependency.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
+    pub fn pipeline_barrier(
+        &self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        dependency_flags: vk::DependencyFlags,
+        memory_barriers: &[vk::MemoryBarrier],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+        image_memory_barriers: &[vk::ImageMemoryBarrier],
+    ) {
+        pipeline_barrier(
+            self.context,
+            self.buffer,
+            src_stage_mask,
+            dst_stage_mask,
+            dependency_flags,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
         );
     }
 }
@@ -353,16 +416,16 @@ pub struct GraphicsCommandEncoder<'a> {
 impl<'a> GraphicsCommandEncoder<'a> {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
-        begin(&self.context, self.buffer)
+        begin(self.context, self.buffer)
     }
 
     /// Ends a command buffer.
     fn end(&self) -> Result<()> {
-        end(&self.context, self.buffer)
+        end(self.context, self.buffer)
     }
 
     /// Copies data between two buffer.
-    pub fn cmd_copy_buffer(
+    pub fn copy_buffer(
         &self,
         src_buffer: &Buffer,
         dst_buffer: &Buffer,
@@ -370,14 +433,32 @@ impl<'a> GraphicsCommandEncoder<'a> {
         dst_offset: u64,
         size: u64,
     ) {
-        cmd_copy_buffer(
-            &self.context,
+        copy_buffer(
+            self.context,
             self.buffer,
             src_buffer.raw,
             dst_buffer.raw,
             src_offset,
             dst_offset,
             size,
+        )
+    }
+
+    /// Copies data from a buffer to an image.
+    pub fn copy_buffer_to_image(
+        &self,
+        src_buffer: &Buffer,
+        dst_image: &Image,
+        dst_image_layout: vk::ImageLayout,
+        region: vk::BufferImageCopy,
+    ) {
+        copy_buffer_to_image(
+            self.context,
+            self.buffer,
+            src_buffer.raw,
+            dst_image.raw,
+            dst_image_layout,
+            region,
         )
     }
 
@@ -390,7 +471,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
         extent: vk::Extent2D,
     ) -> Result<RenderPassEncoder> {
         let encoder = RenderPassEncoder {
-            context: &self.context,
+            context: self.context,
             buffer: self.buffer,
         };
 
@@ -438,13 +519,78 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// Binds a pipeline.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
-    pub fn cmd_bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
-        cmd_bind_pipeline(
-            &self.context,
+    pub fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+        bind_pipeline(
+            self.context,
             self.buffer,
             vk::PipelineBindPoint::GRAPHICS,
             graphics_pipeline.raw,
         )
+    }
+
+    /// Binds a descriptor set.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
+    pub fn bind_descriptor_set(
+        &self,
+        layout: &PipelineLayout,
+        set: u32,
+        descriptor_set: vk::DescriptorSet,
+        dynamic_offsets: &[u32],
+    ) {
+        bind_descriptor_sets(
+            self.context,
+            self.buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            layout.raw,
+            set,
+            descriptor_set,
+            dynamic_offsets,
+        )
+    }
+
+    /// Update the values of push constants.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
+    pub fn push_constants(
+        &self,
+        layout: vk::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8],
+    ) {
+        push_constants(
+            self.context,
+            self.buffer,
+            layout,
+            stage_flags,
+            offset,
+            constants,
+        );
+    }
+
+    /// Insert a memory dependency.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
+    pub fn pipeline_barrier(
+        &self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        dependency_flags: vk::DependencyFlags,
+        memory_barriers: &[vk::MemoryBarrier],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+        image_memory_barriers: &[vk::ImageMemoryBarrier],
+    ) {
+        pipeline_barrier(
+            self.context,
+            self.buffer,
+            src_stage_mask,
+            dst_stage_mask,
+            dependency_flags,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
+        );
     }
 }
 
@@ -457,16 +603,16 @@ pub struct TransferCommandEncoder<'a> {
 impl<'a> TransferCommandEncoder<'a> {
     /// Begins a command buffer.
     fn begin(&self) -> Result<()> {
-        begin(&self.context, self.buffer)
+        begin(self.context, self.buffer)
     }
 
     /// Ends a command buffer.
     fn end(&self) -> Result<()> {
-        end(&self.context, self.buffer)
+        end(self.context, self.buffer)
     }
 
     /// Copies data between two buffer.
-    pub fn cmd_copy_buffer(
+    pub fn copy_buffer(
         &self,
         src_buffer: &Buffer,
         dst_buffer: &Buffer,
@@ -474,8 +620,8 @@ impl<'a> TransferCommandEncoder<'a> {
         dst_offset: u64,
         size: u64,
     ) {
-        cmd_copy_buffer(
-            &self.context,
+        copy_buffer(
+            self.context,
             self.buffer,
             src_buffer.raw,
             dst_buffer.raw,
@@ -483,6 +629,48 @@ impl<'a> TransferCommandEncoder<'a> {
             dst_offset,
             size,
         )
+    }
+
+    /// Copies data from a buffer to an image.
+    pub fn copy_buffer_to_image(
+        &self,
+        src_buffer: &Buffer,
+        dst_image: &Image,
+        dst_image_layout: vk::ImageLayout,
+        region: vk::BufferImageCopy,
+    ) {
+        copy_buffer_to_image(
+            self.context,
+            self.buffer,
+            src_buffer.raw,
+            dst_image.raw,
+            dst_image_layout,
+            region,
+        )
+    }
+
+    /// Insert a memory dependency.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
+    pub fn pipeline_barrier(
+        &self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        dependency_flags: vk::DependencyFlags,
+        memory_barriers: &[vk::MemoryBarrier],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+        image_memory_barriers: &[vk::ImageMemoryBarrier],
+    ) {
+        pipeline_barrier(
+            self.context,
+            self.buffer,
+            src_stage_mask,
+            dst_stage_mask,
+            dependency_flags,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
+        );
     }
 }
 
@@ -527,19 +715,40 @@ impl<'a> RenderPassEncoder<'a> {
     /// Bind a pipeline object to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
-    pub fn cmd_bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
-        cmd_bind_pipeline(
-            &self.context,
+    pub fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+        bind_pipeline(
+            self.context,
             self.buffer,
             vk::PipelineBindPoint::GRAPHICS,
             graphics_pipeline.raw,
         )
     }
 
+    /// Binds a descriptor set.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
+    pub fn bind_descriptor_set(
+        &self,
+        layout: &PipelineLayout,
+        set: u32,
+        descriptor_set: vk::DescriptorSet,
+        dynamic_offsets: &[u32],
+    ) {
+        bind_descriptor_sets(
+            self.context,
+            self.buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            layout.raw,
+            set,
+            descriptor_set,
+            dynamic_offsets,
+        )
+    }
+
     /// Bind an index buffer to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
-    pub fn cmd_bind_index_buffer(
+    pub fn bind_index_buffer(
         &self,
         index_buffer: vk::Buffer,
         offset: u64,
@@ -558,7 +767,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// Bind vertex buffers to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
-    pub fn cmd_bind_vertex_buffer(
+    pub fn bind_vertex_buffer(
         &self,
         first_binding: u32,
         vertex_buffers: &[vk::Buffer],
@@ -577,15 +786,15 @@ impl<'a> RenderPassEncoder<'a> {
     /// Update the values of push constants.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
-    pub fn cmd_push_constants(
+    pub fn push_constants(
         &self,
         layout: vk::PipelineLayout,
         stage_flags: vk::ShaderStageFlags,
         offset: u32,
         constants: &[u8],
     ) {
-        cmd_push_constants(
-            &self.context,
+        push_constants(
+            self.context,
             self.buffer,
             layout,
             stage_flags,
@@ -594,10 +803,34 @@ impl<'a> RenderPassEncoder<'a> {
         );
     }
 
+    /// Insert a memory dependency.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
+    pub fn pipeline_barrier(
+        &self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        dependency_flags: vk::DependencyFlags,
+        memory_barriers: &[vk::MemoryBarrier],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+        image_memory_barriers: &[vk::ImageMemoryBarrier],
+    ) {
+        pipeline_barrier(
+            self.context,
+            self.buffer,
+            src_stage_mask,
+            dst_stage_mask,
+            dependency_flags,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
+        );
+    }
+
     /// Draws primitives.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDraw.html
-    pub fn cmd_draw(
+    pub fn draw(
         &self,
         vertex_count: u32,
         instance_count: u32,
@@ -618,7 +851,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// Issue an indexed draw into a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexed.html
-    pub fn cmd_draw_indexed(
+    pub fn draw_indexed(
         &self,
         index_count: u32,
         instance_count: u32,
@@ -641,7 +874,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// Perform an indexed indirect draw.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
-    pub fn cmd_draw_indexed_indirect(
+    pub fn draw_indexed_indirect(
         &self,
         buffer: &Buffer,
         offset: u64,
@@ -662,7 +895,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
-    pub fn cmd_draw_indexed_indirect_count(
+    pub fn draw_indexed_indirect_count(
         &self,
         buffer: &Buffer,
         offset: u64,
@@ -687,7 +920,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
-    pub fn cmd_draw_indirect(&self, buffer: &Buffer, offset: u64, draw_count: u32, stride: u32) {
+    pub fn draw_indirect(&self, buffer: &Buffer, offset: u64, draw_count: u32, stride: u32) {
         unsafe {
             self.context.logical_device.cmd_draw_indirect(
                 self.buffer,
@@ -702,7 +935,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCount.html
-    pub fn cmd_draw_indirect_count(
+    pub fn draw_indirect_count(
         &self,
         buffer: &Buffer,
         offset: u64,
@@ -742,7 +975,7 @@ fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
 }
 
 #[inline]
-fn cmd_bind_pipeline(
+fn bind_pipeline(
     context: &Context,
     buffer: vk::CommandBuffer,
     pipeline_bind_point: vk::PipelineBindPoint,
@@ -756,7 +989,30 @@ fn cmd_bind_pipeline(
 }
 
 #[inline]
-fn cmd_copy_buffer(
+fn bind_descriptor_sets(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    pipeline_bind_point: vk::PipelineBindPoint,
+    layout: vk::PipelineLayout,
+    set: u32,
+    descriptor_set: vk::DescriptorSet,
+    dynamic_offsets: &[u32],
+) {
+    let descriptor_sets = [descriptor_set];
+    unsafe {
+        context.logical_device.cmd_bind_descriptor_sets(
+            buffer,
+            pipeline_bind_point,
+            layout,
+            set,
+            &descriptor_sets,
+            dynamic_offsets,
+        )
+    };
+}
+
+#[inline]
+fn copy_buffer(
     context: &Context,
     buffer: vk::CommandBuffer,
     src_buffer: vk::Buffer,
@@ -778,7 +1034,28 @@ fn cmd_copy_buffer(
 }
 
 #[inline]
-fn cmd_push_constants(
+fn copy_buffer_to_image(
+    context: &Context,
+    buffer: vk::CommandBuffer,
+    src_buffer: vk::Buffer,
+    dst_image: vk::Image,
+    dst_image_layout: vk::ImageLayout,
+    region: vk::BufferImageCopy,
+) {
+    let regions = [region];
+    unsafe {
+        context.logical_device.cmd_copy_buffer_to_image(
+            buffer,
+            src_buffer,
+            dst_image,
+            dst_image_layout,
+            &regions,
+        )
+    };
+}
+
+#[inline]
+fn push_constants(
     context: &Context,
     buffer: vk::CommandBuffer,
     layout: vk::PipelineLayout,
@@ -790,5 +1067,30 @@ fn cmd_push_constants(
         context
             .logical_device
             .cmd_push_constants(buffer, layout, stage_flags, offset, constants)
+    };
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn pipeline_barrier(
+    context: &Context,
+    command_buffer: vk::CommandBuffer,
+    src_stage_mask: vk::PipelineStageFlags,
+    dst_stage_mask: vk::PipelineStageFlags,
+    dependency_flags: vk::DependencyFlags,
+    memory_barriers: &[vk::MemoryBarrier],
+    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+    image_memory_barriers: &[vk::ImageMemoryBarrier],
+) {
+    unsafe {
+        context.logical_device.cmd_pipeline_barrier(
+            command_buffer,
+            src_stage_mask,
+            dst_stage_mask,
+            dependency_flags,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
+        )
     };
 }

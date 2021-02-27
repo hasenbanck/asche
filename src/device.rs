@@ -15,7 +15,7 @@ use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
     AscheError, Buffer, BufferDescriptor, ComputeQueue, DescriptorPool, DescriptorSetLayout,
     GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView, ImageViewDescriptor,
-    PipelineLayout, RenderPass, Result, ShaderModule, TransferQueue,
+    PipelineLayout, RenderPass, Result, Sampler, SamplerDescriptor, ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -662,6 +662,56 @@ impl Device {
             .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.as_raw())?;
 
         Ok(ImageView {
+            context: self.context.clone(),
+            raw,
+        })
+    }
+
+    /// Creates a sampler.
+    pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Result<Sampler> {
+        let create_info = vk::SamplerCreateInfo::builder()
+            .mag_filter(descriptor.mag_filter)
+            .min_filter(descriptor.min_filter)
+            .mipmap_mode(descriptor.mipmap_mode)
+            .address_mode_u(descriptor.address_mode_u)
+            .address_mode_v(descriptor.address_mode_v)
+            .address_mode_w(descriptor.address_mode_w)
+            .mipmap_mode(descriptor.mip_lod_bias)
+            .anisotropy_enable(descriptor.anisotropy_enable)
+            .max_anisotropy(descriptor.max_anisotropy)
+            .min_lod(descriptor.min_lod)
+            .max_lod(descriptor.min_lod)
+            .unnormalized_coordinates(descriptor.unnormalized_coordinates);
+
+        let create_info = if let Some(flags) = descriptor.flags {
+            create_info.flags(flags)
+        } else {
+            create_info
+        };
+
+        let create_info = if let Some(op) = descriptor.compare_op {
+            create_info.compare_enable(true).compare_op(op)
+        } else {
+            create_info.compare_enable(false)
+        };
+
+        let create_info = if let Some(color) = descriptor.border_color {
+            create_info.border_color(color)
+        } else {
+            create_info
+        };
+
+        let raw = unsafe {
+            self.context
+                .logical_device
+                .create_sampler(&create_info, None)?
+        };
+
+        #[cfg(debug_assertions)]
+        self.context
+            .set_object_name(&descriptor.name, vk::ObjectType::SAMPLER, raw.as_raw())?;
+
+        Ok(Sampler {
             context: self.context.clone(),
             raw,
         })

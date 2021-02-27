@@ -22,8 +22,9 @@ parking_lot = "0.11"
 vk-alloc = { version = "0.3", features = ["tracing", "vk-buffer-device-address"] }
 
 [dev-dependencies]
-glam = { version = "0.12", features = ["bytemuck"] }
 bytemuck = "1.5"
+ddsfile = "0.4"
+glam = { version = "0.12", features = ["bytemuck"] }
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 # TODO "bundled" doesn't work on windows currently
 sdl2 = { version = "0.34", default-features = false, features = ["raw-window-handle"] }

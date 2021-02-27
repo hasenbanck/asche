@@ -230,8 +230,8 @@ impl Application {
                 self.extent,
             )?;
 
-            pass.cmd_bind_pipeline(&self.graphics_pipeline);
-            pass.cmd_draw(3, 1, 0, 0);
+            pass.bind_pipeline(&self.graphics_pipeline);
+            pass.draw(3, 1, 0, 0);
 
             Ok(())
         })?;

@@ -17,6 +17,8 @@ macro_rules! impl_queue {
         #[doc = $doc]
         pub struct $queue_name {
             pub(crate) inner: Queue,
+            /// The queue family index of this queue.
+            pub family_index: u32,
         }
 
         impl $queue_name {
@@ -27,7 +29,7 @@ macro_rules! impl_queue {
                 queue: vk::Queue,
             ) -> Self {
                 let raw = Queue::new(context, family_index, queue);
-                Self { inner: raw }
+                Self { inner: raw, family_index }
             }
 
             /// Creates a new command pool. Pools are not cached and are owned by the caller.
