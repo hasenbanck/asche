@@ -9,7 +9,7 @@ use ash::vk::{Handle, Offset2D};
 use crate::context::Context;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    Buffer, ComputePipeline, Device, GraphicsPipeline, QueueType, RenderPass,
+    Buffer, ComputePipeline, GraphicsPipeline, QueueType, RenderPass,
     RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
 };
 
@@ -383,7 +383,6 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// Returns a render pass encoder. Drop once finished recording.
     pub fn begin_render_pass(
         &self,
-        device: &Device,
         render_pass: &RenderPass,
         color_attachments: &[&RenderPassColorAttachmentDescriptor],
         depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
@@ -394,8 +393,12 @@ impl<'a> GraphicsCommandEncoder<'a> {
             buffer: self.buffer,
         };
 
-        let framebuffer =
-            device.get_framebuffer(render_pass, color_attachments, depth_attachment, extent)?;
+        let framebuffer = self.context.get_framebuffer(
+            render_pass,
+            color_attachments,
+            depth_attachment,
+            extent,
+        )?;
 
         let clear_values: Vec<vk::ClearValue> = color_attachments
             .iter()

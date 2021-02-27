@@ -1,14 +1,10 @@
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::ffi::CStr;
-use std::hash::Hasher;
 use std::io::Cursor;
 use std::sync::Arc;
 
 use ash::version::{DeviceV1_0, DeviceV1_1, InstanceV1_1};
 use ash::vk;
 use ash::vk::Handle;
-use parking_lot::Mutex;
 #[cfg(feature = "tracing")]
 use tracing::info;
 
@@ -18,9 +14,8 @@ use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
     AscheError, Buffer, BufferDescriptor, ComputeQueue, GraphicsPipeline, GraphicsQueue, Image,
-    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass,
-    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result, ShaderModule,
-    TransferQueue,
+    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass, Result,
+    ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -99,28 +94,18 @@ impl std::fmt::Display for BARSupport {
 ///
 /// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
 pub struct Device {
+    context: Arc<Context>,
+    compute_queue_family_index: u32,
+    graphic_queue_family_index: u32,
+    transfer_queue_family_index: u32,
+    swapchain: Option<Swapchain>,
+    swapchain_format: vk::Format,
+    swapchain_color_space: vk::ColorSpaceKHR,
+    presentation_mode: vk::PresentModeKHR,
     /// The type of the physical device.
     pub device_type: vk::PhysicalDeviceType,
     /// Shows if the device support access to the device memory using the base address register.
     pub resizable_bar_support: BARSupport,
-    context: Arc<Context>,
-    swapchain: Option<Swapchain>,
-    compute_queue_family_index: u32,
-    graphic_queue_family_index: u32,
-    transfer_queue_family_index: u32,
-    swapchain_format: vk::Format,
-    swapchain_color_space: vk::ColorSpaceKHR,
-    presentation_mode: vk::PresentModeKHR,
-    framebuffers: Mutex<HashMap<u64, vk::Framebuffer>>,
-}
-
-impl Drop for Device {
-    fn drop(&mut self) {
-        unsafe {
-            self.destroy_framebuffer();
-            self.context.logical_device.device_wait_idle().unwrap();
-        };
-    }
 }
 
 impl Device {
@@ -198,12 +183,12 @@ impl Device {
             &vk_alloc::AllocatorDescriptor::default(),
         );
 
-        let context = Arc::new(Context {
+        let context = Arc::new(Context::new(
             instance,
             logical_device,
             physical_device,
-            allocator: Mutex::new(allocator),
-        });
+            allocator,
+        ));
 
         let compute_queue = ComputeQueue::new(context.clone(), family_ids[0], queues[0]);
         let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1]);
@@ -222,7 +207,6 @@ impl Device {
             swapchain_format,
             swapchain_color_space,
             swapchain: None,
-            framebuffers: Default::default(),
         };
 
         device.recreate_swapchain(None)?;
@@ -237,7 +221,7 @@ impl Device {
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
     pub fn recreate_swapchain(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
-        self.destroy_framebuffer();
+        self.context.destroy_framebuffer();
 
         #[cfg(feature = "tracing")]
         info!(
@@ -328,77 +312,6 @@ impl Device {
         self.swapchain = Some(swapchain);
 
         Ok(())
-    }
-
-    pub(crate) fn get_framebuffer(
-        &self,
-        render_pass: &RenderPass,
-        color_attachments: &[&RenderPassColorAttachmentDescriptor],
-        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
-        extent: vk::Extent2D,
-    ) -> Result<vk::Framebuffer> {
-        // Calculate the hash for the renderpass / attachment combination.
-        let mut hasher = DefaultHasher::new();
-        hasher.write_u64(render_pass.raw.as_raw());
-        for color_attachment in color_attachments {
-            hasher.write_u64(color_attachment.attachment.as_raw());
-        }
-        if let Some(depth_attachment) = depth_attachment {
-            hasher.write_u64(depth_attachment.attachment.as_raw());
-        }
-        let hash = hasher.finish();
-
-        let mut created = false;
-        let framebuffer = if let Some(framebuffer) = self.framebuffers.lock().get(&hash) {
-            *framebuffer
-        } else {
-            created = true;
-            self.create_framebuffer(render_pass, color_attachments, depth_attachment, extent)?
-        };
-
-        if created {
-            self.framebuffers.lock().insert(hash, framebuffer);
-        }
-
-        Ok(framebuffer)
-    }
-
-    fn create_framebuffer(
-        &self,
-        render_pass: &RenderPass,
-        color_attachments: &[&RenderPassColorAttachmentDescriptor],
-        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
-        extent: vk::Extent2D,
-    ) -> Result<vk::Framebuffer> {
-        let attachments: Vec<vk::ImageView> = color_attachments
-            .iter()
-            .map(|x| x.attachment)
-            .chain(depth_attachment.iter().map(|x| x.attachment))
-            .collect();
-
-        let framebuffer_info = vk::FramebufferCreateInfo::builder()
-            .render_pass(render_pass.raw)
-            .attachments(&attachments)
-            .width(extent.width)
-            .height(extent.height)
-            .layers(1);
-        let framebuffer = unsafe {
-            self.context
-                .logical_device
-                .create_framebuffer(&framebuffer_info, None)?
-        };
-
-        Ok(framebuffer)
-    }
-
-    fn destroy_framebuffer(&self) {
-        for (_, framebuffer) in self.framebuffers.lock().drain() {
-            unsafe {
-                self.context
-                    .logical_device
-                    .destroy_framebuffer(framebuffer, None);
-            }
-        }
     }
 
     /// Gets the next frame the program can render into.

@@ -439,7 +439,6 @@ impl Application {
             });
 
             let pass = encoder.begin_render_pass(
-                &self.device,
                 &self.render_pass,
                 &[&asche::RenderPassColorAttachmentDescriptor {
                     attachment: frame.view,
