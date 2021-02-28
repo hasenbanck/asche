@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use arrayvec::ArrayVec;
-use ash::version::{DeviceV1_0, DeviceV1_2};
+use ash::version::{DeviceV1_0, DeviceV1_1, DeviceV1_2};
 use ash::vk;
 use ash::vk::{Handle, Offset2D};
 
@@ -349,7 +349,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         &self,
         layout: &PipelineLayout,
         set: u32,
-        descriptor_set: vk::DescriptorSet,
+        descriptor_set: &DescriptorSet,
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
@@ -358,7 +358,7 @@ impl<'a> ComputeCommandEncoder<'a> {
             vk::PipelineBindPoint::COMPUTE,
             layout.raw,
             set,
-            descriptor_set,
+            descriptor_set.raw,
             dynamic_offsets,
         )
     }
@@ -405,6 +405,56 @@ impl<'a> ComputeCommandEncoder<'a> {
             buffer_memory_barriers,
             image_memory_barriers,
         );
+    }
+
+    /// Dispatch compute work items.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatch.html
+    pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        unsafe {
+            self.context.logical_device.cmd_dispatch(
+                self.buffer,
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            )
+        };
+    }
+
+    /// Dispatch compute work items.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchBase.html
+    pub fn dispatch_base(
+        &self,
+        base_group_x: u32,
+        base_group_y: u32,
+        base_group_z: u32,
+        group_count_x: u32,
+        group_count_y: u32,
+        group_count_z: u32,
+    ) {
+        unsafe {
+            self.context.logical_device.cmd_dispatch_base(
+                self.buffer,
+                base_group_x,
+                base_group_y,
+                base_group_z,
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            )
+        };
+    }
+
+    /// Dispatch compute work items using indirect parameters.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchIndirect.html
+    pub fn dispatch_indirect(&self, buffer: &Buffer, offset: u64) {
+        unsafe {
+            self.context
+                .logical_device
+                .cmd_dispatch_indirect(self.buffer, buffer.raw, offset)
+        };
     }
 }
 
@@ -536,7 +586,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
         &self,
         layout: &PipelineLayout,
         set: u32,
-        descriptor_set: vk::DescriptorSet,
+        descriptor_set: &DescriptorSet,
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
@@ -545,7 +595,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
             vk::PipelineBindPoint::GRAPHICS,
             layout.raw,
             set,
-            descriptor_set,
+            descriptor_set.raw,
             dynamic_offsets,
         )
     }

@@ -13,10 +13,10 @@ use crate::instance::Instance;
 use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, Buffer, BufferDescriptor, ComputeQueue, DescriptorPool, DescriptorPoolDescriptor,
-    DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView,
-    ImageViewDescriptor, PipelineLayout, RenderPass, Result, Sampler, SamplerDescriptor,
-    ShaderModule, TransferQueue,
+    AscheError, Buffer, BufferDescriptor, ComputePipeline, ComputeQueue, DescriptorPool,
+    DescriptorPoolDescriptor, DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image,
+    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass, Result, Sampler,
+    SamplerDescriptor, ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -425,7 +425,7 @@ impl Device {
         &mut self,
         name: &str,
         pipeline_info: vk::ComputePipelineCreateInfoBuilder,
-    ) -> Result<GraphicsPipeline> {
+    ) -> Result<ComputePipeline> {
         let pipeline = unsafe {
             self.context.logical_device.create_compute_pipelines(
                 vk::PipelineCache::null(),
@@ -437,7 +437,7 @@ impl Device {
         self.context
             .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
 
-        Ok(GraphicsPipeline {
+        Ok(ComputePipeline {
             context: self.context.clone(),
             raw: pipeline,
         })
