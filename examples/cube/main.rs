@@ -241,10 +241,13 @@ impl Application {
             .descriptor_count(1)
             .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()];
-        let pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .max_sets(16)
-            .pool_sizes(&pool_sizes);
-        let descriptor_pool = device.create_descriptor_pool("Cube Descriptor Pool", pool_info)?;
+
+        let descriptor_pool = device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
+            name: "Cube Descriptor Pool",
+            max_sets: 16,
+            pool_sizes: &pool_sizes,
+            flags: None,
+        })?;
 
         // Pipeline layout
         let push_constants_ranges = [vk::PushConstantRange::builder()
@@ -639,23 +642,15 @@ impl Application {
             .descriptor_pool
             .create_descriptor_set("Cube Descriptor Set", &self.descriptor_set_layout)?;
 
-        // TODO this could be a method on the descriptor set (with enums for buffer, images and samplers!)!
         let texture = &self.textures[0];
-        let image_info = [vk::DescriptorImageInfo::builder()
-            .image_view(texture.view.raw)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .sampler(self.sampler.raw)
-            .build()];
-
-        self.descriptor_pool.update_descriptor_set(
-            &[vk::WriteDescriptorSet::builder()
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .dst_set(set)
-                .image_info(&image_info)
-                .build()],
-            &[],
-        );
+        set.update(&asche::UpdateDescriptorSetDescriptor {
+            binding: 0,
+            update: asche::DescriptorSetUpdate::CombinedImageSampler {
+                sampler: &self.sampler,
+                image_view: &texture.view,
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            },
+        });
 
         graphics_buffer.record(|encoder| {
             encoder.set_viewport_and_scissor(vk::Rect2D {
@@ -685,7 +680,7 @@ impl Application {
             )?;
 
             pass.bind_pipeline(&self.pipeline);
-            pass.bind_descriptor_set(&self.pipeline_layout, 0, set, &[]);
+            pass.bind_descriptor_set(&self.pipeline_layout, 0, &set, &[]);
 
             pass.bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
             pass.bind_vertex_buffer(0, &[self.vertex_buffer[0].raw], &[0]);

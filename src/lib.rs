@@ -13,7 +13,7 @@ pub use {
         TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
-    descriptor::{DescriptorPool, DescriptorSetLayout},
+    descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},
     device::{BARSupport, Device, DeviceConfiguration, QueuePriorityDescriptor},
     error::AscheError,
     instance::{Instance, InstanceConfiguration},
@@ -265,6 +265,105 @@ impl<'a> Default for SamplerDescriptor<'a> {
     }
 }
 
+/// Describes how an image view should be configured.
+pub struct DescriptorPoolDescriptor<'a> {
+    /// Name used for debugging.
+    pub name: &'a str,
+    /// Max sets.
+    pub max_sets: u32,
+    /// All sizes of the pool.
+    pub pool_sizes: &'a [vk::DescriptorPoolSize],
+    /// Optional flags.
+    pub flags: Option<vk::DescriptorPoolCreateFlags>,
+}
+
+/// Describes how a descriptor set should be updated.
+pub struct UpdateDescriptorSetDescriptor<'a> {
+    /// Binding slot.
+    pub binding: u32,
+    /// Describes what is updated.
+    pub update: DescriptorSetUpdate<'a>,
+}
+
+/// That is updated of the descriptor set.
+pub enum DescriptorSetUpdate<'a> {
+    /// Updates a sampler binding.
+    Sampler {
+        /// The sampler.
+        sampler: &'a Sampler,
+    },
+    /// Updates a combined image sampler binding.
+    CombinedImageSampler {
+        /// The sampler.
+        sampler: &'a Sampler,
+        /// The image view.
+        image_view: &'a ImageView,
+        /// The layout.
+        image_layout: vk::ImageLayout,
+    },
+    /// Updates a sampled image binding.
+    SampledImage {
+        /// The image view.
+        image_view: &'a ImageView,
+    },
+    /// Updates a storage image binding.
+    StorageImage {
+        /// The image view.
+        image_view: &'a ImageView,
+    },
+    /// Updates a uniform texel buffer.
+    UniformTexelBuffer {
+        /// The texel buffer.
+        texel_buffer: &'a BufferView,
+    },
+    /// Updates a storage texel buffer.
+    StorageTexelBuffer {
+        /// The texel buffer.
+        texel_buffer: &'a BufferView,
+    },
+    /// Updates an uniform buffer.
+    UniformBuffer {
+        /// The buffer.
+        buffer: &'a Buffer,
+        /// Offset inside the buffer.
+        offset: u64,
+        /// The range inside the buffer.
+        range: u64,
+    },
+    /// Updates a storage buffer.
+    StorageBuffer {
+        /// The buffer.
+        buffer: &'a Buffer,
+        /// Offset inside the buffer.
+        offset: u64,
+        /// The range inside the buffer.
+        range: u64,
+    },
+    /// Updates a dynamic uniform buffer.
+    UniformBufferDynamic {
+        /// The buffer.
+        buffer: &'a Buffer,
+        /// Offset inside the buffer.
+        offset: u64,
+        /// The range inside the buffer.
+        range: u64,
+    },
+    /// Updates a dynamic storage buffer.
+    StorageBufferDynamic {
+        /// The buffer.
+        buffer: &'a Buffer,
+        /// Offset inside the buffer.
+        offset: u64,
+        /// The range inside the buffer.
+        range: u64,
+    },
+    /// Updates an input attachment.
+    InputAttachment {
+        /// The image view.
+        image_view: &'a ImageView,
+    },
+}
+
 /// Describes a render pass color attachment. Used to create the framebuffer.
 pub struct RenderPassColorAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
@@ -299,6 +398,23 @@ impl Drop for Buffer {
                 .free(&self.allocation)
                 .expect("can't free buffer allocation");
             self.context.logical_device.destroy_buffer(self.raw, None);
+        };
+    }
+}
+
+/// Wraps a buffer view.
+pub struct BufferView {
+    context: Arc<Context>,
+    /// The raw Vulkan buffer view.
+    pub raw: vk::BufferView,
+}
+
+impl Drop for BufferView {
+    fn drop(&mut self) {
+        unsafe {
+            self.context
+                .logical_device
+                .destroy_buffer_view(self.raw, None);
         };
     }
 }

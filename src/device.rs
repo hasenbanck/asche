@@ -13,9 +13,10 @@ use crate::instance::Instance;
 use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, Buffer, BufferDescriptor, ComputeQueue, DescriptorPool, DescriptorSetLayout,
-    GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView, ImageViewDescriptor,
-    PipelineLayout, RenderPass, Result, Sampler, SamplerDescriptor, ShaderModule, TransferQueue,
+    AscheError, Buffer, BufferDescriptor, ComputeQueue, DescriptorPool, DescriptorPoolDescriptor,
+    DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView,
+    ImageViewDescriptor, PipelineLayout, RenderPass, Result, Sampler, SamplerDescriptor,
+    ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -445,17 +446,29 @@ impl Device {
     /// Creates a descriptor pool.
     pub fn create_descriptor_pool(
         &mut self,
-        name: &str,
-        pool_info: vk::DescriptorPoolCreateInfoBuilder,
+        descriptor: &DescriptorPoolDescriptor,
     ) -> Result<DescriptorPool> {
+        let pool_info = vk::DescriptorPoolCreateInfo::builder()
+            .max_sets(descriptor.max_sets)
+            .pool_sizes(descriptor.pool_sizes);
+
+        let pool_info = if let Some(flags) = descriptor.flags {
+            pool_info.flags(flags)
+        } else {
+            pool_info
+        };
+
         let pool = unsafe {
             self.context
                 .logical_device
                 .create_descriptor_pool(&pool_info, None)?
         };
 
-        self.context
-            .set_object_name(name, vk::ObjectType::DESCRIPTOR_POOL, pool.as_raw())?;
+        self.context.set_object_name(
+            descriptor.name,
+            vk::ObjectType::DESCRIPTOR_POOL,
+            pool.as_raw(),
+        )?;
 
         Ok(DescriptorPool::new(self.context.clone(), pool))
     }

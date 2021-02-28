@@ -8,6 +8,7 @@ use ash::vk;
 use ash::vk::{Handle, Offset2D};
 
 use crate::context::Context;
+use crate::descriptor::DescriptorSet;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
     Buffer, ComputePipeline, GraphicsPipeline, Image, PipelineLayout, QueueType, RenderPass,
@@ -731,7 +732,7 @@ impl<'a> RenderPassEncoder<'a> {
         &self,
         layout: &PipelineLayout,
         set: u32,
-        descriptor_set: vk::DescriptorSet,
+        descriptor_set: &DescriptorSet,
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
@@ -740,7 +741,7 @@ impl<'a> RenderPassEncoder<'a> {
             vk::PipelineBindPoint::GRAPHICS,
             layout.raw,
             set,
-            descriptor_set,
+            descriptor_set.raw,
             dynamic_offsets,
         )
     }
