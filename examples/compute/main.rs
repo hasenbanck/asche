@@ -122,44 +122,32 @@ impl Application {
     }
 
     fn compute(&mut self) -> Result<(), asche::AscheError> {
-        const WORKSET_SIZE: usize = 1024;
-        const WORKSETS: usize = 64;
-        const ELEMENTS: usize = WORKSET_SIZE * WORKSETS;
+        const ELEMENTS: usize = 64 * 1024;
+        const DATA_SIZE: u64 = (ELEMENTS * std::mem::size_of::<u32>()) as u64;
 
-        let mut output_data: Vec<u32> = vec![0; ELEMENTS];
-        let mut input_data: Vec<u32> = vec![0; ELEMENTS];
-        input_data
-            .iter_mut()
+        let mut data: Vec<u32> = vec![0; ELEMENTS];
+        data.iter_mut()
             .enumerate()
             .for_each(|(id, x)| *x = id as u32);
 
-        let data_size = input_data.len() * std::mem::size_of::<u32>();
-
-        let mut input_buffer = self.device.create_buffer(&asche::BufferDescriptor {
+        let mut buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name: "Input Buffer",
-            usage: vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::STORAGE_BUFFER,
+            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::COMPUTE,
-            size: data_size as u64,
+            size: DATA_SIZE,
             flags: None,
         })?;
 
-        let output_buffer = self.device.create_buffer(&asche::BufferDescriptor {
-            name: "Output Buffer",
-            usage: vk::BufferUsageFlags::TRANSFER_DST,
-            memory_location: vk_alloc::MemoryLocation::GpuToCpu,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            queues: vk::QueueFlags::COMPUTE,
-            size: data_size as u64,
-            flags: None,
-        })?;
-
-        let input_slice = input_buffer
-            .allocation
-            .mapped_slice_mut()
-            .expect("input buffer allocation was not mapped");
-        input_slice[..].clone_from_slice(bytemuck::cast_slice(&input_data));
+        {
+            let data_slice = buffer
+                .allocation
+                .mapped_slice_mut()
+                .expect("data buffer allocation was not mapped");
+            data_slice[..].clone_from_slice(bytemuck::cast_slice(&data));
+            self.device.flush_mapped_memory(&buffer.allocation)?;
+        }
 
         let compute_buffer = self.compute_command_pool.create_command_buffer(
             &self.timeline,
@@ -174,17 +162,16 @@ impl Application {
         set.update(&asche::UpdateDescriptorSetDescriptor {
             binding: 0,
             update: asche::DescriptorSetUpdate::StorageBuffer {
-                buffer: &input_buffer,
+                buffer: &buffer,
                 offset: 0,
-                range: data_size as u64,
+                range: DATA_SIZE,
             },
         });
 
         compute_buffer.record(|encoder| {
             encoder.bind_pipeline(&self.pipeline);
             encoder.bind_descriptor_set(&self.pipeline_layout, 0, &set, &[]);
-            encoder.dispatch(1024, 0, 0);
-            encoder.copy_buffer(&input_buffer, &output_buffer, 0, 0, data_size as u64);
+            encoder.dispatch(1024, 1, 1);
             Ok(())
         })?;
 
@@ -192,16 +179,17 @@ impl Application {
         self.timeline_value += 1;
         self.timeline.wait_for_value(self.timeline_value)?;
 
-        let output_slice = output_buffer
-            .allocation
-            .mapped_slice()
-            .expect("output buffer allocation was not mapped");
-        output_data[..].clone_from_slice(bytemuck::cast_slice(&output_slice));
+        {
+            let data_slice = buffer
+                .allocation
+                .mapped_slice()
+                .expect("data buffer allocation was not mapped");
+            data[..].clone_from_slice(bytemuck::cast_slice(&data_slice));
+        }
 
-        input_data
-            .iter()
-            .zip(output_data.iter())
-            .for_each(|(input, output)| assert_eq!(*input * 42, *output));
+        data.iter()
+            .enumerate()
+            .for_each(|(id, output)| assert_eq!((id * 42) as u32, *output));
         Ok(())
     }
 }

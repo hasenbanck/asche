@@ -751,6 +751,38 @@ impl Device {
 
         Ok(TimelineSemaphore::new(self.context.clone(), raw))
     }
+
+    /// Flush mapped memory. Used for CPU->GPU transfers.
+    pub fn flush_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
+        let ranges = [vk::MappedMemoryRange::builder()
+            .memory(allocation.device_memory)
+            .size(allocation.size)
+            .offset(allocation.offset)
+            .build()];
+        unsafe {
+            self.context
+                .logical_device
+                .flush_mapped_memory_ranges(&ranges)?;
+        };
+
+        Ok(())
+    }
+
+    /// Invalidate mapped memory. Used for GPU->CPU transfers.
+    pub fn invalidate_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
+        let ranges = [vk::MappedMemoryRange::builder()
+            .memory(allocation.device_memory)
+            .size(allocation.size)
+            .offset(allocation.offset)
+            .build()];
+        unsafe {
+            self.context
+                .logical_device
+                .invalidate_mapped_memory_ranges(&ranges)?;
+        };
+
+        Ok(())
+    }
 }
 
 fn query_support_resizable_bar(

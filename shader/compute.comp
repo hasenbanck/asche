@@ -2,11 +2,10 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer StorageBuffer {
+layout(set = 0, binding = 0) buffer DataBuffer {
     uint data[];
 } data_buffer;
 
 void main() {
-    uint id = gl_GlobalInvocationID.x;
-    data_buffer.data[id] *= 42;
+    data_buffer.data[gl_GlobalInvocationID.x] *= 42;
 }
