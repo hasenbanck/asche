@@ -170,7 +170,7 @@ impl Instance {
         layers: &[*const c_char],
     ) -> Result<erupt::InstanceLoader> {
         #[cfg(feature = "tracing")]
-        Self::print_extensions(instance_extensions);
+        Self::print_extensions("instance", instance_extensions);
 
         let create_info = vk::InstanceCreateInfoBuilder::new()
             .flags(vk::InstanceCreateFlags::empty())
@@ -517,10 +517,14 @@ impl Instance {
         let device_extensions = self.create_device_extensions(physical_device, &configuration)?;
 
         #[cfg(feature = "tracing")]
-        Self::print_extensions(&device_extensions);
+        Self::print_extensions("device", &device_extensions);
 
-        let (physical_features, physical_features11, physical_features12) =
-            self.collect_physical_device_features(physical_device);
+        let (
+            physical_features,
+            physical_features11,
+            physical_features12,
+            physical_features_synchronization2,
+        ) = self.collect_physical_device_features(physical_device);
 
         let features = if let Some(features) = configuration.features_v1_0.take() {
             features
@@ -542,13 +546,18 @@ impl Instance {
             .buffer_device_address(true)
             .timeline_semaphore(true);
 
+        let mut features_synchronization2 =
+            vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new().synchronization2(true);
+
         check_features(
             &physical_features,
             &physical_features11,
             &physical_features12,
+            &physical_features_synchronization2,
             &features,
             &features11,
             &features12,
+            &features_synchronization2,
         )?;
 
         let device_create_info = vk::DeviceCreateInfoBuilder::new()
@@ -557,7 +566,8 @@ impl Instance {
             .enabled_layer_names(&self.layers)
             .enabled_features(&features)
             .extend_from(&mut features11)
-            .extend_from(&mut features12);
+            .extend_from(&mut features12)
+            .extend_from(&mut features_synchronization2);
 
         let device =
             erupt::DeviceLoader::new(&self.raw, physical_device, &device_create_info, None)?;
@@ -565,8 +575,8 @@ impl Instance {
         Ok(device)
     }
 
-    fn print_extensions(extensions: &[*const i8]) {
-        info!("Loading instance extensions:");
+    fn print_extensions(what: &str, extensions: &[*const i8]) {
+        info!("Loading {} extensions:", what);
         for extension in extensions.iter() {
             let ext = unsafe { CStr::from_ptr(*extension).to_str().unwrap() };
             info!("- {}", ext);
@@ -580,13 +590,17 @@ impl Instance {
         vk::PhysicalDeviceFeatures,
         vk::PhysicalDeviceVulkan11FeaturesBuilder,
         vk::PhysicalDeviceVulkan12FeaturesBuilder,
+        vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
     ) {
         let mut physical_features11 = vk::PhysicalDeviceVulkan11FeaturesBuilder::new();
         let mut physical_features12 = vk::PhysicalDeviceVulkan12FeaturesBuilder::new();
+        let mut physical_feature_synchronization2 =
+            vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new();
         let physical_features = unsafe {
             let physical_features = vk::PhysicalDeviceFeatures2Builder::new()
                 .extend_from(&mut physical_features11)
-                .extend_from(&mut physical_features12);
+                .extend_from(&mut physical_features12)
+                .extend_from(&mut physical_feature_synchronization2);
             self.raw
                 .get_physical_device_features2(physical_device, Some(physical_features.build()))
         };
@@ -594,6 +608,7 @@ impl Instance {
             physical_features.features,
             physical_features11,
             physical_features12,
+            physical_feature_synchronization2,
         )
     }
 
@@ -605,6 +620,7 @@ impl Instance {
         let mut extensions: Vec<*const c_char> = configuration.extensions.clone();
 
         extensions.push(vk::KHR_SWAPCHAIN_EXTENSION_NAME);
+        extensions.push(vk::KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 
         // Only keep available extensions.
         let device_extensions = unsafe {
@@ -706,20 +722,25 @@ macro_rules! impl_feature_assemble {
     };
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check_features(
     physical_features: &vk::PhysicalDeviceFeatures,
     physical_features11: &vk::PhysicalDeviceVulkan11FeaturesBuilder,
     physical_features12: &vk::PhysicalDeviceVulkan12FeaturesBuilder,
+    physical_features_synchronization2: &vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
     features: &vk::PhysicalDeviceFeaturesBuilder,
     features11: &vk::PhysicalDeviceVulkan11FeaturesBuilder,
     features12: &vk::PhysicalDeviceVulkan12FeaturesBuilder,
+    features_synchronization2: &vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
 ) -> Result<()> {
     let mut physical_features_list: Vec<&str> = Vec::with_capacity(54);
     let mut physical_features11_list: Vec<&str> = Vec::with_capacity(11);
     let mut physical_features12_list: Vec<&str> = Vec::with_capacity(46);
+    let mut physical_features_synchronization2_list: Vec<&str> = Vec::with_capacity(1);
     let mut features_list: Vec<&str> = Vec::with_capacity(54);
     let mut features11_list: Vec<&str> = Vec::with_capacity(11);
     let mut features12_list: Vec<&str> = Vec::with_capacity(46);
+    let mut features_synchronization2_list: Vec<&str> = Vec::with_capacity(1);
 
     impl_feature_assemble!(
         physical_features, features, physical_features_list, features_list;
@@ -853,6 +874,13 @@ fn check_features(
         }
     );
 
+    impl_feature_assemble!(
+        physical_features_synchronization2, features_synchronization2, physical_features_synchronization2_list, features_synchronization2_list;
+        {
+            synchronization2
+        }
+    );
+
     let mut missing_features = false;
 
     #[cfg(feature = "tracing")]
@@ -905,8 +933,26 @@ fn check_features(
         }
     });
 
+    info!("Enabling VK_KHR_synchronization2 device feature:");
+    features_synchronization2_list.retain(|&wanted| {
+        let found = physical_features_synchronization2_list
+            .iter()
+            .any(|present| *present == wanted);
+        if found {
+            info!("- {}", wanted);
+            true
+        } else {
+            #[cfg(feature = "tracing")]
+            error!("Unable to find VK_KHR_synchronization2 feature: {}", wanted);
+            missing_features = true;
+            false
+        }
+    });
+
     if missing_features {
-        Err(AscheError::SwapchainFormatIncompatible)
+        Err(AscheError::Unspecified(
+            "missing required features".to_owned(),
+        ))
     } else {
         Ok(())
     }

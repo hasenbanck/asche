@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use erupt::{vk, ExtendableFrom};
+use erupt::vk;
 
 use crate::command::CommandBuffer;
 use crate::{
@@ -43,9 +43,11 @@ macro_rules! impl_queue {
                 Ok(command_pool)
             }
 
-            /// Executes a command buffer on a queue.
-            pub fn execute(&self, command_buffer: &$buffer_name) -> Result<()> {
-                self.inner.execute(&command_buffer.inner)
+            /// Submits command buffers to a queue.
+            ///
+            /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
+            pub fn queue_submit2(&self, command_buffer: &$buffer_name) -> Result<()> {
+                self.inner.queue_submit2(&command_buffer.inner)
             }
         }
     };
@@ -100,28 +102,32 @@ impl Queue {
     }
 
     #[inline]
-    fn execute(&self, command_buffer: &CommandBuffer) -> Result<()> {
-        let semaphores = [command_buffer.timeline_semaphore];
-        let timeline_wait_values = [command_buffer.timeline_wait_value];
-        let timeline_signal_values = [command_buffer.timeline_signal_value];
-        let command_buffers = [command_buffer.buffer];
-        let wait_dst_stage_mask = [vk::PipelineStageFlags::TOP_OF_PIPE];
+    fn queue_submit2(&self, command_buffer: &CommandBuffer) -> Result<()> {
+        let command_buffer_infos = [vk::CommandBufferSubmitInfoKHRBuilder::new()
+            .command_buffer(command_buffer.buffer)
+            .device_mask(0)];
 
-        let mut timeline_info = vk::TimelineSemaphoreSubmitInfoBuilder::new()
-            .wait_semaphore_values(&timeline_wait_values)
-            .signal_semaphore_values(&timeline_signal_values);
+        let wait_semaphore_infos = [vk::SemaphoreSubmitInfoKHRBuilder::new()
+            .semaphore(command_buffer.timeline_semaphore)
+            .value(command_buffer.wait_value)
+            .stage_mask(command_buffer.wait_stage_mask)
+            .device_index(0)];
 
-        let submit_info = vk::SubmitInfoBuilder::new()
-            .wait_dst_stage_mask(&wait_dst_stage_mask)
-            .command_buffers(&command_buffers)
-            .wait_semaphores(&semaphores)
-            .signal_semaphores(&semaphores)
-            .extend_from(&mut timeline_info);
+        let signal_semaphore_infos = [vk::SemaphoreSubmitInfoKHRBuilder::new()
+            .semaphore(command_buffer.timeline_semaphore)
+            .value(command_buffer.signal_value)
+            .stage_mask(command_buffer.signal_stage_mask)
+            .device_index(0)];
+
+        let submit_info = vk::SubmitInfo2KHRBuilder::new()
+            .command_buffer_infos(&command_buffer_infos)
+            .wait_semaphore_infos(&wait_semaphore_infos)
+            .signal_semaphore_infos(&signal_semaphore_infos);
 
         unsafe {
             self.context
                 .device
-                .queue_submit(self.raw, &[submit_info], None)
+                .queue_submit2_khr(self.raw, &[submit_info], None)
                 .result()?
         };
 

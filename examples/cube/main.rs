@@ -418,6 +418,8 @@ impl Application {
             .mapped_slice_mut()
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..dds.data.len()].clone_from_slice(bytemuck::cast_slice(&dds.data));
+        self.device
+            .flush_mapped_memory(&stagging_buffer.allocation)?;
 
         let extent = vk::Extent3D {
             width: dds.header.width,
@@ -469,27 +471,28 @@ impl Application {
         let transfer_buffer = transfer_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
+            vk::PipelineStageFlags2KHR::NONE_KHR,
             self.timeline_value + 1,
+            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         transfer_buffer.record(|encoder| {
-            let barrier = vk::ImageMemoryBarrierBuilder::new()
+            let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::UNDEFINED)
                 .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .image(image.raw)
                 .subresource_range(subresource_range)
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE);
+                .dst_stage_mask(vk::PipelineStageFlags2KHR::TRANSFER_KHR)
+                .dst_access_mask(vk::AccessFlags2KHR::TRANSFER_WRITE_KHR)];
 
-            encoder.pipeline_barrier(
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::TRANSFER,
-                None,
-                &[],
-                &[],
-                &[barrier],
-            );
+            let depenency_info = vk::DependencyInfoKHRBuilder::new()
+                .memory_barriers(&[])
+                .image_memory_barriers(&barrier)
+                .buffer_memory_barriers(&[]);
+
+            encoder.pipeline_barrier2(&depenency_info);
 
             encoder.copy_buffer_to_image(
                 &stagging_buffer,
@@ -511,40 +514,41 @@ impl Application {
             Ok(())
         })?;
         self.timeline_value += 1;
-        self.transfer_queue.execute(&transfer_buffer)?;
+        self.transfer_queue.queue_submit2(&transfer_buffer)?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
+            vk::PipelineStageFlags2KHR::NONE_KHR,
             self.timeline_value + 1,
+            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         graphics_buffer.record(|encoder| {
-            let barrier = vk::ImageMemoryBarrierBuilder::new()
+            let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                 .image(image.raw)
                 .subresource_range(subresource_range)
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ);
+                .src_stage_mask(vk::PipelineStageFlags2KHR::TRANSFER_KHR)
+                .src_access_mask(vk::AccessFlags2KHR::TRANSFER_WRITE_KHR)
+                .dst_stage_mask(vk::PipelineStageFlags2KHR::VERTEX_SHADER_KHR)
+                .dst_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)];
 
-            encoder.pipeline_barrier(
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
-                None,
-                &[],
-                &[],
-                &[barrier],
-            );
+            let depenency_info = vk::DependencyInfoKHRBuilder::new()
+                .memory_barriers(&[])
+                .image_memory_barriers(&barrier)
+                .buffer_memory_barriers(&[]);
+
+            encoder.pipeline_barrier2(&depenency_info);
 
             Ok(())
         })?;
 
         self.timeline_value += 1;
-        self.graphics_queue.execute(&graphics_buffer)?;
-
+        self.graphics_queue.queue_submit2(&graphics_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
         Ok(Texture {
@@ -589,7 +593,9 @@ impl Application {
         let transfer_buffer = transfer_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
+            vk::PipelineStageFlags2KHR::NONE_KHR,
             self.timeline_value + 1,
+            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         transfer_buffer.record(|encoder| {
@@ -604,7 +610,7 @@ impl Application {
         })?;
         self.timeline_value += 1;
 
-        self.transfer_queue.execute(&transfer_buffer)?;
+        self.transfer_queue.queue_submit2(&transfer_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
         transfer_pool.reset()?;
@@ -619,7 +625,9 @@ impl Application {
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             &self.timeline,
             Timeline::RenderStart.with_offset(self.timeline_value),
+            vk::PipelineStageFlags2KHR::NONE_KHR,
             Timeline::RenderEnd.with_offset(self.timeline_value),
+            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         let m_matrix =
@@ -686,7 +694,7 @@ impl Application {
             Ok(())
         })?;
 
-        self.graphics_queue.execute(&graphics_buffer)?;
+        self.graphics_queue.queue_submit2(&graphics_buffer)?;
         self.timeline
             .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 

@@ -35,11 +35,19 @@ macro_rules! impl_command_pool {
             pub fn create_command_buffer(
                 &mut self,
                 timeline_semaphore: &TimelineSemaphore,
-                timeline_wait_value: u64,
-                timeline_signal_value: u64,
+                wait_value: u64,
+                wait_stage_mask: vk::PipelineStageFlags2KHR,
+                signal_value: u64,
+                signal_stage_mask: vk::PipelineStageFlags2KHR,
             ) -> Result<$buffer_name> {
                 let inner = self.inner
-                    .create_command_buffer(timeline_semaphore.raw, timeline_wait_value, timeline_signal_value)?;
+                    .create_command_buffer(
+                        timeline_semaphore.raw,
+                        wait_value,
+                        wait_stage_mask,
+                        signal_value,
+                        signal_stage_mask
+                    )?;
                 Ok($buffer_name { inner })
             }
 
@@ -121,8 +129,10 @@ impl CommandPool {
     pub fn create_command_buffer(
         &mut self,
         timeline_semaphore: vk::Semaphore,
-        timeline_wait_value: u64,
-        timeline_signal_value: u64,
+        wait_value: u64,
+        wait_stage_mask: vk::PipelineStageFlags2KHR,
+        signal_value: u64,
+        signal_stage_mask: vk::PipelineStageFlags2KHR,
     ) -> Result<CommandBuffer> {
         let info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(self.raw)
@@ -150,8 +160,10 @@ impl CommandPool {
             self.raw,
             command_buffers[0],
             timeline_semaphore,
-            timeline_wait_value,
-            timeline_signal_value,
+            wait_value,
+            wait_stage_mask,
+            signal_value,
+            signal_stage_mask,
         );
 
         self.command_buffer_counter += 1;
@@ -203,8 +215,21 @@ macro_rules! impl_command_buffer {
             }
 
             /// Sets the timeline semaphore of a command buffer.
-            pub fn set_timeline_semaphore(&mut self, timeline_semaphore: TimelineSemaphore, wait_value: u64, signal_value: u64) {
-                self.inner.set_timeline_semaphore(timeline_semaphore.raw, wait_value, signal_value)
+            pub fn set_timeline_semaphore(
+                    &mut self,
+                    timeline_semaphore: TimelineSemaphore,
+                    wait_value: u64,
+                    wait_stage_mask: vk::PipelineStageFlags2KHR,
+                    signal_value: u64,
+                    signal_stage_mask: vk::PipelineStageFlags2KHR,
+            ) {
+                self.inner.set_timeline_semaphore(
+                    timeline_semaphore.raw,
+                    wait_value,
+                    wait_stage_mask,
+                    signal_value,
+                    signal_stage_mask
+                )
             }
         }
     }
@@ -230,27 +255,34 @@ pub(crate) struct CommandBuffer {
     pool: vk::CommandPool,
     pub(crate) buffer: vk::CommandBuffer,
     pub(crate) timeline_semaphore: vk::Semaphore,
-    pub(crate) timeline_wait_value: u64,
-    pub(crate) timeline_signal_value: u64,
+    pub(crate) wait_value: u64,
+    pub(crate) wait_stage_mask: vk::PipelineStageFlags2KHR,
+    pub(crate) signal_value: u64,
+    pub(crate) signal_stage_mask: vk::PipelineStageFlags2KHR,
     context: Arc<Context>,
 }
 
 impl CommandBuffer {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         context: Arc<Context>,
         pool: vk::CommandPool,
         buffer: vk::CommandBuffer,
         timeline_semaphore: vk::Semaphore,
-        timeline_wait_value: u64,
-        timeline_signal_value: u64,
+        wait_value: u64,
+        wait_stage_mask: vk::PipelineStageFlags2KHR,
+        signal_value: u64,
+        signal_stage_mask: vk::PipelineStageFlags2KHR,
     ) -> Self {
         Self {
             context,
             pool,
             buffer,
             timeline_semaphore,
-            timeline_wait_value,
-            timeline_signal_value,
+            wait_value,
+            wait_stage_mask,
+            signal_value,
+            signal_stage_mask,
         }
     }
 
@@ -259,11 +291,15 @@ impl CommandBuffer {
         &mut self,
         timeline_semaphore: vk::Semaphore,
         wait_value: u64,
+        wait_stage_mask: vk::PipelineStageFlags2KHR,
         signal_value: u64,
+        signal_stage_mask: vk::PipelineStageFlags2KHR,
     ) {
         self.timeline_semaphore = timeline_semaphore;
-        self.timeline_wait_value = wait_value;
-        self.timeline_signal_value = signal_value;
+        self.wait_value = wait_value;
+        self.wait_stage_mask = wait_stage_mask;
+        self.signal_value = signal_value;
+        self.signal_stage_mask = signal_stage_mask;
     }
 }
 
@@ -387,26 +423,9 @@ impl<'a> ComputeCommandEncoder<'a> {
 
     /// Insert a memory dependency.
     ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
-    pub fn pipeline_barrier(
-        &self,
-        src_stage_mask: vk::PipelineStageFlags,
-        dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: Option<vk::DependencyFlags>,
-        memory_barriers: &[vk::MemoryBarrierBuilder],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
-        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
-    ) {
-        pipeline_barrier(
-            self.context,
-            self.buffer,
-            src_stage_mask,
-            dst_stage_mask,
-            dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
-        );
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+        pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Dispatch compute work items.
@@ -621,26 +640,9 @@ impl<'a> GraphicsCommandEncoder<'a> {
 
     /// Insert a memory dependency.
     ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
-    pub fn pipeline_barrier(
-        &self,
-        src_stage_mask: vk::PipelineStageFlags,
-        dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: Option<vk::DependencyFlags>,
-        memory_barriers: &[vk::MemoryBarrierBuilder],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
-        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
-    ) {
-        pipeline_barrier(
-            self.context,
-            self.buffer,
-            src_stage_mask,
-            dst_stage_mask,
-            dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
-        );
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+        pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 }
 
@@ -701,26 +703,9 @@ impl<'a> TransferCommandEncoder<'a> {
 
     /// Insert a memory dependency.
     ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
-    pub fn pipeline_barrier(
-        &self,
-        src_stage_mask: vk::PipelineStageFlags,
-        dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: Option<vk::DependencyFlags>,
-        memory_barriers: &[vk::MemoryBarrierBuilder],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
-        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
-    ) {
-        pipeline_barrier(
-            self.context,
-            self.buffer,
-            src_stage_mask,
-            dst_stage_mask,
-            dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
-        );
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+        pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 }
 
@@ -852,26 +837,9 @@ impl<'a> RenderPassEncoder<'a> {
 
     /// Insert a memory dependency.
     ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier.html
-    pub fn pipeline_barrier(
-        &self,
-        src_stage_mask: vk::PipelineStageFlags,
-        dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: Option<vk::DependencyFlags>,
-        memory_barriers: &[vk::MemoryBarrierBuilder],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
-        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
-    ) {
-        pipeline_barrier(
-            self.context,
-            self.buffer,
-            src_stage_mask,
-            dst_stage_mask,
-            dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
-        );
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+        pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Draws primitives.
@@ -1127,25 +1095,14 @@ fn push_constants(
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-fn pipeline_barrier(
+fn pipeline_barrier2(
     context: &Context,
     command_buffer: vk::CommandBuffer,
-    src_stage_mask: vk::PipelineStageFlags,
-    dst_stage_mask: vk::PipelineStageFlags,
-    dependency_flags: Option<vk::DependencyFlags>,
-    memory_barriers: &[vk::MemoryBarrierBuilder],
-    buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
-    image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
+    dependency_info: &vk::DependencyInfoKHR,
 ) {
     unsafe {
-        context.device.cmd_pipeline_barrier(
-            command_buffer,
-            src_stage_mask,
-            dst_stage_mask,
-            dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
-        )
+        context
+            .device
+            .cmd_pipeline_barrier2_khr(command_buffer, dependency_info)
     };
 }
