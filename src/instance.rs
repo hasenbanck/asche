@@ -1,8 +1,9 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-use erupt::{cstr, vk, ExtendableFrom};
-#[cfg(feature = "tracing")]
+#[cfg(debug_assertions)]
+use erupt::cstr;
+use erupt::{vk, ExtendableFrom};
 use tracing::{error, info, warn};
 
 #[cfg(debug_assertions)]
@@ -11,6 +12,7 @@ use crate::{
     AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
 };
 
+#[cfg(debug_assertions)]
 const LAYER_KHRONOS_VALIDATION: *const c_char = cstr!("VK_LAYER_KHRONOS_validation");
 
 /// Describes how the instance should be configured.
