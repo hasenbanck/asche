@@ -3,9 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::Hasher;
 
-use ash::version::DeviceV1_0;
-use ash::vk;
-use ash::vk::Handle;
+use erupt::vk;
 use parking_lot::Mutex;
 
 use crate::{
@@ -15,25 +13,25 @@ use crate::{
 
 /// The internal context.
 pub struct Context {
-    /// The wrapped Vulkan instance.
-    pub instance: Instance,
-    /// The raw logical Vulkan device.
-    pub logical_device: ash::Device,
-    /// The raw physical Vulkan device.
-    pub physical_device: vk::PhysicalDevice,
-    /// The memory allocator.
-    pub allocator: Mutex<vk_alloc::Allocator>,
     /// The framebuffer.
     framebuffers: Mutex<HashMap<u64, vk::Framebuffer>>,
+    /// The memory allocator.
+    pub allocator: Mutex<vk_alloc::Allocator>,
+    /// The raw logical Vulkan device.
+    pub device: erupt::DeviceLoader,
+    /// The raw physical Vulkan device.
+    pub physical_device: vk::PhysicalDevice,
+    /// The wrapped Vulkan instance.
+    pub instance: Instance,
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
-            self.logical_device.device_wait_idle().unwrap();
+            self.device.device_wait_idle().unwrap();
             self.destroy_framebuffer();
-            self.allocator.lock().free_all();
-            self.logical_device.destroy_device(None);
+            self.allocator.lock().cleanup(&self.device);
+            self.device.destroy_device(None);
         };
     }
 }
@@ -42,13 +40,13 @@ impl Context {
     /// Creates a new context.
     pub(crate) fn new(
         instance: Instance,
-        logical_device: ash::Device,
+        device: erupt::DeviceLoader,
         physical_device: vk::PhysicalDevice,
         allocator: vk_alloc::Allocator,
     ) -> Self {
         Self {
             instance,
-            logical_device,
+            device,
             physical_device,
             allocator: Mutex::new(allocator),
             framebuffers: Mutex::new(HashMap::new()),
@@ -64,12 +62,12 @@ impl Context {
     ) -> Result<vk::Framebuffer> {
         // Calculate the hash for the renderpass / attachment combination.
         let mut hasher = DefaultHasher::new();
-        hasher.write_u64(render_pass.raw.as_raw());
+        hasher.write_u64(render_pass.raw.0);
         for color_attachment in color_attachments {
-            hasher.write_u64(color_attachment.attachment.as_raw());
+            hasher.write_u64(color_attachment.attachment.0);
         }
         if let Some(depth_attachment) = depth_attachment {
-            hasher.write_u64(depth_attachment.attachment.as_raw());
+            hasher.write_u64(depth_attachment.attachment.0);
         }
         let hash = hasher.finish();
 
@@ -101,15 +99,17 @@ impl Context {
             .chain(depth_attachment.iter().map(|x| x.attachment))
             .collect();
 
-        let framebuffer_info = vk::FramebufferCreateInfo::builder()
+        let framebuffer_info = vk::FramebufferCreateInfoBuilder::new()
             .render_pass(render_pass.raw)
             .attachments(&attachments)
             .width(extent.width)
             .height(extent.height)
             .layers(1);
+
         let framebuffer = unsafe {
-            self.logical_device
-                .create_framebuffer(&framebuffer_info, None)?
+            self.device
+                .create_framebuffer(&framebuffer_info, None, None)
+                .result()?
         };
 
         Ok(framebuffer)
@@ -118,7 +118,7 @@ impl Context {
     pub(crate) fn destroy_framebuffer(&self) {
         for (_, framebuffer) in self.framebuffers.lock().drain() {
             unsafe {
-                self.logical_device.destroy_framebuffer(framebuffer, None);
+                self.device.destroy_framebuffer(Some(framebuffer), None);
             }
         }
     }
@@ -132,14 +132,14 @@ impl Context {
         object_handle: u64,
     ) -> Result<()> {
         let name = std::ffi::CString::new(name.to_owned())?;
-        let info = vk::DebugUtilsObjectNameInfoEXT::builder()
+        let info = vk::DebugUtilsObjectNameInfoEXTBuilder::new()
             .object_name(&name)
             .object_type(object_type)
             .object_handle(object_handle);
         unsafe {
-            self.instance
-                .debug_utils
-                .debug_utils_set_object_name(self.logical_device.handle(), &info)?
+            self.device
+                .set_debug_utils_object_name_ext(&info)
+                .result()?
         };
 
         Ok(())

@@ -3,7 +3,7 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Provides an abstraction layer above ash to easier use Vulkan in Rust.
+Provides an abstraction layer above erupt to easier use Vulkan in Rust.
 
 ## Requirements
 

@@ -1,10 +1,7 @@
-use std::ffi::CStr;
-use std::io::Cursor;
+use std::os::raw::c_char;
 use std::sync::Arc;
 
-use ash::version::{DeviceV1_0, DeviceV1_1, InstanceV1_1};
-use ash::vk;
-use ash::vk::Handle;
+use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
 use tracing::info;
 
@@ -42,7 +39,7 @@ pub struct DeviceConfiguration<'a> {
     /// The priorities of the queues.
     pub queue_priority: QueuePriorityDescriptor,
     /// Device extensions to load.
-    pub extensions: Vec<&'static CStr>,
+    pub extensions: Vec<*const c_char>,
     /// Vulkan 1.0 features.
     pub features_v1_0: Option<vk::PhysicalDeviceFeaturesBuilder<'a>>,
     /// Vulkan 1.0 features.
@@ -56,8 +53,8 @@ impl<'a> Default for DeviceConfiguration<'a> {
         Self {
             device_type: vk::PhysicalDeviceType::DISCRETE_GPU,
             swapchain_format: vk::Format::B8G8R8A8_SRGB,
-            swapchain_color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
-            presentation_mode: vk::PresentModeKHR::FIFO,
+            swapchain_color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR_KHR,
+            presentation_mode: vk::PresentModeKHR::FIFO_KHR,
             queue_priority: QueuePriorityDescriptor {
                 graphics: 1.0,
                 transfer: 1.0,
@@ -95,7 +92,6 @@ impl std::fmt::Display for BARSupport {
 ///
 /// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
 pub struct Device {
-    context: Arc<Context>,
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
     transfer_queue_family_index: u32,
@@ -107,6 +103,7 @@ pub struct Device {
     pub device_type: vk::PhysicalDeviceType,
     /// Shows if the device support access to the device memory using the base address register.
     pub resizable_bar_support: BARSupport,
+    context: Arc<Context>,
 }
 
 impl Device {
@@ -171,8 +168,8 @@ impl Device {
         #[cfg(feature = "tracing")]
         info!("Creating logical device and queues");
 
-        let (logical_device, family_ids, queues) =
-            instance.create_logical_device(physical_device, configuration)?;
+        let (device, family_ids, queues) =
+            instance.create_device(physical_device, configuration)?;
 
         #[cfg(feature = "tracing")]
         info!("Creating Vulkan memory allocator");
@@ -180,16 +177,10 @@ impl Device {
         let allocator = vk_alloc::Allocator::new(
             &instance.raw,
             physical_device,
-            &logical_device,
             &vk_alloc::AllocatorDescriptor::default(),
         );
 
-        let context = Arc::new(Context::new(
-            instance,
-            logical_device,
-            physical_device,
-            allocator,
-        ));
+        let context = Arc::new(Context::new(instance, device, physical_device, allocator));
 
         let compute_queue = ComputeQueue::new(context.clone(), family_ids[0], queues[0]);
         let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1]);
@@ -198,17 +189,17 @@ impl Device {
         context.set_object_name(
             "Compute Queue",
             vk::ObjectType::QUEUE,
-            compute_queue.inner.raw.as_raw(),
+            compute_queue.inner.raw.0 as u64,
         )?;
         context.set_object_name(
             "Graphics Queue",
             vk::ObjectType::QUEUE,
-            graphics_queue.inner.raw.as_raw(),
+            graphics_queue.inner.raw.0 as u64,
         )?;
         context.set_object_name(
             "Transfer Queue",
             vk::ObjectType::QUEUE,
-            transfer_queue.inner.raw.as_raw(),
+            transfer_queue.inner.raw.0 as u64,
         )?;
 
         let mut device = Device {
@@ -247,31 +238,37 @@ impl Device {
         let formats = unsafe {
             self.context
                 .instance
-                .surface_loader
-                .get_physical_device_surface_formats(
+                .raw
+                .get_physical_device_surface_formats_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
-                )?
+                    None,
+                )
+                .result()?
         };
 
         let capabilities = unsafe {
             self.context
                 .instance
-                .surface_loader
-                .get_physical_device_surface_capabilities(
+                .raw
+                .get_physical_device_surface_capabilities_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
-                )?
+                    None,
+                )
+                .result()?
         };
 
         let presentation_mode = unsafe {
             self.context
                 .instance
-                .surface_loader
-                .get_physical_device_surface_present_modes(
+                .raw
+                .get_physical_device_surface_present_modes_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
-                )?
+                    None,
+                )
+                .result()?
         };
 
         let mut image_count = capabilities.min_image_count + 1;
@@ -286,9 +283,9 @@ impl Device {
 
         let pre_transform = if capabilities
             .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY_KHR)
         {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
+            vk::SurfaceTransformFlagBitsKHR::IDENTITY_KHR
         } else {
             capabilities.current_transform
         };
@@ -360,12 +357,13 @@ impl Device {
 
         let renderpass = unsafe {
             self.context
-                .logical_device
-                .create_render_pass(&renderpass_info, None)?
+                .device
+                .create_render_pass(&renderpass_info, None, None)
+                .result()?
         };
 
         self.context
-            .set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.as_raw())?;
+            .set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.0)?;
 
         Ok(RenderPass {
             context: self.context.clone(),
@@ -381,15 +379,13 @@ impl Device {
     ) -> Result<PipelineLayout> {
         let pipeline_layout = unsafe {
             self.context
-                .logical_device
-                .create_pipeline_layout(&pipeline_layout_info, None)?
+                .device
+                .create_pipeline_layout(&pipeline_layout_info, None, None)
+                .result()?
         };
 
-        self.context.set_object_name(
-            name,
-            vk::ObjectType::PIPELINE_LAYOUT,
-            pipeline_layout.as_raw(),
-        )?;
+        self.context
+            .set_object_name(name, vk::ObjectType::PIPELINE_LAYOUT, pipeline_layout.0)?;
 
         Ok(PipelineLayout {
             context: self.context.clone(),
@@ -404,15 +400,14 @@ impl Device {
         pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
     ) -> Result<GraphicsPipeline> {
         let pipeline = unsafe {
-            self.context.logical_device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                &[pipeline_info.build()],
-                None,
-            )?[0]
+            self.context
+                .device
+                .create_graphics_pipelines(None, &[pipeline_info], None)
+                .result()?[0]
         };
 
         self.context
-            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
+            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.0)?;
 
         Ok(GraphicsPipeline {
             context: self.context.clone(),
@@ -427,15 +422,14 @@ impl Device {
         pipeline_info: vk::ComputePipelineCreateInfoBuilder,
     ) -> Result<ComputePipeline> {
         let pipeline = unsafe {
-            self.context.logical_device.create_compute_pipelines(
-                vk::PipelineCache::null(),
-                &[pipeline_info.build()],
-                None,
-            )?[0]
+            self.context
+                .device
+                .create_compute_pipelines(None, &[pipeline_info], None)
+                .result()?[0]
         };
 
         self.context
-            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.as_raw())?;
+            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.0)?;
 
         Ok(ComputePipeline {
             context: self.context.clone(),
@@ -448,7 +442,7 @@ impl Device {
         &mut self,
         descriptor: &DescriptorPoolDescriptor,
     ) -> Result<DescriptorPool> {
-        let pool_info = vk::DescriptorPoolCreateInfo::builder()
+        let pool_info = vk::DescriptorPoolCreateInfoBuilder::new()
             .max_sets(descriptor.max_sets)
             .pool_sizes(descriptor.pool_sizes);
 
@@ -460,15 +454,13 @@ impl Device {
 
         let pool = unsafe {
             self.context
-                .logical_device
-                .create_descriptor_pool(&pool_info, None)?
+                .device
+                .create_descriptor_pool(&pool_info, None, None)
+                .result()?
         };
 
-        self.context.set_object_name(
-            descriptor.name,
-            vk::ObjectType::DESCRIPTOR_POOL,
-            pool.as_raw(),
-        )?;
+        self.context
+            .set_object_name(descriptor.name, vk::ObjectType::DESCRIPTOR_POOL, pool.0)?;
 
         Ok(DescriptorPool::new(self.context.clone(), pool))
     }
@@ -481,32 +473,30 @@ impl Device {
     ) -> Result<DescriptorSetLayout> {
         let layout = unsafe {
             self.context
-                .logical_device
-                .create_descriptor_set_layout(&layout_info, None)?
+                .device
+                .create_descriptor_set_layout(&layout_info, None, None)
+                .result()?
         };
 
-        self.context.set_object_name(
-            name,
-            vk::ObjectType::DESCRIPTOR_SET_LAYOUT,
-            layout.as_raw(),
-        )?;
+        self.context
+            .set_object_name(name, vk::ObjectType::DESCRIPTOR_SET_LAYOUT, layout.0)?;
 
         Ok(DescriptorSetLayout::new(self.context.clone(), layout))
     }
 
     /// Creates a new shader module using the provided SPIR-V code.
     pub fn create_shader_module(&self, name: &str, shader_data: &[u8]) -> Result<ShaderModule> {
-        let mut reader = Cursor::new(shader_data);
-        let code = ash::util::read_spv(&mut reader)?;
-        let create_info = vk::ShaderModuleCreateInfo::builder().code(&code);
+        let code = erupt::utils::decode_spv(shader_data)?;
+        let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(&code);
         let module = unsafe {
             self.context
-                .logical_device
-                .create_shader_module(&create_info, None)?
+                .device
+                .create_shader_module(&create_info, None, None)
+                .result()?
         };
 
         self.context
-            .set_object_name(name, vk::ObjectType::SHADER_MODULE, module.as_raw())?;
+            .set_object_name(name, vk::ObjectType::SHADER_MODULE, module.0)?;
 
         Ok(ShaderModule {
             context: self.context.clone(),
@@ -532,7 +522,7 @@ impl Device {
         families.sort_unstable();
         families.dedup();
 
-        let create_info = vk::BufferCreateInfo::builder()
+        let create_info = vk::BufferCreateInfoBuilder::new()
             .queue_family_indices(&families)
             .sharing_mode(descriptor.sharing_mode)
             .usage(descriptor.usage)
@@ -546,29 +536,31 @@ impl Device {
 
         let raw = unsafe {
             self.context
-                .logical_device
-                .create_buffer(&create_info, None)?
+                .device
+                .create_buffer(&create_info, None, None)
+                .result()?
         };
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::BUFFER, raw.as_raw())?;
+            .set_object_name(&descriptor.name, vk::ObjectType::BUFFER, raw.0)?;
 
-        let allocation = self
-            .context
-            .allocator
-            .lock()
-            .allocate_memory_for_buffer(raw, descriptor.memory_location)?;
+        let allocation = self.context.allocator.lock().allocate_memory_for_buffer(
+            &self.context.device,
+            raw,
+            descriptor.memory_location,
+        )?;
 
-        let bind_infos = vk::BindBufferMemoryInfo::builder()
+        let bind_infos = vk::BindBufferMemoryInfoBuilder::new()
             .buffer(raw)
             .memory(allocation.device_memory)
             .memory_offset(allocation.offset);
 
         unsafe {
             self.context
-                .logical_device
-                .bind_buffer_memory2(&[bind_infos.build()])?
+                .device
+                .bind_buffer_memory2(&[bind_infos])
+                .result()?
         };
 
         Ok(Buffer {
@@ -596,7 +588,7 @@ impl Device {
         families.sort_unstable();
         families.dedup();
 
-        let create_info = vk::ImageCreateInfo::builder()
+        let create_info = vk::ImageCreateInfoBuilder::new()
             .queue_family_indices(&families)
             .sharing_mode(descriptor.sharing_mode)
             .usage(descriptor.usage)
@@ -617,29 +609,31 @@ impl Device {
 
         let raw = unsafe {
             self.context
-                .logical_device
-                .create_image(&create_info, None)?
+                .device
+                .create_image(&create_info, None, None)
+                .result()?
         };
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE, raw.as_raw())?;
+            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE, raw.0)?;
 
-        let allocation = self
-            .context
-            .allocator
-            .lock()
-            .allocate_memory_for_image(raw, descriptor.memory_location)?;
+        let allocation = self.context.allocator.lock().allocate_memory_for_image(
+            &self.context.device,
+            raw,
+            descriptor.memory_location,
+        )?;
 
-        let bind_infos = vk::BindImageMemoryInfo::builder()
+        let bind_infos = vk::BindImageMemoryInfoBuilder::new()
             .image(raw)
             .memory(allocation.device_memory)
             .memory_offset(allocation.offset);
 
         unsafe {
             self.context
-                .logical_device
-                .bind_image_memory2(&[bind_infos.build()])?
+                .device
+                .bind_image_memory2(&[bind_infos])
+                .result()?
         };
 
         Ok(Image {
@@ -651,7 +645,7 @@ impl Device {
 
     /// Creates a new image.
     pub fn create_image_view(&self, descriptor: &ImageViewDescriptor) -> Result<ImageView> {
-        let create_info = vk::ImageViewCreateInfo::builder()
+        let create_info = vk::ImageViewCreateInfoBuilder::new()
             .image(descriptor.image.raw)
             .view_type(descriptor.view_type)
             .format(descriptor.format)
@@ -666,13 +660,14 @@ impl Device {
 
         let raw = unsafe {
             self.context
-                .logical_device
-                .create_image_view(&create_info, None)?
+                .device
+                .create_image_view(&create_info, None, None)
+                .result()?
         };
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.as_raw())?;
+            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.0)?;
 
         Ok(ImageView {
             context: self.context.clone(),
@@ -682,7 +677,7 @@ impl Device {
 
     /// Creates a sampler.
     pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Result<Sampler> {
-        let create_info = vk::SamplerCreateInfo::builder()
+        let create_info = vk::SamplerCreateInfoBuilder::new()
             .mag_filter(descriptor.mag_filter)
             .min_filter(descriptor.min_filter)
             .mipmap_mode(descriptor.mipmap_mode)
@@ -716,13 +711,14 @@ impl Device {
 
         let raw = unsafe {
             self.context
-                .logical_device
-                .create_sampler(&create_info, None)?
+                .device
+                .create_sampler(&create_info, None, None)
+                .result()?
         };
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::SAMPLER, raw.as_raw())?;
+            .set_object_name(&descriptor.name, vk::ObjectType::SAMPLER, raw.0)?;
 
         Ok(Sampler {
             context: self.context.clone(),
@@ -736,33 +732,34 @@ impl Device {
         name: &str,
         initial_value: u64,
     ) -> Result<TimelineSemaphore> {
-        let mut create_info = vk::SemaphoreTypeCreateInfo::builder()
+        let mut create_info = vk::SemaphoreTypeCreateInfoBuilder::new()
             .semaphore_type(vk::SemaphoreType::TIMELINE)
             .initial_value(initial_value);
-        let semaphore_info = vk::SemaphoreCreateInfo::builder().push_next(&mut create_info);
+        let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut create_info);
         let raw = unsafe {
             self.context
-                .logical_device
-                .create_semaphore(&semaphore_info, None)?
+                .device
+                .create_semaphore(&semaphore_info, None, None)
+                .result()?
         };
 
         self.context
-            .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.as_raw())?;
+            .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
 
         Ok(TimelineSemaphore::new(self.context.clone(), raw))
     }
 
     /// Flush mapped memory. Used for CPU->GPU transfers.
     pub fn flush_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
-        let ranges = [vk::MappedMemoryRange::builder()
+        let ranges = [vk::MappedMemoryRangeBuilder::new()
             .memory(allocation.device_memory)
             .size(allocation.size)
-            .offset(allocation.offset)
-            .build()];
+            .offset(allocation.offset)];
         unsafe {
             self.context
-                .logical_device
-                .flush_mapped_memory_ranges(&ranges)?;
+                .device
+                .flush_mapped_memory_ranges(&ranges)
+                .result()?;
         };
 
         Ok(())
@@ -770,15 +767,15 @@ impl Device {
 
     /// Invalidate mapped memory. Used for GPU->CPU transfers.
     pub fn invalidate_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
-        let ranges = [vk::MappedMemoryRange::builder()
+        let ranges = [vk::MappedMemoryRangeBuilder::new()
             .memory(allocation.device_memory)
             .size(allocation.size)
-            .offset(allocation.offset)
-            .build()];
+            .offset(allocation.offset)];
         unsafe {
             self.context
-                .logical_device
-                .invalidate_mapped_memory_ranges(&ranges)?;
+                .device
+                .invalidate_mapped_memory_ranges(&ranges)
+                .result()?;
         };
 
         Ok(())
@@ -791,11 +788,11 @@ fn query_support_resizable_bar(
     device_properties: &vk::PhysicalDeviceProperties,
 ) -> BARSupport {
     if device_properties.device_type != vk::PhysicalDeviceType::INTEGRATED_GPU {
-        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::builder();
-        unsafe {
+        let memory_properties = vk::PhysicalDeviceMemoryProperties2Builder::new().build();
+        let memory_properties = unsafe {
             instance
                 .raw
-                .get_physical_device_memory_properties2(device, &mut memory_properties)
+                .get_physical_device_memory_properties2(device, Some(memory_properties))
         };
 
         let heap_indices: Vec<u32> = memory_properties

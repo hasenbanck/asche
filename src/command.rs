@@ -1,11 +1,10 @@
 //! Implements command pools and command buffers.
 
+use std::ffi::c_void;
 use std::sync::Arc;
 
 use arrayvec::ArrayVec;
-use ash::version::{DeviceV1_0, DeviceV1_1, DeviceV1_2};
-use ash::vk;
-use ash::vk::{Handle, Offset2D};
+use erupt::vk;
 
 use crate::context::Context;
 use crate::descriptor::DescriptorSet;
@@ -69,18 +68,18 @@ impl_command_pool!(
 
 /// A wrapped command pool.
 struct CommandPool {
-    context: Arc<Context>,
     raw: vk::CommandPool,
     queue_type: QueueType,
     command_buffer_counter: u64,
+    context: Arc<Context>,
 }
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_command_pool(self.raw, None);
+                .device
+                .destroy_command_pool(Some(self.raw), None);
         };
     }
 }
@@ -94,18 +93,19 @@ impl CommandPool {
         id: u64,
     ) -> Result<Self> {
         let command_pool_info =
-            vk::CommandPoolCreateInfo::builder().queue_family_index(family_index);
+            vk::CommandPoolCreateInfoBuilder::new().queue_family_index(family_index);
 
         let raw = unsafe {
             context
-                .logical_device
-                .create_command_pool(&command_pool_info, None)?
+                .device
+                .create_command_pool(&command_pool_info, None, None)
+                .result()?
         };
 
         context.set_object_name(
             &format!("Command Pool {} {}", queue_type, id),
             vk::ObjectType::COMMAND_POOL,
-            raw.as_raw(),
+            raw.0,
         )?;
 
         Ok(Self {
@@ -124,15 +124,16 @@ impl CommandPool {
         timeline_wait_value: u64,
         timeline_signal_value: u64,
     ) -> Result<CommandBuffer> {
-        let info = vk::CommandBufferAllocateInfo::builder()
+        let info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(self.raw)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
         let command_buffers = unsafe {
             self.context
-                .logical_device
-                .allocate_command_buffers(&info)?
+                .device
+                .allocate_command_buffers(&info)
+                .result()?
         };
 
         self.context.set_object_name(
@@ -141,7 +142,7 @@ impl CommandPool {
                 self.queue_type, self.command_buffer_counter
             ),
             vk::ObjectType::COMMAND_BUFFER,
-            command_buffers[0].as_raw(),
+            command_buffers[0].0 as u64,
         )?;
 
         let command_buffer = CommandBuffer::new(
@@ -163,8 +164,9 @@ impl CommandPool {
     pub fn reset(&self) -> Result<()> {
         unsafe {
             self.context
-                .logical_device
-                .reset_command_pool(self.raw, vk::CommandPoolResetFlags::empty())?
+                .device
+                .reset_command_pool(self.raw, None)
+                .result()?
         };
 
         Ok(())
@@ -225,12 +227,12 @@ impl_command_buffer!(
 
 /// A wrapped command buffer.
 pub(crate) struct CommandBuffer {
-    context: Arc<Context>,
     pool: vk::CommandPool,
     pub(crate) buffer: vk::CommandBuffer,
     pub(crate) timeline_semaphore: vk::Semaphore,
     pub(crate) timeline_wait_value: u64,
     pub(crate) timeline_signal_value: u64,
+    context: Arc<Context>,
 }
 
 impl CommandBuffer {
@@ -269,7 +271,7 @@ impl Drop for CommandBuffer {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
+                .device
                 .free_command_buffers(self.pool, &[self.buffer])
         };
     }
@@ -318,7 +320,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         src_buffer: &Buffer,
         dst_image: &Image,
         dst_image_layout: vk::ImageLayout,
-        region: vk::BufferImageCopy,
+        region: vk::BufferImageCopyBuilder,
     ) {
         copy_buffer_to_image(
             self.context,
@@ -390,10 +392,10 @@ impl<'a> ComputeCommandEncoder<'a> {
         &self,
         src_stage_mask: vk::PipelineStageFlags,
         dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: vk::DependencyFlags,
-        memory_barriers: &[vk::MemoryBarrier],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-        image_memory_barriers: &[vk::ImageMemoryBarrier],
+        dependency_flags: Option<vk::DependencyFlags>,
+        memory_barriers: &[vk::MemoryBarrierBuilder],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
+        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
     ) {
         pipeline_barrier(
             self.context,
@@ -412,7 +414,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatch.html
     pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         unsafe {
-            self.context.logical_device.cmd_dispatch(
+            self.context.device.cmd_dispatch(
                 self.buffer,
                 group_count_x,
                 group_count_y,
@@ -434,7 +436,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         group_count_z: u32,
     ) {
         unsafe {
-            self.context.logical_device.cmd_dispatch_base(
+            self.context.device.cmd_dispatch_base(
                 self.buffer,
                 base_group_x,
                 base_group_y,
@@ -452,7 +454,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     pub fn dispatch_indirect(&self, buffer: &Buffer, offset: u64) {
         unsafe {
             self.context
-                .logical_device
+                .device
                 .cmd_dispatch_indirect(self.buffer, buffer.raw, offset)
         };
     }
@@ -501,7 +503,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
         src_buffer: &Buffer,
         dst_image: &Image,
         dst_image_layout: vk::ImageLayout,
-        region: vk::BufferImageCopy,
+        region: vk::BufferImageCopyBuilder,
     ) {
         copy_buffer_to_image(
             self.context,
@@ -547,23 +549,20 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Sets the viewport and the scissor rectangle.
-    pub fn set_viewport_and_scissor(&self, rect: vk::Rect2D) {
-        unsafe {
-            let viewport = vk::Viewport {
-                x: rect.offset.x as f32,
-                y: rect.offset.y as f32,
-                width: rect.extent.width as f32,
-                height: rect.extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            };
+    pub fn set_viewport_and_scissor(&self, rect: vk::Rect2DBuilder) {
+        let viewport = vk::ViewportBuilder::new()
+            .x(rect.offset.x as f32)
+            .y(rect.offset.y as f32)
+            .width(rect.extent.width as f32)
+            .height(rect.extent.height as f32)
+            .min_depth(0.0)
+            .max_depth(1.0);
 
+        unsafe {
             self.context
-                .logical_device
+                .device
                 .cmd_set_viewport(self.buffer, 0, &[viewport]);
-            self.context
-                .logical_device
-                .cmd_set_scissor(self.buffer, 0, &[rect]);
+            self.context.device.cmd_set_scissor(self.buffer, 0, &[rect]);
         };
     }
 
@@ -627,10 +626,10 @@ impl<'a> GraphicsCommandEncoder<'a> {
         &self,
         src_stage_mask: vk::PipelineStageFlags,
         dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: vk::DependencyFlags,
-        memory_barriers: &[vk::MemoryBarrier],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-        image_memory_barriers: &[vk::ImageMemoryBarrier],
+        dependency_flags: Option<vk::DependencyFlags>,
+        memory_barriers: &[vk::MemoryBarrierBuilder],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
+        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
     ) {
         pipeline_barrier(
             self.context,
@@ -688,7 +687,7 @@ impl<'a> TransferCommandEncoder<'a> {
         src_buffer: &Buffer,
         dst_image: &Image,
         dst_image_layout: vk::ImageLayout,
-        region: vk::BufferImageCopy,
+        region: vk::BufferImageCopyBuilder,
     ) {
         copy_buffer_to_image(
             self.context,
@@ -707,10 +706,10 @@ impl<'a> TransferCommandEncoder<'a> {
         &self,
         src_stage_mask: vk::PipelineStageFlags,
         dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: vk::DependencyFlags,
-        memory_barriers: &[vk::MemoryBarrier],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-        image_memory_barriers: &[vk::ImageMemoryBarrier],
+        dependency_flags: Option<vk::DependencyFlags>,
+        memory_barriers: &[vk::MemoryBarrierBuilder],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
+        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
     ) {
         pipeline_barrier(
             self.context,
@@ -733,7 +732,7 @@ pub struct RenderPassEncoder<'a> {
 
 impl<'a> Drop for RenderPassEncoder<'a> {
     fn drop(&mut self) {
-        unsafe { self.context.logical_device.cmd_end_render_pass(self.buffer) };
+        unsafe { self.context.device.cmd_end_render_pass(self.buffer) };
     }
 }
 
@@ -746,19 +745,19 @@ impl<'a> RenderPassEncoder<'a> {
         clear_values: &[vk::ClearValue],
         extent: vk::Extent2D,
     ) {
-        let create_info = vk::RenderPassBeginInfo::builder()
+        let create_info = vk::RenderPassBeginInfoBuilder::new()
             .render_pass(render_pass)
             .framebuffer(framebuffer)
             .clear_values(clear_values)
             .render_area(vk::Rect2D {
-                offset: Offset2D { x: 0, y: 0 },
+                offset: vk::Offset2D { x: 0, y: 0 },
                 extent,
             });
         let contents = vk::SubpassContents::INLINE;
 
         unsafe {
             self.context
-                .logical_device
+                .device
                 .cmd_begin_render_pass(self.buffer, &create_info, contents)
         };
     }
@@ -806,12 +805,9 @@ impl<'a> RenderPassEncoder<'a> {
         index_type: vk::IndexType,
     ) {
         unsafe {
-            self.context.logical_device.cmd_bind_index_buffer(
-                self.buffer,
-                index_buffer,
-                offset,
-                index_type,
-            )
+            self.context
+                .device
+                .cmd_bind_index_buffer(self.buffer, index_buffer, offset, index_type)
         };
     }
 
@@ -825,7 +821,7 @@ impl<'a> RenderPassEncoder<'a> {
         offsets: &[u64],
     ) {
         unsafe {
-            self.context.logical_device.cmd_bind_vertex_buffers(
+            self.context.device.cmd_bind_vertex_buffers(
                 self.buffer,
                 first_binding,
                 vertex_buffers,
@@ -861,10 +857,10 @@ impl<'a> RenderPassEncoder<'a> {
         &self,
         src_stage_mask: vk::PipelineStageFlags,
         dst_stage_mask: vk::PipelineStageFlags,
-        dependency_flags: vk::DependencyFlags,
-        memory_barriers: &[vk::MemoryBarrier],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-        image_memory_barriers: &[vk::ImageMemoryBarrier],
+        dependency_flags: Option<vk::DependencyFlags>,
+        memory_barriers: &[vk::MemoryBarrierBuilder],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
+        image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
     ) {
         pipeline_barrier(
             self.context,
@@ -889,7 +885,7 @@ impl<'a> RenderPassEncoder<'a> {
         first_instance: u32,
     ) {
         unsafe {
-            self.context.logical_device.cmd_draw(
+            self.context.device.cmd_draw(
                 self.buffer,
                 vertex_count,
                 instance_count,
@@ -911,7 +907,7 @@ impl<'a> RenderPassEncoder<'a> {
         first_instance: u32,
     ) {
         unsafe {
-            self.context.logical_device.cmd_draw_indexed(
+            self.context.device.cmd_draw_indexed(
                 self.buffer,
                 index_count,
                 instance_count,
@@ -933,7 +929,7 @@ impl<'a> RenderPassEncoder<'a> {
         stride: u32,
     ) {
         unsafe {
-            self.context.logical_device.cmd_draw_indexed_indirect(
+            self.context.device.cmd_draw_indexed_indirect(
                 self.buffer,
                 buffer.raw,
                 offset,
@@ -956,7 +952,7 @@ impl<'a> RenderPassEncoder<'a> {
         stride: u32,
     ) {
         unsafe {
-            self.context.logical_device.cmd_draw_indexed_indirect_count(
+            self.context.device.cmd_draw_indexed_indirect_count(
                 self.buffer,
                 buffer.raw,
                 offset,
@@ -973,7 +969,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
     pub fn draw_indirect(&self, buffer: &Buffer, offset: u64, draw_count: u32, stride: u32) {
         unsafe {
-            self.context.logical_device.cmd_draw_indirect(
+            self.context.device.cmd_draw_indirect(
                 self.buffer,
                 buffer.raw,
                 offset,
@@ -996,7 +992,7 @@ impl<'a> RenderPassEncoder<'a> {
         stride: u32,
     ) {
         unsafe {
-            self.context.logical_device.cmd_draw_indirect_count(
+            self.context.device.cmd_draw_indirect_count(
                 self.buffer,
                 buffer.raw,
                 offset,
@@ -1011,16 +1007,21 @@ impl<'a> RenderPassEncoder<'a> {
 
 #[inline]
 fn begin(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
-    let info =
-        vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    unsafe { context.logical_device.begin_command_buffer(buffer, &info)? };
+    let info = vk::CommandBufferBeginInfoBuilder::new()
+        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+    unsafe {
+        context
+            .device
+            .begin_command_buffer(buffer, &info)
+            .result()?
+    };
 
     Ok(())
 }
 
 #[inline]
 fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
-    unsafe { context.logical_device.end_command_buffer(buffer)? };
+    unsafe { context.device.end_command_buffer(buffer).result()? };
 
     Ok(())
 }
@@ -1034,7 +1035,7 @@ fn bind_pipeline(
 ) {
     unsafe {
         context
-            .logical_device
+            .device
             .cmd_bind_pipeline(buffer, pipeline_bind_point, pipeline)
     };
 }
@@ -1051,7 +1052,7 @@ fn bind_descriptor_sets(
 ) {
     let descriptor_sets = [descriptor_set];
     unsafe {
-        context.logical_device.cmd_bind_descriptor_sets(
+        context.device.cmd_bind_descriptor_sets(
             buffer,
             pipeline_bind_point,
             layout,
@@ -1072,15 +1073,14 @@ fn copy_buffer(
     dst_offset: u64,
     size: u64,
 ) {
-    let regions = [vk::BufferCopy::builder()
+    let region = vk::BufferCopyBuilder::new()
         .dst_offset(dst_offset)
         .src_offset(src_offset)
-        .size(size)
-        .build()];
+        .size(size);
     unsafe {
         context
-            .logical_device
-            .cmd_copy_buffer(buffer, src_buffer, dst_buffer, &regions)
+            .device
+            .cmd_copy_buffer(buffer, src_buffer, dst_buffer, &[region])
     };
 }
 
@@ -1091,16 +1091,15 @@ fn copy_buffer_to_image(
     src_buffer: vk::Buffer,
     dst_image: vk::Image,
     dst_image_layout: vk::ImageLayout,
-    region: vk::BufferImageCopy,
+    region: vk::BufferImageCopyBuilder,
 ) {
-    let regions = [region];
     unsafe {
-        context.logical_device.cmd_copy_buffer_to_image(
+        context.device.cmd_copy_buffer_to_image(
             buffer,
             src_buffer,
             dst_image,
             dst_image_layout,
-            &regions,
+            &[region],
         )
     };
 }
@@ -1115,9 +1114,14 @@ fn push_constants(
     constants: &[u8],
 ) {
     unsafe {
-        context
-            .logical_device
-            .cmd_push_constants(buffer, layout, stage_flags, offset, constants)
+        context.device.cmd_push_constants(
+            buffer,
+            layout,
+            stage_flags,
+            offset,
+            constants.len() as u32,
+            constants.as_ptr() as *mut c_void,
+        )
     };
 }
 
@@ -1128,13 +1132,13 @@ fn pipeline_barrier(
     command_buffer: vk::CommandBuffer,
     src_stage_mask: vk::PipelineStageFlags,
     dst_stage_mask: vk::PipelineStageFlags,
-    dependency_flags: vk::DependencyFlags,
-    memory_barriers: &[vk::MemoryBarrier],
-    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-    image_memory_barriers: &[vk::ImageMemoryBarrier],
+    dependency_flags: Option<vk::DependencyFlags>,
+    memory_barriers: &[vk::MemoryBarrierBuilder],
+    buffer_memory_barriers: &[vk::BufferMemoryBarrierBuilder],
+    image_memory_barriers: &[vk::ImageMemoryBarrierBuilder],
 ) {
     unsafe {
-        context.logical_device.cmd_pipeline_barrier(
+        context.device.cmd_pipeline_barrier(
             command_buffer,
             src_stage_mask,
             dst_stage_mask,

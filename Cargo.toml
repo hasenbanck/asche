@@ -7,19 +7,19 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/asche"
 categories = ["graphics"]
-keywords = ["vulkan", "ash"]
+keywords = ["vulkan", "erupt"]
 edition = "2018"
 
 [features]
 default = ["tracing"]
 
 [dependencies]
-ash = "0.31"
+erupt = "0.17"
 raw-window-handle = "0.3"
 arrayvec = "0.5"
 tracing = { version = "0.1", default-features = false, optional = true }
 parking_lot = "0.11"
-vk-alloc = { version = "0.3", features = ["tracing", "vk-buffer-device-address"] }
+vk-alloc = { version = "0.4", features = ["tracing", "vk-buffer-device-address"], path = "../vk-alloc" }
 
 [dev-dependencies]
 bytemuck = "1.5"

@@ -1,8 +1,7 @@
 use std::ffi::CStr;
+use std::os::raw::c_char;
 
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0, InstanceV1_1};
-use ash::vk;
-use raw_window_handle::RawWindowHandle;
+use erupt::{cstr, vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
 use tracing::{error, info, warn};
 
@@ -12,36 +11,36 @@ use crate::{
     AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
 };
 
+const LAYER_KHRONOS_VALIDATION: *const c_char = cstr!("VK_LAYER_KHRONOS_validation");
+
 /// Describes how the instance should be configured.
 pub struct InstanceConfiguration<'a> {
     /// Name of the application.
     pub app_name: &'a str,
     /// Version of the application. Use `ash::vk::make_version()` to create the version number.
     pub app_version: u32,
-    /// Raw window handle.
-    pub handle: &'a raw_window_handle::RawWindowHandle,
     /// Instance extensions to load.
-    pub extensions: Vec<&'static CStr>,
+    pub extensions: Vec<*const c_char>,
 }
 
 /// Initializes the all Vulkan resources needed to create a device.
 pub struct Instance {
-    _entry: ash::Entry,
-    /// The raw Vulkan instance.
-    pub raw: ash::Instance,
-    pub(crate) surface_loader: ash::extensions::khr::Surface,
+    layers: Vec<*const c_char>,
     pub(crate) surface: vk::SurfaceKHR,
-    layers: Vec<&'static CStr>,
-    #[cfg(debug_assertions)]
-    pub(crate) debug_utils: ash::extensions::ext::DebugUtils,
     #[cfg(debug_assertions)]
     debug_messenger: vk::DebugUtilsMessengerEXT,
+    /// The raw Vulkan instance.
+    pub raw: erupt::InstanceLoader,
+    _entry: erupt::DefaultEntryLoader,
 }
 
 impl Instance {
     /// Creates a new `Instance`.
-    pub fn new(configuration: InstanceConfiguration) -> Result<Instance> {
-        let entry = ash::Entry::new()?;
+    pub fn new(
+        window_handle: &impl raw_window_handle::HasRawWindowHandle,
+        configuration: InstanceConfiguration,
+    ) -> Result<Instance> {
+        let entry = erupt::EntryLoader::new()?;
 
         let engine_name = std::ffi::CString::new("asche")?;
         let app_name = std::ffi::CString::new(configuration.app_name.to_owned())?;
@@ -49,7 +48,7 @@ impl Instance {
         #[cfg(feature = "tracing")]
         info!("Requesting Vulkan API version: 1.2");
 
-        let app_info = vk::ApplicationInfo::builder()
+        let app_info = vk::ApplicationInfoBuilder::new()
             .application_name(&app_name)
             .application_version(configuration.app_version)
             .engine_name(&engine_name)
@@ -57,38 +56,42 @@ impl Instance {
             .api_version(vk::make_version(1, 2, 0));
 
         // Activate all needed instance layers and extensions.
-        let instance_extensions = entry
-            .enumerate_instance_extension_properties()
-            .map_err(|e| {
+        let instance_extensions =
+            unsafe { entry.enumerate_instance_extension_properties(None, None) }
+                .result()
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!(
+                        "Unable to enumerate instance extensions: vk::Result({})",
+                        err.0
+                    );
+                    AscheError::VkResult(err)
+                })?;
+
+        let instance_layers = unsafe { entry.enumerate_instance_layer_properties(None) }
+            .result()
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
-                error!("Unable to enumerate instance extensions: {:?}", e);
-                AscheError::Unspecified(format!("Unable to enumerate instance extensions: {:?}", e))
+                error!("Unable to enumerate instance layers: {:?}", err);
+                AscheError::VkResult(err)
             })?;
 
-        let instance_layers = entry.enumerate_instance_layer_properties().map_err(|e| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to enumerate instance layers: {:?}", e);
-            AscheError::Unspecified(format!("Unable to enumerate instance layers: {:?}", e))
-        })?;
-
-        let extensions = Self::create_instance_extensions(&configuration, &instance_extensions);
-        let layers = Self::create_layers(instance_layers);
+        let extensions =
+            Self::create_instance_extensions(&configuration, &instance_extensions, window_handle)?;
+        let layers = Self::create_layers(&instance_layers);
         let instance = Self::create_instance(&entry, &app_info, &extensions, &layers)?;
-        let (surface, surface_loader) =
-            Self::create_surface(&entry, &instance, configuration.handle)?;
+        let surface =
+            unsafe { erupt::utils::surface::create_surface(&instance, window_handle, None) }
+                .result()?;
 
         #[cfg(debug_assertions)]
-        let (debug_utils, debug_messenger) =
-            Self::create_debug_utils(&entry, instance_extensions, &instance)?;
+        let debug_messenger = Self::create_debug_utils(&instance, instance_extensions)?;
 
         Ok(Self {
             _entry: entry,
             raw: instance,
             layers,
             surface,
-            surface_loader,
-            #[cfg(debug_assertions)]
-            debug_utils,
             #[cfg(debug_assertions)]
             debug_messenger,
         })
@@ -104,24 +107,23 @@ impl Instance {
 
     #[cfg(debug_assertions)]
     fn create_debug_utils(
-        entry: &ash::Entry,
+        instance: &erupt::InstanceLoader,
         instance_extensions: Vec<vk::ExtensionProperties>,
-        instance: &ash::Instance,
-    ) -> Result<(ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT)> {
-        let debug_utils_found = instance_extensions.iter().any(|props| unsafe {
-            CStr::from_ptr(props.extension_name.as_ptr())
-                == ash::extensions::ext::DebugUtils::name()
-        });
+    ) -> Result<vk::DebugUtilsMessengerEXT> {
+        let debug_name = unsafe { CStr::from_ptr(vk::EXT_DEBUG_UTILS_EXTENSION_NAME) };
+        let debug_utils_found = instance_extensions
+            .iter()
+            .any(|props| unsafe { CStr::from_ptr(props.extension_name.as_ptr()) } == debug_name);
 
         if debug_utils_found {
-            let ext = ash::extensions::ext::DebugUtils::new(entry, instance);
-            let info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            let info = vk::DebugUtilsMessengerCreateInfoEXTBuilder::new()
                 .message_severity(Self::vulkan_log_level())
                 .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
                 .pfn_user_callback(Some(debug_utils_callback));
 
-            let callback = unsafe { ext.create_debug_utils_messenger(&info, None) }.unwrap();
-            Ok((ext, callback))
+            let utils =
+                unsafe { instance.create_debug_utils_messenger_ext(&info, None, None) }.result()?;
+            Ok(utils)
         } else {
             Err(AscheError::DebugUtilsMissing)
         }
@@ -134,187 +136,107 @@ impl Instance {
             use tracing::level_filters::LevelFilter;
             match tracing::level_filters::STATIC_MAX_LEVEL {
                 LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
-                LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR_EXT,
                 LevelFilter::WARN => {
-                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING_EXT
                 }
                 LevelFilter::INFO => {
-                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO_EXT
                 }
                 LevelFilter::DEBUG => {
-                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE_EXT
                 }
                 LevelFilter::TRACE => vk::DebugUtilsMessageSeverityFlagsEXT::all(),
             }
         }
         #[cfg(not(feature = "tracing"))]
         {
-            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING_EXT
         }
     }
 
     fn create_instance(
-        entry: &ash::Entry,
+        entry: &erupt::DefaultEntryLoader,
         app_info: &vk::ApplicationInfoBuilder,
-        extensions: &[&CStr],
-        layers: &[&CStr],
-    ) -> Result<ash::Instance> {
-        let str_pointers = layers
-            .iter()
-            .chain(extensions.iter())
-            .map(|&s| {
-                // Safe because `layers` and `extensions` entries have static lifetime.
-                s.as_ptr()
-            })
-            .collect::<Vec<_>>();
-
+        instance_extensions: &[*const c_char],
+        layers: &[*const c_char],
+    ) -> Result<erupt::InstanceLoader> {
         #[cfg(feature = "tracing")]
-        {
-            info!("Loading instance extensions:");
-            for extension in extensions.iter() {
-                info!("- {:?}", extension);
-            }
-        }
+        Self::print_extensions(instance_extensions);
 
-        let create_info = vk::InstanceCreateInfo::builder()
+        let create_info = vk::InstanceCreateInfoBuilder::new()
             .flags(vk::InstanceCreateFlags::empty())
             .application_info(&app_info)
-            .enabled_layer_names(&str_pointers[..layers.len()])
-            .enabled_extension_names(&str_pointers[layers.len()..]);
+            .enabled_layer_names(layers)
+            .enabled_extension_names(instance_extensions);
 
         Ok(
-            unsafe { entry.create_instance(&create_info, None) }.map_err(|e| {
+            erupt::InstanceLoader::new(&entry, &create_info, None).map_err(|e| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create Vulkan instance: {:?}", e);
-                AscheError::Unspecified(format!("Unable to create Vulkan instance: {:?}", e))
+                AscheError::LoaderError(e)
             })?,
         )
     }
 
-    fn create_layers(instance_layers: Vec<vk::LayerProperties>) -> Vec<&'static CStr> {
-        let mut layers: Vec<&'static CStr> = Vec::new();
+    fn create_layers(instance_layers: &[vk::LayerProperties]) -> Vec<*const c_char> {
+        let mut layers = Vec::new();
 
         #[cfg(debug_assertions)]
-        layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
+        layers.push(LAYER_KHRONOS_VALIDATION);
 
-        // Only keep available layers.
-        layers.retain(|&layer| {
+        layers.retain(|layer| {
+            let instance_layer = unsafe { CStr::from_ptr(*layer) };
             let found = instance_layers.iter().any(|inst_layer| unsafe {
-                CStr::from_ptr(inst_layer.layer_name.as_ptr()) == layer
+                CStr::from_ptr(inst_layer.layer_name.as_ptr()) == instance_layer
             });
             if found {
                 true
             } else {
                 #[cfg(feature = "tracing")]
-                warn!("Unable to find layer: {}", layer.to_string_lossy());
+                warn!("Unable to find layer: {}", instance_layer.to_string_lossy());
                 false
             }
         });
-
         layers
     }
 
     fn create_instance_extensions(
         configuration: &InstanceConfiguration,
         instance_extensions: &[vk::ExtensionProperties],
-    ) -> Vec<&'static CStr> {
-        let mut extensions: Vec<&'static CStr> = configuration.extensions.clone();
-        extensions.push(ash::extensions::khr::Surface::name());
+        window_handle: &impl raw_window_handle::HasRawWindowHandle,
+    ) -> Result<Vec<*const c_char>> {
+        let mut extensions: Vec<*const c_char> = configuration.extensions.clone();
 
-        // Platform-specific WSI extensions
-        if cfg!(all(
-            unix,
-            not(target_os = "android"),
-            not(target_os = "macos")
-        )) {
-            extensions.push(ash::extensions::khr::XlibSurface::name());
-            extensions.push(ash::extensions::khr::XcbSurface::name());
-            extensions.push(ash::extensions::khr::WaylandSurface::name());
-        }
-        if cfg!(target_os = "android") {
-            extensions.push(ash::extensions::khr::AndroidSurface::name());
-        }
-        if cfg!(target_os = "windows") {
-            extensions.push(ash::extensions::khr::Win32Surface::name());
-        }
-        if cfg!(target_os = "macos") {
-            extensions.push(ash::extensions::mvk::MacOSSurface::name());
-        }
+        let required_extensions =
+            erupt::utils::surface::enumerate_required_extensions(window_handle).result()?;
+        extensions.extend(required_extensions.iter());
 
         #[cfg(debug_assertions)]
-        extensions.push(ash::extensions::ext::DebugUtils::name());
+        extensions.push(vk::EXT_DEBUG_UTILS_EXTENSION_NAME);
 
         // Only keep available extensions.
-        extensions.retain(|&ext| {
-            instance_extensions
-                .iter()
-                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext })
-        });
+        Instance::retain_extensions(instance_extensions, &mut extensions);
 
-        extensions
+        Ok(extensions)
     }
 
-    fn create_surface(
-        entry: &ash::Entry,
-        instance: &ash::Instance,
-        handle: &RawWindowHandle,
-    ) -> Result<(vk::SurfaceKHR, ash::extensions::khr::Surface)> {
-        match handle {
-            #[cfg(windows)]
-            RawWindowHandle::Windows(h) => {
-                let create_info = vk::Win32SurfaceCreateInfoKHR::builder()
-                    .hwnd(h.hwnd)
-                    .hinstance(h.hinstance);
-
-                let win32_surface = ash::extensions::khr::Win32Surface::new(entry, instance);
-                let surface = unsafe { win32_surface.create_win32_surface(&create_info, None) }?;
-                let surface_loader = ash::extensions::khr::Surface::new(entry, instance);
-                Ok((surface, surface_loader))
-            }
-            #[cfg(unix)]
-            RawWindowHandle::Xlib(h) => {
-                let create_info = vk::XlibSurfaceCreateInfoKHR::builder()
-                    .window(h.window)
-                    .dpy(h.display as *mut vk::Display);
-
-                let xlib_surface = ash::extensions::khr::XlibSurface::new(entry, instance);
-                let surface_khr = unsafe { xlib_surface.create_xlib_surface(&create_info, None) }?;
-                let surface = ash::extensions::khr::Surface::new(entry, instance);
-                Ok((surface_khr, surface))
-            }
-            #[cfg(unix)]
-            RawWindowHandle::Xcb(h) => {
-                let create_info = vk::XcbSurfaceCreateInfoKHR::builder()
-                    .window(h.window)
-                    .connection(h.connection);
-
-                let xcb_surface = ash::extensions::khr::XcbSurface::new(entry, instance);
-                let surface_khr = unsafe { xcb_surface.create_xcb_surface(&create_info, None) }?;
-                let surface = ash::extensions::khr::Surface::new(entry, instance);
-                Ok((surface_khr, surface))
-            }
-            #[cfg(unix)]
-            RawWindowHandle::Wayland(h) => {
-                let create_info = vk::WaylandSurfaceCreateInfoKHR::builder()
-                    .surface(h.surface)
-                    .display(h.display);
-
-                let wayland_surface = ash::extensions::khr::WaylandSurface::new(entry, instance);
-                let surface_khr =
-                    unsafe { wayland_surface.create_wayland_surface(&create_info, None) }?;
-                let surface = ash::extensions::khr::Surface::new(entry, instance);
-                Ok((surface_khr, surface))
-            }
-            _ => {
-                panic!("Surface creation only supported for windows and unix")
-            }
-        }
+    fn retain_extensions(
+        present_extensions: &[vk::ExtensionProperties],
+        requested_extensions: &mut Vec<*const i8>,
+    ) {
+        requested_extensions.retain(|ext| {
+            let extension = unsafe { CStr::from_ptr(*ext) };
+            present_extensions.iter().any(|inst_ext| unsafe {
+                CStr::from_ptr(inst_ext.extension_name.as_ptr()) == extension
+            })
+        });
     }
 
     pub(crate) fn find_physical_device(
@@ -325,7 +247,7 @@ impl Instance {
         vk::PhysicalDeviceProperties,
         vk::PhysicalDeviceDriverProperties,
     )> {
-        let physical_devices = unsafe { self.raw.enumerate_physical_devices()? };
+        let physical_devices = unsafe { self.raw.enumerate_physical_devices(None).result()? };
 
         // We try to find our preferred device type.
         let mut chosen = self.find_physical_device_inner_loop(device_type, &physical_devices);
@@ -364,12 +286,14 @@ impl Instance {
         for device in physical_devices {
             let mut physical_device_driver_properties =
                 vk::PhysicalDeviceDriverProperties::default();
-            let mut physical_device_properties = vk::PhysicalDeviceProperties2::builder()
-                .push_next(&mut physical_device_driver_properties);
+            let physical_device_properties = vk::PhysicalDeviceProperties2Builder::new()
+                .extend_from(&mut physical_device_driver_properties);
 
-            unsafe {
-                self.raw
-                    .get_physical_device_properties2(*device, &mut physical_device_properties)
+            let physical_device_properties = unsafe {
+                self.raw.get_physical_device_properties2(
+                    *device,
+                    Some(physical_device_properties.build()),
+                )
             };
 
             if physical_device_properties.properties.device_type == device_type {
@@ -391,14 +315,14 @@ impl Instance {
     ///
     /// The compute and graphics queue use dedicated queue families if provided by the implementation.
     /// The graphics queue is guaranteed to be able to write the the surface.
-    pub(crate) fn create_logical_device(
+    pub(crate) fn create_device(
         &self,
         physical_device: vk::PhysicalDevice,
         configuration: DeviceConfiguration,
-    ) -> Result<(ash::Device, [u32; 3], [vk::Queue; 3])> {
+    ) -> Result<(erupt::DeviceLoader, [u32; 3], [vk::Queue; 3])> {
         let queue_family_properties = unsafe {
             self.raw
-                .get_physical_device_queue_family_properties(physical_device)
+                .get_physical_device_queue_family_properties(physical_device, None)
         };
 
         let graphics_queue_family_id = self.find_queue_family(
@@ -417,7 +341,7 @@ impl Instance {
             &queue_family_properties,
         )?;
 
-        self.create_logical_device_and_queues(
+        self.create_device_and_queues(
             physical_device,
             configuration,
             graphics_queue_family_id,
@@ -426,14 +350,14 @@ impl Instance {
         )
     }
 
-    fn create_logical_device_and_queues(
+    fn create_device_and_queues(
         &self,
         physical_device: vk::PhysicalDevice,
         configuration: DeviceConfiguration,
         graphics_queue_family_id: u32,
         transfer_queue_family_id: u32,
         compute_queue_family_id: u32,
-    ) -> Result<(ash::Device, [u32; 3], [vk::Queue; 3])> {
+    ) -> Result<(erupt::DeviceLoader, [u32; 3], [vk::Queue; 3])> {
         let priorities = &configuration.queue_priority;
 
         // If some queue families point to the same ID, we need to create only one
@@ -442,24 +366,24 @@ impl Instance {
             && transfer_queue_family_id != compute_queue_family_id
         {
             // Case: G=T,C
+            let p1 = [priorities.graphics, priorities.transfer];
+            let p2 = [priorities.compute];
             let queue_infos = [
-                vk::DeviceQueueCreateInfo::builder()
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[priorities.graphics, priorities.transfer])
-                    .build(),
-                vk::DeviceQueueCreateInfo::builder()
+                    .queue_priorities(&p1),
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(compute_queue_family_id)
-                    .queue_priorities(&[priorities.compute])
-                    .build(),
+                    .queue_priorities(&p2),
             ];
-            let logical_device =
-                self.create_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
-            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
-            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
+            let device =
+                self.create_logical_device(physical_device, configuration, &queue_infos)?;
+            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
+            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 1, None) };
+            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 0, None) };
 
             Ok((
-                logical_device,
+                device,
                 [
                     compute_queue_family_id,
                     graphics_queue_family_id,
@@ -471,24 +395,24 @@ impl Instance {
             && transfer_queue_family_id == compute_queue_family_id
         {
             // Case: G,T=C
+            let p1 = [priorities.graphics];
+            let p2 = [priorities.transfer, priorities.compute];
             let queue_infos = [
-                vk::DeviceQueueCreateInfo::builder()
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[priorities.graphics])
-                    .build(),
-                vk::DeviceQueueCreateInfo::builder()
+                    .queue_priorities(&p1),
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&[priorities.transfer, priorities.compute])
-                    .build(),
+                    .queue_priorities(&p2),
             ];
-            let logical_device =
-                self.create_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
-            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
-            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
+            let device =
+                self.create_logical_device(physical_device, configuration, &queue_infos)?;
+            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
+            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 0, None) };
+            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 1, None) };
 
             Ok((
-                logical_device,
+                device,
                 [
                     compute_queue_family_id,
                     graphics_queue_family_id,
@@ -500,24 +424,24 @@ impl Instance {
             && graphics_queue_family_id != transfer_queue_family_id
         {
             // Case: G=C,T
+            let p1 = [priorities.graphics, priorities.compute];
+            let p2 = [priorities.transfer];
             let queue_infos = [
-                vk::DeviceQueueCreateInfo::builder()
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[priorities.graphics, priorities.compute])
-                    .build(),
-                vk::DeviceQueueCreateInfo::builder()
+                    .queue_priorities(&p1),
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&[priorities.transfer])
-                    .build(),
+                    .queue_priorities(&p2),
             ];
-            let logical_device =
-                self.create_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
-            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 1) };
-            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
+            let device =
+                self.create_logical_device(physical_device, configuration, &queue_infos)?;
+            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
+            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 1, None) };
+            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 0, None) };
 
             Ok((
-                logical_device,
+                device,
                 [
                     compute_queue_family_id,
                     graphics_queue_family_id,
@@ -529,18 +453,18 @@ impl Instance {
             && transfer_queue_family_id == compute_queue_family_id
         {
             // Case: G=T=C
-            let queue_infos = [vk::DeviceQueueCreateInfo::builder()
+            let p1 = [priorities.graphics, priorities.transfer, priorities.compute];
+            let queue_infos = [vk::DeviceQueueCreateInfoBuilder::new()
                 .queue_family_index(graphics_queue_family_id)
-                .queue_priorities(&[priorities.graphics, priorities.transfer, priorities.compute])
-                .build()];
-            let logical_device =
-                self.create_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
-            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 1) };
-            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 2) };
+                .queue_priorities(&p1)];
+            let device =
+                self.create_logical_device(physical_device, configuration, &queue_infos)?;
+            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
+            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 1, None) };
+            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 2, None) };
 
             Ok((
-                logical_device,
+                device,
                 [
                     compute_queue_family_id,
                     graphics_queue_family_id,
@@ -550,28 +474,28 @@ impl Instance {
             ))
         } else {
             // Case: G,T,C
+            let p1 = [priorities.graphics];
+            let p2 = [priorities.transfer];
+            let p3 = [priorities.compute];
             let queue_infos = [
-                vk::DeviceQueueCreateInfo::builder()
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&[priorities.graphics])
-                    .build(),
-                vk::DeviceQueueCreateInfo::builder()
+                    .queue_priorities(&p1),
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&[priorities.transfer])
-                    .build(),
-                vk::DeviceQueueCreateInfo::builder()
+                    .queue_priorities(&p2),
+                vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(compute_queue_family_id)
-                    .queue_priorities(&[priorities.compute])
-                    .build(),
+                    .queue_priorities(&p3),
             ];
-            let logical_device =
-                self.create_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { logical_device.get_device_queue(graphics_queue_family_id, 0) };
-            let t_q = unsafe { logical_device.get_device_queue(transfer_queue_family_id, 0) };
-            let c_q = unsafe { logical_device.get_device_queue(compute_queue_family_id, 0) };
+            let device =
+                self.create_logical_device(physical_device, configuration, &queue_infos)?;
+            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
+            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 0, None) };
+            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 0, None) };
 
             Ok((
-                logical_device,
+                device,
                 [
                     compute_queue_family_id,
                     graphics_queue_family_id,
@@ -582,28 +506,16 @@ impl Instance {
         }
     }
 
-    fn create_device(
+    fn create_logical_device(
         &self,
         physical_device: vk::PhysicalDevice,
         mut configuration: DeviceConfiguration,
-        queue_infos: &[vk::DeviceQueueCreateInfo],
-    ) -> Result<ash::Device> {
+        queue_infos: &[vk::DeviceQueueCreateInfoBuilder],
+    ) -> Result<erupt::DeviceLoader> {
         let device_extensions = self.create_device_extensions(physical_device, &configuration)?;
 
         #[cfg(feature = "tracing")]
-        {
-            info!("Loading device extensions:");
-            for extension in device_extensions.iter() {
-                info!("- {:?}", extension);
-            }
-        }
-
-        let layer_pointers = self.layers.iter().map(|&s| s.as_ptr()).collect::<Vec<_>>();
-
-        let extension_pointers = device_extensions
-            .iter()
-            .map(|&s| s.as_ptr())
-            .collect::<Vec<_>>();
+        Self::print_extensions(&device_extensions);
 
         let (physical_features, physical_features11, physical_features12) =
             self.collect_physical_device_features(physical_device);
@@ -611,17 +523,17 @@ impl Instance {
         let features = if let Some(features) = configuration.features_v1_0.take() {
             features
         } else {
-            vk::PhysicalDeviceFeatures::builder()
+            vk::PhysicalDeviceFeaturesBuilder::new()
         };
         let mut features11 = if let Some(features) = configuration.features_v1_1.take() {
             features
         } else {
-            vk::PhysicalDeviceVulkan11Features::builder()
+            vk::PhysicalDeviceVulkan11FeaturesBuilder::new()
         };
         let mut features12 = if let Some(features) = configuration.features_v1_2.take() {
             features
         } else {
-            vk::PhysicalDeviceVulkan12Features::builder()
+            vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
         };
 
         features12 = features12
@@ -629,7 +541,7 @@ impl Instance {
             .timeline_semaphore(true);
 
         check_features(
-            &physical_features.features,
+            &physical_features,
             &physical_features11,
             &physical_features12,
             &features,
@@ -637,64 +549,70 @@ impl Instance {
             &features12,
         )?;
 
-        let device_create_info = vk::DeviceCreateInfo::builder()
+        let device_create_info = vk::DeviceCreateInfoBuilder::new()
             .queue_create_infos(queue_infos)
-            .enabled_extension_names(&extension_pointers)
-            .enabled_layer_names(&layer_pointers)
+            .enabled_extension_names(&device_extensions)
+            .enabled_layer_names(&self.layers)
             .enabled_features(&features)
-            .push_next(&mut features11)
-            .push_next(&mut features12);
+            .extend_from(&mut features11)
+            .extend_from(&mut features12);
 
-        let logical_device = unsafe {
-            self.raw
-                .create_device(physical_device, &device_create_info, None)?
-        };
+        let device =
+            erupt::DeviceLoader::new(&self.raw, physical_device, &device_create_info, None)?;
 
-        Ok(logical_device)
+        Ok(device)
+    }
+
+    fn print_extensions(extensions: &[*const i8]) {
+        info!("Loading instance extensions:");
+        for extension in extensions.iter() {
+            let ext = unsafe { CStr::from_ptr(*extension).to_str().unwrap() };
+            info!("- {}", ext);
+        }
     }
 
     fn collect_physical_device_features(
         &self,
         physical_device: vk::PhysicalDevice,
     ) -> (
-        vk::PhysicalDeviceFeatures2Builder,
+        vk::PhysicalDeviceFeatures,
         vk::PhysicalDeviceVulkan11FeaturesBuilder,
         vk::PhysicalDeviceVulkan12FeaturesBuilder,
     ) {
-        let mut physical_features = vk::PhysicalDeviceFeatures2::builder();
-        let mut physical_features11 = vk::PhysicalDeviceVulkan11Features::builder();
-        let mut physical_features12 = vk::PhysicalDeviceVulkan12Features::builder();
-        unsafe {
-            // Workaround until this PR is finished and merged: https://github.com/MaikKlein/ash/issues/325
-            // Since the vk::PhysicalDeviceFeatures2Builder misses the pushNext() method.
-            physical_features.p_next = &mut physical_features11 as *mut _ as *mut std::ffi::c_void;
-            physical_features.p_next = &mut physical_features12 as *mut _ as *mut std::ffi::c_void;
+        let mut physical_features11 = vk::PhysicalDeviceVulkan11FeaturesBuilder::new();
+        let mut physical_features12 = vk::PhysicalDeviceVulkan12FeaturesBuilder::new();
+        let physical_features = unsafe {
+            let physical_features = vk::PhysicalDeviceFeatures2Builder::new()
+                .extend_from(&mut physical_features11)
+                .extend_from(&mut physical_features12);
             self.raw
-                .get_physical_device_features2(physical_device, &mut physical_features)
+                .get_physical_device_features2(physical_device, Some(physical_features.build()))
         };
-        (physical_features, physical_features11, physical_features12)
+        (
+            physical_features.features,
+            physical_features11,
+            physical_features12,
+        )
     }
 
     fn create_device_extensions(
         &self,
         physical_device: vk::PhysicalDevice,
         configuration: &DeviceConfiguration,
-    ) -> Result<Vec<&CStr>> {
-        let mut extensions: Vec<&'static CStr> = configuration.extensions.clone();
+    ) -> Result<Vec<*const c_char>> {
+        let mut extensions: Vec<*const c_char> = configuration.extensions.clone();
 
-        extensions.push(ash::extensions::khr::Swapchain::name());
+        extensions.push(vk::KHR_SWAPCHAIN_EXTENSION_NAME);
 
         // Only keep available extensions.
         let device_extensions = unsafe {
             self.raw
-                .enumerate_device_extension_properties(physical_device)
-        }?;
+                .enumerate_device_extension_properties(physical_device, None, None)
+                .result()?
+        };
 
-        extensions.retain(|&ext| {
-            device_extensions
-                .iter()
-                .any(|inst_ext| unsafe { CStr::from_ptr(inst_ext.extension_name.as_ptr()) == ext })
-        });
+        // Only keep available extensions.
+        Instance::retain_extensions(&device_extensions, &mut extensions);
 
         Ok(extensions)
     }
@@ -712,11 +630,14 @@ impl Instance {
                     if family.queue_count > 0
                         && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                         && unsafe {
-                            self.surface_loader.get_physical_device_surface_support(
-                                physical_device,
-                                id as u32,
-                                self.surface,
-                            )?
+                            self.raw
+                                .get_physical_device_surface_support_khr(
+                                    physical_device,
+                                    id as u32,
+                                    self.surface,
+                                    Some(vk::TRUE),
+                                )
+                                .result()?
                         }
                     {
                         queue_id = Some(id as u32);
@@ -993,10 +914,10 @@ impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
             #[cfg(debug_assertions)]
-            self.debug_utils
-                .destroy_debug_utils_messenger(self.debug_messenger, None);
+            self.raw
+                .destroy_debug_utils_messenger_ext(Some(self.debug_messenger), None);
 
-            self.surface_loader.destroy_surface(self.surface, None);
+            self.raw.destroy_surface_khr(Some(self.surface), None);
             self.raw.destroy_instance(None);
         };
     }

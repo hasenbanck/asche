@@ -3,8 +3,7 @@
 
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
-use ash::vk;
+use erupt::vk;
 
 pub use {
     command::{
@@ -59,81 +58,81 @@ impl std::fmt::Display for QueueType {
 
 /// Wraps a render pass.
 pub struct RenderPass {
-    context: Arc<Context>,
     /// The raw vk::RenderPass
     pub raw: vk::RenderPass,
+    context: Arc<Context>,
 }
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_render_pass(self.raw, None);
+                .device
+                .destroy_render_pass(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps a pipeline layout.
 pub struct PipelineLayout {
-    context: Arc<Context>,
     /// The raw vk::PipelineLayout
     pub raw: vk::PipelineLayout,
+    context: Arc<Context>,
 }
 
 impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_pipeline_layout(self.raw, None);
+                .device
+                .destroy_pipeline_layout(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps a graphics pipeline.
 pub struct GraphicsPipeline {
-    context: Arc<Context>,
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
+    context: Arc<Context>,
 }
 
 impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
-            self.context.logical_device.destroy_pipeline(self.raw, None);
+            self.context.device.destroy_pipeline(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps a compute pipeline.
 pub struct ComputePipeline {
-    context: Arc<Context>,
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
+    context: Arc<Context>,
 }
 
 impl Drop for ComputePipeline {
     fn drop(&mut self) {
         unsafe {
-            self.context.logical_device.destroy_pipeline(self.raw, None);
+            self.context.device.destroy_pipeline(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps a shader module.
 pub struct ShaderModule {
-    context: Arc<Context>,
     /// The raw vk::ShaderModule.
     pub raw: vk::ShaderModule,
+    context: Arc<Context>,
 }
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_shader_module(self.raw, None);
+                .device
+                .destroy_shader_module(Some(self.raw), None);
         };
     }
 }
@@ -179,7 +178,7 @@ pub struct ImageDescriptor<'a> {
     /// The count array layers.
     pub array_layers: u32,
     /// Sample count flags.
-    pub samples: vk::SampleCountFlags,
+    pub samples: vk::SampleCountFlagBits,
     /// The tiling used.
     pub tiling: vk::ImageTiling,
     /// The initial format.
@@ -272,7 +271,7 @@ pub struct DescriptorPoolDescriptor<'a> {
     /// Max sets.
     pub max_sets: u32,
     /// All sizes of the pool.
-    pub pool_sizes: &'a [vk::DescriptorPoolSize],
+    pub pool_sizes: &'a [vk::DescriptorPoolSizeBuilder<'a>],
     /// Optional flags.
     pub flags: Option<vk::DescriptorPoolCreateFlags>,
 }
@@ -382,11 +381,11 @@ pub struct RenderPassDepthAttachmentDescriptor {
 
 /// Wraps a buffer.
 pub struct Buffer {
-    context: Arc<Context>,
-    /// The raw allocation.
-    pub allocation: vk_alloc::Allocation,
     /// The raw Vulkan buffer.
     pub raw: vk::Buffer,
+    /// The raw allocation.
+    pub allocation: vk_alloc::Allocation,
+    context: Arc<Context>,
 }
 
 impl Drop for Buffer {
@@ -395,37 +394,37 @@ impl Drop for Buffer {
             self.context
                 .allocator
                 .lock()
-                .free(&self.allocation)
+                .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free buffer allocation");
-            self.context.logical_device.destroy_buffer(self.raw, None);
+            self.context.device.destroy_buffer(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps a buffer view.
 pub struct BufferView {
-    context: Arc<Context>,
     /// The raw Vulkan buffer view.
     pub raw: vk::BufferView,
+    context: Arc<Context>,
 }
 
 impl Drop for BufferView {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_buffer_view(self.raw, None);
+                .device
+                .destroy_buffer_view(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps an image.
 pub struct Image {
-    context: Arc<Context>,
-    /// The raw allocation.
-    pub allocation: vk_alloc::Allocation,
     /// The raw Vulkan image.
     pub raw: vk::Image,
+    /// The raw allocation.
+    pub allocation: vk_alloc::Allocation,
+    context: Arc<Context>,
 }
 
 impl Drop for Image {
@@ -434,41 +433,39 @@ impl Drop for Image {
             self.context
                 .allocator
                 .lock()
-                .free(&self.allocation)
+                .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free image allocation");
-            self.context.logical_device.destroy_image(self.raw, None);
+            self.context.device.destroy_image(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps an image view.
 pub struct ImageView {
-    context: Arc<Context>,
     /// The raw Vulkan image view.
     pub raw: vk::ImageView,
+    context: Arc<Context>,
 }
 
 impl Drop for ImageView {
     fn drop(&mut self) {
         unsafe {
-            self.context
-                .logical_device
-                .destroy_image_view(self.raw, None);
+            self.context.device.destroy_image_view(Some(self.raw), None);
         };
     }
 }
 
 /// Wraps a sampler.
 pub struct Sampler {
-    context: Arc<Context>,
     /// The raw Vulkan sampler.
     pub raw: vk::Sampler,
+    context: Arc<Context>,
 }
 
 impl Drop for Sampler {
     fn drop(&mut self) {
         unsafe {
-            self.context.logical_device.destroy_sampler(self.raw, None);
+            self.context.device.destroy_sampler(Some(self.raw), None);
         };
     }
 }

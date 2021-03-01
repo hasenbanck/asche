@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use ash::vk;
+use erupt::vk;
 
 /// Errors that asche can throw.
 #[derive(Debug)]
@@ -11,14 +11,17 @@ pub enum AscheError {
     NulError(std::ffi::NulError),
     /// A std::str::Utf8Error.
     Utf8Error(std::str::Utf8Error),
-    /// A ash::LoadingError.
-    LoadingError(ash::LoadingError),
-    /// A ash::InstanceError.
-    InstanceError(ash::InstanceError),
-    /// A ash::vk::Result.
-    VkResult(ash::vk::Result),
+    /// A erupt::utils::loading::EntryLoaderError.
+    EntryLoaderError(erupt::utils::loading::EntryLoaderError),
+
+    /// A erupt::LoaderError.
+    LoaderError(erupt::LoaderError),
+
     /// A vk_alloc::AllocatorError.
     VkAllocError(vk_alloc::AllocatorError),
+
+    /// A VKResult error.
+    VkResult(vk::Result),
 
     /// Can't load the debug utils extension.
     DebugUtilsMissing,
@@ -57,17 +60,17 @@ impl std::fmt::Display for AscheError {
             AscheError::Utf8Error(err) => {
                 write!(f, "{:?}", err.source())
             }
-            AscheError::LoadingError(err) => {
+            AscheError::EntryLoaderError(err) => {
                 write!(f, "{:?}", err.source())
             }
-            AscheError::InstanceError(err) => {
-                write!(f, "{:?}", err.source())
-            }
-            AscheError::VkResult(err) => {
+            AscheError::LoaderError(err) => {
                 write!(f, "{:?}", err.source())
             }
             AscheError::VkAllocError(err) => {
                 write!(f, "{:?}", err.source())
+            }
+            AscheError::VkResult(err) => {
+                write!(f, "vk::Result({})", err)
             }
             AscheError::DebugUtilsMissing => {
                 write!(f, "can't load the debug utils extension")
@@ -102,9 +105,7 @@ impl std::error::Error for AscheError {
         match *self {
             AscheError::NulError(ref e) => Some(e),
             AscheError::Utf8Error(ref e) => Some(e),
-            AscheError::LoadingError(ref e) => Some(e),
-            AscheError::InstanceError(ref e) => Some(e),
-            AscheError::VkResult(ref e) => Some(e),
+            AscheError::EntryLoaderError(ref e) => Some(e),
             _ => None,
         }
     }
@@ -128,27 +129,21 @@ impl From<std::str::Utf8Error> for AscheError {
     }
 }
 
-impl From<ash::LoadingError> for AscheError {
-    fn from(err: ash::LoadingError) -> AscheError {
-        AscheError::LoadingError(err)
+impl From<erupt::LoaderError> for AscheError {
+    fn from(err: erupt::LoaderError) -> AscheError {
+        AscheError::LoaderError(err)
     }
 }
 
-impl From<ash::InstanceError> for AscheError {
-    fn from(err: ash::InstanceError) -> AscheError {
-        AscheError::InstanceError(err)
-    }
-}
-
-impl From<ash::vk::Result> for AscheError {
-    fn from(err: ash::vk::Result) -> AscheError {
+impl From<vk::Result> for AscheError {
+    fn from(err: vk::Result) -> AscheError {
         AscheError::VkResult(err)
     }
 }
 
-impl From<(Vec<vk::Pipeline>, ash::vk::Result)> for AscheError {
-    fn from(err: (Vec<vk::Pipeline>, vk::Result)) -> Self {
-        AscheError::VkResult(err.1)
+impl From<erupt::utils::loading::EntryLoaderError> for AscheError {
+    fn from(err: erupt::utils::loading::EntryLoaderError) -> AscheError {
+        AscheError::EntryLoaderError(err)
     }
 }
 

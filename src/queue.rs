@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
-use ash::vk;
+use erupt::{vk, ExtendableFrom};
 
 use crate::command::CommandBuffer;
 use crate::{
@@ -69,19 +68,16 @@ impl_queue!(
 
 /// The inner queue that abstracts common functionality.
 pub(crate) struct Queue {
-    context: Arc<Context>,
-    family_index: u32,
     pub(crate) raw: vk::Queue,
+    family_index: u32,
     command_pool_counter: u64,
+    context: Arc<Context>,
 }
 
 impl Drop for Queue {
     fn drop(&mut self) {
         unsafe {
-            self.context
-                .logical_device
-                .queue_wait_idle(self.raw)
-                .unwrap();
+            self.context.device.queue_wait_idle(self.raw).unwrap();
         };
     }
 }
@@ -89,10 +85,10 @@ impl Drop for Queue {
 impl Queue {
     fn new(context: Arc<Context>, family_index: u32, queue: vk::Queue) -> Self {
         Self {
-            context,
-            family_index,
             raw: queue,
+            family_index,
             command_pool_counter: 0,
+            context,
         }
     }
 
@@ -109,25 +105,24 @@ impl Queue {
         let timeline_wait_values = [command_buffer.timeline_wait_value];
         let timeline_signal_values = [command_buffer.timeline_signal_value];
         let command_buffers = [command_buffer.buffer];
-        let wait_dst_stage_mask = [ash::vk::PipelineStageFlags::TOP_OF_PIPE];
+        let wait_dst_stage_mask = [vk::PipelineStageFlags::TOP_OF_PIPE];
 
-        let mut timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
+        let mut timeline_info = vk::TimelineSemaphoreSubmitInfoBuilder::new()
             .wait_semaphore_values(&timeline_wait_values)
             .signal_semaphore_values(&timeline_signal_values);
 
-        let submit_info = vk::SubmitInfo::builder()
+        let submit_info = vk::SubmitInfoBuilder::new()
             .wait_dst_stage_mask(&wait_dst_stage_mask)
             .command_buffers(&command_buffers)
             .wait_semaphores(&semaphores)
             .signal_semaphores(&semaphores)
-            .push_next(&mut timeline_info);
+            .extend_from(&mut timeline_info);
 
         unsafe {
-            self.context.logical_device.queue_submit(
-                self.raw,
-                &[submit_info.build()],
-                vk::Fence::null(),
-            )?
+            self.context
+                .device
+                .queue_submit(self.raw, &[submit_info], None)
+                .result()?
         };
 
         Ok(())

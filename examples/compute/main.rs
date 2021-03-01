@@ -1,5 +1,4 @@
-use ash::vk;
-use raw_window_handle::HasRawWindowHandle;
+use erupt::vk;
 
 fn main() -> Result<(), asche::AscheError> {
     // Asche doesn't support headless compute only setups!
@@ -19,12 +18,14 @@ fn main() -> Result<(), asche::AscheError> {
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
 
-    let instance = asche::Instance::new(asche::InstanceConfiguration {
-        app_name: "compute example",
-        app_version: ash::vk::make_version(1, 0, 0),
-        handle: &window.raw_window_handle(),
-        extensions: vec![],
-    })?;
+    let instance = asche::Instance::new(
+        &window,
+        asche::InstanceConfiguration {
+            app_name: "compute example",
+            app_version: erupt::vk::make_version(1, 0, 0),
+            extensions: vec![],
+        },
+    )?;
 
     let (device, (compute_queue, _, _)) = instance.request_device(asche::DeviceConfiguration {
         ..Default::default()
@@ -61,27 +62,25 @@ impl Application {
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
 
-        let compute_shader_stage = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::COMPUTE)
+        let compute_shader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::COMPUTE)
             .module(comp_module.raw)
             .name(&mainfunctionname);
 
         // Descriptor set layout
-        let bindings = [vk::DescriptorSetLayoutBinding::builder()
+        let bindings = [vk::DescriptorSetLayoutBindingBuilder::new()
             .binding(0)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .build()];
-        let layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)];
+        let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
         let descriptor_set_layout =
             device.create_descriptor_set_layout("Compute Descriptor Set Layout", layout_info)?;
 
         // Descriptor pool
-        let pool_sizes = [vk::DescriptorPoolSize::builder()
+        let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
             .descriptor_count(1)
-            .ty(vk::DescriptorType::STORAGE_BUFFER)
-            .build()];
+            ._type(vk::DescriptorType::STORAGE_BUFFER)];
 
         let descriptor_pool = device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
             name: "Compute Descriptor Pool",
@@ -92,12 +91,12 @@ impl Application {
 
         // Pipeline layout
         let layouts = [descriptor_set_layout.raw];
-        let pipeline_layout = vk::PipelineLayoutCreateInfo::builder().set_layouts(&layouts);
+        let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new().set_layouts(&layouts);
         let pipeline_layout =
             device.create_pipeline_layout("Compute Pipeline Layout", pipeline_layout)?;
 
         // Pipeline
-        let pipeline_info = vk::ComputePipelineCreateInfo::builder()
+        let pipeline_info = vk::ComputePipelineCreateInfoBuilder::new()
             .layout(pipeline_layout.raw)
             .stage(compute_shader_stage.build());
 

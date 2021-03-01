@@ -1,24 +1,22 @@
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
-use ash::vk;
-use ash::vk::Handle;
+use erupt::vk;
 
 use crate::{Context, DescriptorSetUpdate, Result, UpdateDescriptorSetDescriptor};
 
 /// Wraps a descriptor pool.
 pub struct DescriptorPool {
-    context: Arc<Context>,
     /// The raw Vulkan descriptor pool.
     pub raw: vk::DescriptorPool,
+    context: Arc<Context>,
 }
 
 impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_descriptor_pool(self.raw, None);
+                .device
+                .destroy_descriptor_pool(Some(self.raw), None);
         };
     }
 }
@@ -35,17 +33,18 @@ impl DescriptorPool {
         layout: &DescriptorSetLayout,
     ) -> Result<DescriptorSet> {
         let layouts = [layout.raw];
-        let info = vk::DescriptorSetAllocateInfo::builder()
+        let info = vk::DescriptorSetAllocateInfoBuilder::new()
             .descriptor_pool(self.raw)
             .set_layouts(&layouts);
         let set = unsafe {
             self.context
-                .logical_device
-                .allocate_descriptor_sets(&info)?[0]
+                .device
+                .allocate_descriptor_sets(&info)
+                .result()?[0]
         };
 
         self.context
-            .set_object_name(name, vk::ObjectType::DESCRIPTOR_SET, set.as_raw())?;
+            .set_object_name(name, vk::ObjectType::DESCRIPTOR_SET, set.0)?;
 
         Ok(DescriptorSet {
             context: self.context.clone(),
@@ -58,8 +57,9 @@ impl DescriptorPool {
     pub fn free_sets(&self) -> Result<()> {
         unsafe {
             self.context
-                .logical_device
-                .reset_descriptor_pool(self.raw, vk::DescriptorPoolResetFlags::empty())?;
+                .device
+                .reset_descriptor_pool(self.raw, None)
+                .result()?;
         };
         Ok(())
     }
@@ -67,17 +67,17 @@ impl DescriptorPool {
 
 /// Wraps a descriptor set layout.
 pub struct DescriptorSetLayout {
-    context: Arc<Context>,
     /// The raw Vulkan descriptor set layout.
     pub raw: vk::DescriptorSetLayout,
+    context: Arc<Context>,
 }
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             self.context
-                .logical_device
-                .destroy_descriptor_set_layout(self.raw, None);
+                .device
+                .destroy_descriptor_set_layout(Some(self.raw), None);
         };
     }
 }
@@ -93,16 +93,16 @@ impl DescriptorSetLayout {
 
 /// Wraps a descriptor set.
 pub struct DescriptorSet {
-    context: Arc<Context>,
-    pool: vk::DescriptorPool,
     /// The raw Vulkan descriptor pool.
     pub raw: vk::DescriptorSet,
+    pool: vk::DescriptorPool,
+    context: Arc<Context>,
 }
 
 impl DescriptorSet {
     /// Creates a new descriptor set with the given `DescriptorSetLayout``.
     pub fn update(&self, descriptor: &UpdateDescriptorSetDescriptor) {
-        let write = vk::WriteDescriptorSet::builder().dst_set(self.raw);
+        let write = vk::WriteDescriptorSetBuilder::new().dst_set(self.raw);
 
         match descriptor.update {
             DescriptorSetUpdate::Sampler { .. } => {
@@ -113,15 +113,14 @@ impl DescriptorSet {
                 image_view,
                 image_layout,
             } => {
-                let image_info = [vk::DescriptorImageInfo {
-                    sampler: sampler.raw,
-                    image_view: image_view.raw,
-                    image_layout,
-                }];
+                let image_info = vk::DescriptorImageInfoBuilder::new()
+                    .image_layout(image_layout)
+                    .image_view(image_view.raw)
+                    .sampler(sampler.raw);
                 self.inner_update(
                     write
                         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        .image_info(&image_info),
+                        .image_info(&[image_info]),
                 );
             }
             DescriptorSetUpdate::SampledImage { .. } => {
@@ -141,15 +140,14 @@ impl DescriptorSet {
                 offset,
                 range,
             } => {
-                let buffer_info = [vk::DescriptorBufferInfo {
-                    buffer: buffer.raw,
-                    offset,
-                    range,
-                }];
+                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(buffer.raw)
+                    .offset(offset)
+                    .range(range);
                 self.inner_update(
                     write
                         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                        .buffer_info(&buffer_info),
+                        .buffer_info(&[buffer_info]),
                 );
             }
             DescriptorSetUpdate::StorageBuffer {
@@ -157,15 +155,14 @@ impl DescriptorSet {
                 offset,
                 range,
             } => {
-                let buffer_info = [vk::DescriptorBufferInfo {
-                    buffer: buffer.raw,
-                    offset,
-                    range,
-                }];
+                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(buffer.raw)
+                    .offset(offset)
+                    .range(range);
                 self.inner_update(
                     write
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&buffer_info),
+                        .buffer_info(&[buffer_info]),
                 );
             }
             DescriptorSetUpdate::UniformBufferDynamic {
@@ -173,15 +170,14 @@ impl DescriptorSet {
                 offset,
                 range,
             } => {
-                let buffer_info = [vk::DescriptorBufferInfo {
-                    buffer: buffer.raw,
-                    offset,
-                    range,
-                }];
+                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(buffer.raw)
+                    .offset(offset)
+                    .range(range);
                 self.inner_update(
                     write
                         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                        .buffer_info(&buffer_info),
+                        .buffer_info(&[buffer_info]),
                 );
             }
             DescriptorSetUpdate::StorageBufferDynamic {
@@ -189,15 +185,14 @@ impl DescriptorSet {
                 offset,
                 range,
             } => {
-                let buffer_info = [vk::DescriptorBufferInfo {
-                    buffer: buffer.raw,
-                    offset,
-                    range,
-                }];
+                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(buffer.raw)
+                    .offset(offset)
+                    .range(range);
                 self.inner_update(
                     write
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
-                        .buffer_info(&buffer_info),
+                        .buffer_info(&[buffer_info]),
                 );
             }
             DescriptorSetUpdate::InputAttachment { .. } => {
@@ -206,23 +201,23 @@ impl DescriptorSet {
         }
     }
 
-    fn inner_update(&self, builder: vk::WriteDescriptorSetBuilder) {
-        let writes = &[builder.build()];
+    fn inner_update(&self, writes: vk::WriteDescriptorSetBuilder) {
         unsafe {
-            self.context
-                .logical_device
-                .update_descriptor_sets(writes, &[]);
+            self.context.device.update_descriptor_sets(&[writes], &[]);
         };
     }
 
     /// Resets the descriptor set. Needs to be created from a pool with the
     /// `vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET` flag set.
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self) -> Result<()> {
         let sets = [self.raw];
         unsafe {
             self.context
-                .logical_device
-                .free_descriptor_sets(self.pool, &sets);
+                .device
+                .free_descriptor_sets(self.pool, &sets)
+                .result()?
         };
+
+        Ok(())
     }
 }

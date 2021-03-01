@@ -1,7 +1,6 @@
-use ash::vk;
 use bytemuck::{Pod, Zeroable};
+use erupt::vk;
 use glam::f32::{Mat4, Vec2, Vec3, Vec4};
-use raw_window_handle::HasRawWindowHandle;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -31,12 +30,14 @@ fn main() -> Result<(), asche::AscheError> {
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
 
-    let instance = asche::Instance::new(asche::InstanceConfiguration {
-        app_name: "cube example",
-        app_version: ash::vk::make_version(1, 0, 0),
-        handle: &window.raw_window_handle(),
-        extensions: vec![],
-    })?;
+    let instance = asche::Instance::new(
+        &window,
+        asche::InstanceConfiguration {
+            app_name: "cube example",
+            app_version: erupt::vk::make_version(1, 0, 0),
+            extensions: vec![],
+        },
+    )?;
 
     let (device, (_, graphics_queue, transfer_queue)) =
         instance.request_device(asche::DeviceConfiguration {
@@ -65,25 +66,25 @@ fn main() -> Result<(), asche::AscheError> {
 }
 
 struct Application {
-    device: asche::Device,
-    graphics_queue: asche::GraphicsQueue,
-    transfer_queue: asche::TransferQueue,
-    graphics_command_pool: asche::GraphicsCommandPool,
     extent: vk::Extent2D,
-    pipeline: asche::GraphicsPipeline,
-    pipeline_layout: asche::PipelineLayout,
-    render_pass: asche::RenderPass,
-    _depth_image: asche::Image,
-    depth_image_view: asche::ImageView,
-    vertex_buffer: Vec<asche::Buffer>,
-    index_buffer: Vec<asche::Buffer>,
-    textures: Vec<Texture>,
-    sampler: asche::Sampler,
     vp_matrix: glam::f32::Mat4,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
     descriptor_set_layout: asche::DescriptorSetLayout,
     descriptor_pool: asche::DescriptorPool,
+    graphics_command_pool: asche::GraphicsCommandPool,
+    pipeline: asche::GraphicsPipeline,
+    pipeline_layout: asche::PipelineLayout,
+    render_pass: asche::RenderPass,
+    vertex_buffer: Vec<asche::Buffer>,
+    index_buffer: Vec<asche::Buffer>,
+    _depth_image: asche::Image,
+    depth_image_view: asche::ImageView,
+    textures: Vec<Texture>,
+    sampler: asche::Sampler,
+    graphics_queue: asche::GraphicsQueue,
+    transfer_queue: asche::TransferQueue,
+    device: asche::Device,
 }
 
 impl Application {
@@ -107,12 +108,12 @@ impl Application {
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
-        let vertexshader_stage = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::VERTEX)
+        let vertexshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::VERTEX)
             .module(vert_module.raw)
             .name(&mainfunctionname);
-        let fragmentshader_stage = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::FRAGMENT)
+        let fragmentshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::FRAGMENT)
             .module(frag_module.raw)
             .name(&mainfunctionname);
 
@@ -123,7 +124,7 @@ impl Application {
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::GRAPHICS,
-            image_type: vk::ImageType::TYPE_2D,
+            image_type: vk::ImageType::_2D,
             format: vk::Format::D32_SFLOAT,
             extent: vk::Extent3D {
                 width: extent.width,
@@ -132,7 +133,7 @@ impl Application {
             },
             mip_levels: 1,
             array_layers: 1,
-            samples: vk::SampleCountFlags::TYPE_1,
+            samples: vk::SampleCountFlagBits::_1,
             tiling: vk::ImageTiling::OPTIMAL,
             initial_layout: vk::ImageLayout::UNDEFINED,
             flags: None,
@@ -141,7 +142,7 @@ impl Application {
         let depth_image_view = device.create_image_view(&asche::ImageViewDescriptor {
             name: "Depth Texture View",
             image: &depth_image,
-            view_type: vk::ImageViewType::TYPE_2D,
+            view_type: vk::ImageViewType::_2D,
             format: vk::Format::D32_SFLOAT,
             components: vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
@@ -168,7 +169,7 @@ impl Application {
         // Renderpass
         let attachments = [
             // Color
-            vk::AttachmentDescription::builder()
+            vk::AttachmentDescriptionBuilder::new()
                 .format(vk::Format::B8G8R8A8_SRGB)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -176,10 +177,9 @@ impl Application {
                 .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
                 .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .build(),
+                .samples(vk::SampleCountFlagBits::_1),
             // Depth
-            vk::AttachmentDescription::builder()
+            vk::AttachmentDescriptionBuilder::new()
                 .format(vk::Format::D32_SFLOAT)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -187,37 +187,33 @@ impl Application {
                 .stencil_store_op(vk::AttachmentStoreOp::STORE)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
                 .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .build(),
+                .samples(vk::SampleCountFlagBits::_1),
         ];
 
-        let color_attachment_references = [vk::AttachmentReference {
-            attachment: 0,
-            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        }];
+        let color_attachment_references = [vk::AttachmentReferenceBuilder::new()
+            .attachment(0)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
 
         let depth_attachment_references = vk::AttachmentReference {
             attachment: 1,
             layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
 
-        let subpasses = [vk::SubpassDescription::builder()
+        let subpasses = [vk::SubpassDescriptionBuilder::new()
             .color_attachments(&color_attachment_references)
             .depth_stencil_attachment(&depth_attachment_references)
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .build()];
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
 
-        let subpass_dependencies = [vk::SubpassDependency::builder()
+        let subpass_dependencies = [vk::SubpassDependencyBuilder::new()
             .src_subpass(vk::SUBPASS_EXTERNAL)
             .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
             .dst_subpass(0)
             .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
             .dst_access_mask(
                 vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            )
-            .build()];
+            )];
 
-        let renderpass_info = vk::RenderPassCreateInfo::builder()
+        let renderpass_info = vk::RenderPassCreateInfoBuilder::new()
             .attachments(&attachments)
             .subpasses(&subpasses)
             .dependencies(&subpass_dependencies);
@@ -226,21 +222,19 @@ impl Application {
             device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
 
         // Descriptor set layout
-        let bindings = [vk::DescriptorSetLayoutBinding::builder()
+        let bindings = [vk::DescriptorSetLayoutBindingBuilder::new()
             .binding(0)
             .descriptor_count(1) // Used fore texture arrays
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .build()];
-        let layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)];
+        let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
         let descriptor_set_layout =
             device.create_descriptor_set_layout("Cube Descriptor Set Layout", layout_info)?;
 
         // Descriptor pool
-        let pool_sizes = [vk::DescriptorPoolSize::builder()
+        let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
             .descriptor_count(1)
-            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .build()];
+            ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)];
 
         let descriptor_pool = device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
             name: "Cube Descriptor Pool",
@@ -250,60 +244,56 @@ impl Application {
         })?;
 
         // Pipeline layout
-        let push_constants_ranges = [vk::PushConstantRange::builder()
+        let push_constants_ranges = [vk::PushConstantRangeBuilder::new()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
-            .size(64)
-            .build()];
+            .size(64)];
 
         let layouts = [descriptor_set_layout.raw];
-        let pipeline_layout = vk::PipelineLayoutCreateInfo::builder()
+        let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new()
             .push_constant_ranges(&push_constants_ranges)
             .set_layouts(&layouts);
         let pipeline_layout =
             device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
 
         // Pipeline
-        let vertex_binding_descriptions = [vk::VertexInputBindingDescription::builder()
+        let vertex_binding_descriptions = [vk::VertexInputBindingDescriptionBuilder::new()
             .binding(0)
             .stride(std::mem::size_of::<Vertex>() as u32)
-            .input_rate(vk::VertexInputRate::VERTEX)
-            .build()];
+            .input_rate(vk::VertexInputRate::VERTEX)];
 
         let vertex_attribute_descriptions = [
-            vk::VertexInputAttributeDescription::builder()
+            vk::VertexInputAttributeDescriptionBuilder::new()
                 .binding(0)
                 .location(0)
                 .offset(0)
-                .format(vk::Format::R32G32B32A32_SFLOAT)
-                .build(),
-            vk::VertexInputAttributeDescription::builder()
+                .format(vk::Format::R32G32B32A32_SFLOAT),
+            vk::VertexInputAttributeDescriptionBuilder::new()
                 .binding(0)
                 .location(1)
                 .offset(16)
-                .format(vk::Format::R32G32_SFLOAT)
-                .build(),
+                .format(vk::Format::R32G32_SFLOAT),
         ];
 
-        let shader_stages = vec![vertexshader_stage.build(), fragmentshader_stage.build()];
-        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
+        let shader_stages = vec![vertexshader_stage, fragmentshader_stage];
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfoBuilder::new()
             .vertex_binding_descriptions(&vertex_binding_descriptions)
             .vertex_attribute_descriptions(&vertex_attribute_descriptions);
-        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
+        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfoBuilder::new()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder()
+        let dynamic_state = vk::PipelineDynamicStateCreateInfoBuilder::new()
             .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
-        let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
+        let viewport_state = vk::PipelineViewportStateCreateInfoBuilder::new()
             .scissor_count(1)
             .viewport_count(1);
-        let rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfoBuilder::new()
             .line_width(1.0)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .cull_mode(vk::CullModeFlags::BACK)
             .polygon_mode(vk::PolygonMode::FILL);
-        let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let color_blend_attachments = [vk::PipelineColorBlendAttachmentState::builder()
+        let multisample_state = vk::PipelineMultisampleStateCreateInfoBuilder::new()
+            .rasterization_samples(vk::SampleCountFlagBits::_1);
+        let color_blend_attachments = [vk::PipelineColorBlendAttachmentStateBuilder::new()
             .blend_enable(true)
             .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
             .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
@@ -316,13 +306,12 @@ impl Application {
                     | vk::ColorComponentFlags::G
                     | vk::ColorComponentFlags::B
                     | vk::ColorComponentFlags::A,
-            )
-            .build()];
+            )];
 
-        let color_blend_state =
-            vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachments);
+        let color_blend_state = vk::PipelineColorBlendStateCreateInfoBuilder::new()
+            .attachments(&color_blend_attachments);
 
-        let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder()
+        let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfoBuilder::new()
             .depth_test_enable(true)
             .depth_write_enable(true)
             .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
@@ -331,7 +320,7 @@ impl Application {
             .min_depth_bounds(0.0)
             .max_depth_bounds(1.0);
 
-        let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+        let pipeline_info = vk::GraphicsPipelineCreateInfoBuilder::new()
             .stages(&shader_stages)
             .vertex_input_state(&vertex_input_state)
             .input_assembly_state(&input_assembly_state)
@@ -442,12 +431,12 @@ impl Application {
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
-            image_type: vk::ImageType::TYPE_2D,
+            image_type: vk::ImageType::_2D,
             format: vk::Format::BC7_SRGB_BLOCK,
             extent,
             mip_levels: 1,
             array_layers: 1,
-            samples: vk::SampleCountFlags::TYPE_1,
+            samples: vk::SampleCountFlagBits::_1,
             tiling: vk::ImageTiling::OPTIMAL,
             initial_layout: vk::ImageLayout::UNDEFINED,
             flags: None,
@@ -464,7 +453,7 @@ impl Application {
         let view = self.device.create_image_view(&asche::ImageViewDescriptor {
             name: &format!("{} View", name),
             image: &image,
-            view_type: vk::ImageViewType::TYPE_2D,
+            view_type: vk::ImageViewType::_2D,
             format: vk::Format::BC7_SRGB_BLOCK,
             components: vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
@@ -484,7 +473,7 @@ impl Application {
         )?;
 
         transfer_buffer.record(|encoder| {
-            let barrier = vk::ImageMemoryBarrier::builder()
+            let barrier = vk::ImageMemoryBarrierBuilder::new()
                 .old_layout(vk::ImageLayout::UNDEFINED)
                 .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .image(image.raw)
@@ -496,29 +485,28 @@ impl Application {
             encoder.pipeline_barrier(
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
+                None,
                 &[],
                 &[],
-                &[barrier.build()],
+                &[barrier],
             );
 
             encoder.copy_buffer_to_image(
                 &stagging_buffer,
                 &image,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                vk::BufferImageCopy {
-                    buffer_offset: 0,
-                    buffer_row_length: 0,
-                    buffer_image_height: 0,
-                    image_subresource: vk::ImageSubresourceLayers {
+                vk::BufferImageCopyBuilder::new()
+                    .buffer_offset(0)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
                         mip_level: 0,
                         base_array_layer: 0,
                         layer_count: 1,
-                    },
-                    image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
-                    image_extent: extent,
-                },
+                    })
+                    .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                    .image_extent(extent),
             );
             Ok(())
         })?;
@@ -532,7 +520,7 @@ impl Application {
         )?;
 
         graphics_buffer.record(|encoder| {
-            let barrier = vk::ImageMemoryBarrier::builder()
+            let barrier = vk::ImageMemoryBarrierBuilder::new()
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                 .image(image.raw)
@@ -545,10 +533,10 @@ impl Application {
             encoder.pipeline_barrier(
                 vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
-                vk::DependencyFlags::empty(),
+                None,
                 &[],
                 &[],
-                &[barrier.build()],
+                &[barrier],
             );
 
             Ok(())
@@ -653,10 +641,11 @@ impl Application {
         });
 
         graphics_buffer.record(|encoder| {
-            encoder.set_viewport_and_scissor(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: self.extent,
-            });
+            encoder.set_viewport_and_scissor(
+                vk::Rect2DBuilder::new()
+                    .offset(vk::Offset2D { x: 0, y: 0 })
+                    .extent(self.extent),
+            );
 
             let pass = encoder.begin_render_pass(
                 &self.render_pass,
@@ -844,6 +833,6 @@ fn perspective_infinite_reverse_rh_yup(fov_y_radians: f32, aspect_ratio: f32, z_
 }
 
 struct Texture {
-    _image: asche::Image,
     view: asche::ImageView,
+    _image: asche::Image,
 }

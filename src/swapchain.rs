@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
-use ash::vk;
+use erupt::vk;
 
 use crate::context::Context;
 use crate::{ImageView, Result};
@@ -15,18 +14,17 @@ pub struct SwapchainFrame {
 
 /// Abstracts a Vulkan swapchain.
 pub struct Swapchain {
-    context: Arc<Context>,
-    loader: ash::extensions::khr::Swapchain,
-    raw: vk::SwapchainKHR,
-    image_views: Vec<ImageView>,
     present_complete_semaphore: vk::Semaphore,
+    image_views: Vec<ImageView>,
+    raw: vk::SwapchainKHR,
+    context: Arc<Context>,
 }
 
 /// Configures a swapchain
 pub(crate) struct SwapchainDescriptor {
     pub(crate) graphic_queue_family_index: u32,
     pub(crate) extent: vk::Extent2D,
-    pub(crate) pre_transform: vk::SurfaceTransformFlagsKHR,
+    pub(crate) pre_transform: vk::SurfaceTransformFlagBitsKHR,
     pub(crate) format: vk::Format,
     pub(crate) color_space: vk::ColorSpaceKHR,
     pub(crate) presentation_mode: vk::PresentModeKHR,
@@ -46,10 +44,7 @@ impl Swapchain {
 
                 // We need to destroy the associated resources of the swapchain, before we can
                 // try to reuse the vk::SwapchainKHR when creating the new swapchain.
-                Self::destroy_resources(
-                    &context.logical_device,
-                    &mut osc.present_complete_semaphore,
-                );
+                Self::destroy_resources(&context.device, &mut osc.present_complete_semaphore);
                 // We set the raw handler to null, so that drop doesn't try to destroy it again,
                 // since "create_swapchain()" will do that for us.
                 osc.raw = vk::SwapchainKHR::null();
@@ -60,7 +55,7 @@ impl Swapchain {
         };
 
         let graphic_family_index = &[descriptor.graphic_queue_family_index];
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+        let swapchain_create_info = vk::SwapchainCreateInfoKHRBuilder::new()
             .surface(context.instance.surface)
             .min_image_count(descriptor.image_count)
             .image_format(descriptor.format)
@@ -71,16 +66,25 @@ impl Swapchain {
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .queue_family_indices(graphic_family_index)
             .pre_transform(descriptor.pre_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .composite_alpha(vk::CompositeAlphaFlagBitsKHR::OPAQUE_KHR)
             .present_mode(descriptor.presentation_mode)
             .old_swapchain(old_swapchain)
             .clipped(true);
 
-        let swapchain_loader =
-            ash::extensions::khr::Swapchain::new(&context.instance.raw, &context.logical_device);
-        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+        let swapchain = unsafe {
+            context
+                .device
+                .create_swapchain_khr(&swapchain_create_info, None, None)
+                .result()?
+        };
 
-        let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+        let images = unsafe {
+            context
+                .device
+                .get_swapchain_images_khr(swapchain, None)
+                .result()?
+        };
+
         let image_views =
             Swapchain::create_image_views(&context, &images, descriptor.format, images.len())?;
 
@@ -88,13 +92,13 @@ impl Swapchain {
 
         let present_complete_semaphore = unsafe {
             context
-                .logical_device
-                .create_semaphore(&semaphore_create_info, None)?
+                .device
+                .create_semaphore(&semaphore_create_info, None, None)
+                .result()?
         };
 
         Ok(Self {
             context,
-            loader: swapchain_loader,
             raw: swapchain,
             image_views,
             present_complete_semaphore,
@@ -103,13 +107,17 @@ impl Swapchain {
 
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
     pub(crate) fn get_next_frame(&self) -> Result<SwapchainFrame> {
-        let (index, _) = unsafe {
-            self.loader.acquire_next_image(
-                self.raw,
-                std::u64::MAX,
-                self.present_complete_semaphore,
-                vk::Fence::null(),
-            )?
+        let index = unsafe {
+            self.context
+                .device
+                .acquire_next_image_khr(
+                    self.raw,
+                    std::u64::MAX,
+                    Some(self.present_complete_semaphore),
+                    None,
+                    None,
+                )
+                .result()?
         };
         let view = self.image_views[index as usize].raw;
         Ok(SwapchainFrame { index, view })
@@ -124,12 +132,17 @@ impl Swapchain {
         let wait_semaphors = [self.present_complete_semaphore];
         let swapchains = [self.raw];
         let image_indices = [frame.index];
-        let present_info = vk::PresentInfoKHR::builder()
+        let present_info = vk::PresentInfoKHRBuilder::new()
             .wait_semaphores(&wait_semaphors) // &base.rendering_complete_semaphore)
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        unsafe { self.loader.queue_present(graphic_queue, &present_info)? };
+        unsafe {
+            self.context
+                .device
+                .queue_present_khr(graphic_queue, &present_info)
+                .result()?
+        };
 
         Ok(())
     }
@@ -143,8 +156,8 @@ impl Swapchain {
         let mut image_views = Vec::with_capacity(size);
 
         for image in images.iter() {
-            let imageview_create_info = vk::ImageViewCreateInfo::builder()
-                .view_type(vk::ImageViewType::TYPE_2D)
+            let imageview_create_info = vk::ImageViewCreateInfoBuilder::new()
+                .view_type(vk::ImageViewType::_2D)
                 .format(format)
                 .components(vk::ComponentMapping {
                     r: vk::ComponentSwizzle::R,
@@ -162,9 +175,10 @@ impl Swapchain {
                 .image(*image);
             let raw = unsafe {
                 context
-                    .logical_device
-                    .create_image_view(&imageview_create_info, None)
-            }?;
+                    .device
+                    .create_image_view(&imageview_create_info, None, None)
+                    .result()?
+            };
             image_views.push(ImageView {
                 context: context.clone(),
                 raw,
@@ -175,11 +189,11 @@ impl Swapchain {
     }
 
     fn destroy_resources(
-        logical_device: &ash::Device,
+        device: &erupt::DeviceLoader,
         present_complete_semaphore: &mut vk::Semaphore,
     ) {
         unsafe {
-            logical_device.destroy_semaphore(*present_complete_semaphore, None);
+            device.destroy_semaphore(Some(*present_complete_semaphore), None);
             *present_complete_semaphore = vk::Semaphore::null();
         };
     }
@@ -187,10 +201,11 @@ impl Swapchain {
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        Self::destroy_resources(
-            &self.context.logical_device,
-            &mut self.present_complete_semaphore,
-        );
-        unsafe { self.loader.destroy_swapchain(self.raw, None) };
+        Self::destroy_resources(&self.context.device, &mut self.present_complete_semaphore);
+        unsafe {
+            self.context
+                .device
+                .destroy_swapchain_khr(Some(self.raw), None)
+        };
     }
 }

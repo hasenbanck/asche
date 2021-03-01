@@ -1,5 +1,4 @@
-use ash::vk;
-use raw_window_handle::HasRawWindowHandle;
+use erupt::vk;
 
 fn main() -> Result<(), asche::AscheError> {
     let sdl_context = sdl2::init().unwrap();
@@ -18,12 +17,14 @@ fn main() -> Result<(), asche::AscheError> {
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
 
-    let instance = asche::Instance::new(asche::InstanceConfiguration {
-        app_name: "triangle example",
-        app_version: ash::vk::make_version(1, 0, 0),
-        handle: &window.raw_window_handle(),
-        extensions: vec![],
-    })?;
+    let instance = asche::Instance::new(
+        &window,
+        asche::InstanceConfiguration {
+            app_name: "triangle example",
+            app_version: erupt::vk::make_version(1, 0, 0),
+            extensions: vec![],
+        },
+    )?;
 
     let (device, (_, graphics_queue, _)) = instance.request_device(asche::DeviceConfiguration {
         ..Default::default()
@@ -81,17 +82,17 @@ impl Application {
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
-        let vertexshader_stage = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::VERTEX)
+        let vertexshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::VERTEX)
             .module(vert_module.raw)
             .name(&mainfunctionname);
-        let fragmentshader_stage = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::FRAGMENT)
+        let fragmentshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::FRAGMENT)
             .module(frag_module.raw)
             .name(&mainfunctionname);
 
         // Renderpass
-        let attachments = [vk::AttachmentDescription::builder()
+        let attachments = [vk::AttachmentDescriptionBuilder::new()
             .format(vk::Format::B8G8R8A8_SRGB)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -99,30 +100,26 @@ impl Application {
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .build()];
+            .samples(vk::SampleCountFlagBits::_1)];
 
-        let color_attachment_references = [vk::AttachmentReference {
-            attachment: 0,
-            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        }];
+        let color_attachment_references = [vk::AttachmentReferenceBuilder::new()
+            .attachment(0)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
 
-        let subpasses = [vk::SubpassDescription::builder()
+        let subpasses = [vk::SubpassDescriptionBuilder::new()
             .color_attachments(&color_attachment_references)
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .build()];
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
 
-        let subpass_dependencies = [vk::SubpassDependency::builder()
+        let subpass_dependencies = [vk::SubpassDependencyBuilder::new()
             .src_subpass(vk::SUBPASS_EXTERNAL)
             .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
             .dst_subpass(0)
             .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
             .dst_access_mask(
                 vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            )
-            .build()];
+            )];
 
-        let renderpass_info = vk::RenderPassCreateInfo::builder()
+        let renderpass_info = vk::RenderPassCreateInfoBuilder::new()
             .attachments(&attachments)
             .subpasses(&subpasses)
             .dependencies(&subpass_dependencies);
@@ -131,28 +128,28 @@ impl Application {
             device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
 
         // Pipeline layout
-        let pipeline_layout = vk::PipelineLayoutCreateInfo::builder();
+        let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new();
         let pipeline_layout =
             device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
 
         // Pipeline
-        let shader_stages = vec![vertexshader_stage.build(), fragmentshader_stage.build()];
-        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder();
-        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
+        let shader_stages = vec![vertexshader_stage, fragmentshader_stage];
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfoBuilder::new();
+        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfoBuilder::new()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder()
+        let dynamic_state = vk::PipelineDynamicStateCreateInfoBuilder::new()
             .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
-        let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
+        let viewport_state = vk::PipelineViewportStateCreateInfoBuilder::new()
             .scissor_count(1)
             .viewport_count(1);
-        let rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfoBuilder::new()
             .line_width(1.0)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .cull_mode(vk::CullModeFlags::NONE)
             .polygon_mode(vk::PolygonMode::FILL);
-        let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let color_blend_attachments = [vk::PipelineColorBlendAttachmentState::builder()
+        let multisample_state = vk::PipelineMultisampleStateCreateInfoBuilder::new()
+            .rasterization_samples(vk::SampleCountFlagBits::_1);
+        let color_blend_attachments = [vk::PipelineColorBlendAttachmentStateBuilder::new()
             .blend_enable(true)
             .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
             .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
@@ -165,12 +162,11 @@ impl Application {
                     | vk::ColorComponentFlags::G
                     | vk::ColorComponentFlags::B
                     | vk::ColorComponentFlags::A,
-            )
-            .build()];
-        let color_blend_state =
-            vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachments);
+            )];
+        let color_blend_state = vk::PipelineColorBlendStateCreateInfoBuilder::new()
+            .attachments(&color_blend_attachments);
 
-        let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+        let pipeline_info = vk::GraphicsPipelineCreateInfoBuilder::new()
             .stages(&shader_stages)
             .vertex_input_state(&vertex_input_state)
             .input_assembly_state(&input_assembly_state)
@@ -211,10 +207,11 @@ impl Application {
         )?;
 
         graphics_buffer.record(|encoder| {
-            encoder.set_viewport_and_scissor(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: self.extent,
-            });
+            encoder.set_viewport_and_scissor(
+                vk::Rect2DBuilder::new()
+                    .offset(vk::Offset2D { x: 0, y: 0 })
+                    .extent(self.extent),
+            );
 
             let pass = encoder.begin_render_pass(
                 &self.render_pass,
