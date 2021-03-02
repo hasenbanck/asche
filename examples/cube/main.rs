@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use erupt::vk;
-use glam::f32::{Mat4, Vec2, Vec3, Vec4};
+use ultraviolet::{Mat4, Vec2, Vec3, Vec4};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -67,7 +67,7 @@ fn main() -> Result<(), asche::AscheError> {
 
 struct Application {
     extent: vk::Extent2D,
-    vp_matrix: glam::f32::Mat4,
+    vp_matrix: Mat4,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
     descriptor_set_layout: asche::DescriptorSetLayout,
@@ -338,12 +338,12 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
-        let p_matrix = perspective_infinite_reverse_rh_yup(
+        let p_matrix = ultraviolet::projection::rh_yup::perspective_reversed_infinite_z_vk(
             (70.0f32).to_radians(),
             extent.width as f32 / extent.height as f32,
             0.1,
         );
-        let v_matrix = Mat4::look_at_rh(Vec3::new(0.0, 2.0, 3.0), Vec3::zero(), Vec3::unit_y());
+        let v_matrix = Mat4::look_at(Vec3::new(0.0, 2.0, 3.0), Vec3::zero(), Vec3::unit_y());
         let vp_matrix = p_matrix * v_matrix;
 
         let timeline_value = 0;
@@ -678,7 +678,7 @@ impl Application {
                 self.pipeline_layout.raw,
                 vk::ShaderStageFlags::VERTEX,
                 0,
-                bytemuck::cast_slice(mvp_matrix.as_ref()),
+                bytemuck::cast_slice(mvp_matrix.as_slice()),
             );
 
             pass.draw_indexed(36, 1, 0, 0, 0);
@@ -818,18 +818,6 @@ fn create_cube_data() -> (Vec<Vertex>, Vec<u32>) {
     ];
 
     (vertex_data.to_vec(), index_data.to_vec())
-}
-
-/// Right-handed with the the x-axis pointing right, y-axis pointing up, and z-axis pointing out of the screen for Vulkan NDC.
-#[inline]
-fn perspective_infinite_reverse_rh_yup(fov_y_radians: f32, aspect_ratio: f32, z_near: f32) -> Mat4 {
-    let f = 1.0 / (0.5 * fov_y_radians).tan();
-    Mat4::from_cols(
-        Vec4::new(f / aspect_ratio, 0.0, 0.0, 0.0),
-        Vec4::new(0.0, -f, 0.0, 0.0),
-        Vec4::new(0.0, 0.0, 0.0, -1.0),
-        Vec4::new(0.0, 0.0, z_near, 0.0),
-    )
 }
 
 struct Texture {
