@@ -46,8 +46,8 @@ macro_rules! impl_queue {
             /// Submits command buffers to a queue.
             ///
             /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
-            pub fn queue_submit2(&self, command_buffer: &$buffer_name) -> Result<()> {
-                self.inner.queue_submit2(&command_buffer.inner)
+            pub fn submit(&self, command_buffer: &$buffer_name) -> Result<()> {
+                self.inner.submit(&command_buffer.inner)
             }
         }
     };
@@ -102,22 +102,22 @@ impl Queue {
     }
 
     #[inline]
-    fn queue_submit2(&self, command_buffer: &CommandBuffer) -> Result<()> {
+    fn submit(&self, command_buffer: &CommandBuffer) -> Result<()> {
         let command_buffer_infos = [vk::CommandBufferSubmitInfoKHRBuilder::new()
             .command_buffer(command_buffer.buffer)
-            .device_mask(0)];
+            .device_mask(1)];
 
         let wait_semaphore_infos = [vk::SemaphoreSubmitInfoKHRBuilder::new()
             .semaphore(command_buffer.timeline_semaphore)
             .value(command_buffer.wait_value)
             .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
-            .device_index(0)];
+            .device_index(1)];
 
         let signal_semaphore_infos = [vk::SemaphoreSubmitInfoKHRBuilder::new()
             .semaphore(command_buffer.timeline_semaphore)
             .value(command_buffer.signal_value)
             .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
-            .device_index(0)];
+            .device_index(1)];
 
         let submit_info = vk::SubmitInfo2KHRBuilder::new()
             .command_buffer_infos(&command_buffer_infos)

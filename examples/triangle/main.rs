@@ -233,7 +233,7 @@ impl Application {
             Ok(())
         })?;
 
-        self.graphics_queue.execute(&graphics_buffer)?;
+        self.graphics_queue.submit(&graphics_buffer)?;
         self.timeline
             .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 

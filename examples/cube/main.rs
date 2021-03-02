@@ -512,7 +512,7 @@ impl Application {
             Ok(())
         })?;
         self.timeline_value += 1;
-        self.transfer_queue.queue_submit2(&transfer_buffer)?;
+        self.transfer_queue.submit(&transfer_buffer)?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             &self.timeline,
@@ -544,7 +544,7 @@ impl Application {
         })?;
 
         self.timeline_value += 1;
-        self.graphics_queue.queue_submit2(&graphics_buffer)?;
+        self.graphics_queue.submit(&graphics_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
         Ok(Texture {
@@ -604,7 +604,7 @@ impl Application {
         })?;
         self.timeline_value += 1;
 
-        self.transfer_queue.queue_submit2(&transfer_buffer)?;
+        self.transfer_queue.submit(&transfer_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
         transfer_pool.reset()?;
@@ -686,7 +686,7 @@ impl Application {
             Ok(())
         })?;
 
-        self.graphics_queue.queue_submit2(&graphics_buffer)?;
+        self.graphics_queue.submit(&graphics_buffer)?;
         self.timeline
             .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 

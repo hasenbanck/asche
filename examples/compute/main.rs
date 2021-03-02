@@ -174,7 +174,7 @@ impl Application {
             Ok(())
         })?;
 
-        self.compute_queue.execute(&compute_buffer)?;
+        self.compute_queue.submit(&compute_buffer)?;
         self.timeline_value += 1;
         self.timeline.wait_for_value(self.timeline_value)?;
 

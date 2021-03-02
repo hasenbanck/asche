@@ -107,16 +107,16 @@ impl Swapchain {
 
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
     pub(crate) fn get_next_frame(&self) -> Result<SwapchainFrame> {
+        let info = vk::AcquireNextImageInfoKHRBuilder::new()
+            .semaphore(self.present_complete_semaphore)
+            .device_mask(1)
+            .swapchain(self.raw)
+            .timeout(std::u64::MAX);
+
         let index = unsafe {
             self.context
                 .device
-                .acquire_next_image_khr(
-                    self.raw,
-                    std::u64::MAX,
-                    Some(self.present_complete_semaphore),
-                    None,
-                    None,
-                )
+                .acquire_next_image2_khr(&info, None)
                 .result()?
         };
         let view = self.image_views[index as usize].raw;
