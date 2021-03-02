@@ -1,8 +1,6 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-#[cfg(debug_assertions)]
-use erupt::cstr;
 use erupt::{vk, ExtendableFrom};
 use tracing::{error, info, warn};
 
