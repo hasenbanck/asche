@@ -78,10 +78,9 @@ struct Application {
     render_pass: asche::RenderPass,
     vertex_buffer: Vec<asche::Buffer>,
     index_buffer: Vec<asche::Buffer>,
-    _depth_image: asche::Image,
-    depth_image_view: asche::ImageView,
-    textures: Vec<Texture>,
     sampler: asche::Sampler,
+    depth_texture: Texture,
+    textures: Vec<Texture>,
     graphics_queue: asche::GraphicsQueue,
     transfer_queue: asche::TransferQueue,
     device: asche::Device,
@@ -159,6 +158,11 @@ impl Application {
             },
             flags: None,
         })?;
+
+        let depth_texture = Texture {
+            view: depth_image_view,
+            _image: depth_image,
+        };
 
         // Sampler
         let sampler = device.create_sampler(&asche::SamplerDescriptor {
@@ -348,11 +352,10 @@ impl Application {
             pipeline,
             pipeline_layout,
             render_pass,
-            _depth_image: depth_image,
-            depth_image_view,
             vertex_buffer: vec![],
             index_buffer: vec![],
             textures: vec![],
+            depth_texture,
             sampler,
             vp_matrix,
             timeline,
@@ -538,8 +541,8 @@ impl Application {
         self.timeline.wait_for_value(self.timeline_value)?;
 
         Ok(Texture {
-            _image: image,
             view,
+            _image: image,
         })
     }
 
@@ -648,7 +651,7 @@ impl Application {
                     },
                 }],
                 Some(&asche::RenderPassDepthAttachmentDescriptor {
-                    attachment: self.depth_image_view.raw,
+                    attachment: self.depth_texture.view.raw,
                     clear_value: vk::ClearValue {
                         color: vk::ClearColorValue {
                             float32: [1.0, 0.0, 1.0, 1.0],

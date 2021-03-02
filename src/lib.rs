@@ -391,12 +391,12 @@ pub struct Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
+            self.context.device.destroy_buffer(Some(self.raw), None);
             self.context
                 .allocator
                 .lock()
-                .deallocate(&self.context.device, &self.allocation)
+                .deallocate(&self.context.device, &mut self.allocation)
                 .expect("can't free buffer allocation");
-            self.context.device.destroy_buffer(Some(self.raw), None);
         };
     }
 }
@@ -430,12 +430,12 @@ pub struct Image {
 impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
+            self.context.device.destroy_image(Some(self.raw), None);
             self.context
                 .allocator
                 .lock()
                 .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free image allocation");
-            self.context.device.destroy_image(Some(self.raw), None);
         };
     }
 }
