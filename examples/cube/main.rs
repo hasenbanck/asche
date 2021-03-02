@@ -664,8 +664,8 @@ impl Application {
             pass.bind_pipeline(&self.pipeline);
             pass.bind_descriptor_set(&self.pipeline_layout, 0, &set, &[]);
 
-            pass.bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
-            pass.bind_vertex_buffer(0, &[self.vertex_buffer[0].raw], &[0]);
+            pass.bind_index_buffer(&self.index_buffer[0], 0, vk::IndexType::UINT32);
+            pass.bind_vertex_buffer(0, &self.vertex_buffer[0], 0);
 
             pass.push_constants(
                 self.pipeline_layout.raw,

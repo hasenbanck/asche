@@ -765,33 +765,56 @@ impl<'a> RenderPassEncoder<'a> {
     /// Bind an index buffer to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
-    pub fn bind_index_buffer(
-        &self,
-        index_buffer: vk::Buffer,
-        offset: u64,
-        index_type: vk::IndexType,
-    ) {
+    pub fn bind_index_buffer(&self, index_buffer: &Buffer, offset: u64, index_type: vk::IndexType) {
         unsafe {
-            self.context
-                .device
-                .cmd_bind_index_buffer(self.buffer, index_buffer, offset, index_type)
+            self.context.device.cmd_bind_index_buffer(
+                self.buffer,
+                index_buffer.raw,
+                offset,
+                index_type,
+            )
+        };
+    }
+
+    /// Bind a vertex buffer to a command buffer.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
+    pub fn bind_vertex_buffer(&self, binding: u32, vertex_buffer: &Buffer, offset: u64) {
+        unsafe {
+            self.context.device.cmd_bind_vertex_buffers(
+                self.buffer,
+                binding,
+                &[vertex_buffer.raw],
+                &[offset],
+            )
         };
     }
 
     /// Bind vertex buffers to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
-    pub fn bind_vertex_buffer(
+    pub fn bind_vertex_buffers(
         &self,
         first_binding: u32,
-        vertex_buffers: &[vk::Buffer],
+        vertex_buffers: &[&Buffer],
         offsets: &[u64],
     ) {
+        debug_assert!(
+            vertex_buffers.len() <= 6,
+            "Can't bind more than 6 vertex buffers at the same time. This is an artificial limit."
+        );
+
+        let mut buffers = ArrayVec::<[vk::Buffer; 6]>::new();
+        vertex_buffers
+            .iter()
+            .map(|x| x.raw)
+            .for_each(|x| buffers.push(x));
+
         unsafe {
             self.context.device.cmd_bind_vertex_buffers(
                 self.buffer,
                 first_binding,
-                vertex_buffers,
+                &buffers,
                 offsets,
             )
         };
