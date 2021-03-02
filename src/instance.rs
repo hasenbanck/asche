@@ -12,9 +12,6 @@ use crate::{
     AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
 };
 
-#[cfg(debug_assertions)]
-const LAYER_KHRONOS_VALIDATION: *const c_char = cstr!("VK_LAYER_KHRONOS_validation");
-
 /// Describes how the instance should be configured.
 pub struct InstanceConfiguration<'a> {
     /// Name of the application.
@@ -189,9 +186,6 @@ impl Instance {
 
     fn create_layers(instance_layers: &[vk::LayerProperties]) -> Vec<*const c_char> {
         let mut layers = Vec::new();
-
-        #[cfg(debug_assertions)]
-        layers.push(LAYER_KHRONOS_VALIDATION);
 
         layers.retain(|layer| {
             let instance_layer = unsafe { CStr::from_ptr(*layer) };
