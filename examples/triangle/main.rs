@@ -110,19 +110,9 @@ impl Application {
             .color_attachments(&color_attachment_references)
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
 
-        let subpass_dependencies = [vk::SubpassDependencyBuilder::new()
-            .src_subpass(vk::SUBPASS_EXTERNAL)
-            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .dst_subpass(0)
-            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .dst_access_mask(
-                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            )];
-
         let renderpass_info = vk::RenderPassCreateInfoBuilder::new()
             .attachments(&attachments)
-            .subpasses(&subpasses)
-            .dependencies(&subpass_dependencies);
+            .subpasses(&subpasses);
 
         let render_pass =
             device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
