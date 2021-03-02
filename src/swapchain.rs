@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use erupt::vk;
+#[cfg(feature = "tracing")]
+use tracing::error;
 
 use crate::context::Context;
-use crate::{ImageView, Result};
+use crate::{AscheError, ImageView, Result};
 
 /// Swapchain frame.
 pub struct SwapchainFrame {
@@ -75,15 +77,19 @@ impl Swapchain {
             context
                 .device
                 .create_swapchain_khr(&swapchain_create_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a swapchain: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
-        let images = unsafe {
-            context
-                .device
-                .get_swapchain_images_khr(swapchain, None)
-                .result()?
-        };
+        let images =
+            unsafe { context.device.get_swapchain_images_khr(swapchain, None) }.map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to get the swapchain images: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         let image_views =
             Swapchain::create_image_views(&context, &images, descriptor.format, images.len())?;
@@ -94,8 +100,12 @@ impl Swapchain {
             context
                 .device
                 .create_semaphore(&semaphore_create_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create the presentation semaphore: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(Self {
             context,
@@ -113,12 +123,12 @@ impl Swapchain {
             .swapchain(self.raw)
             .timeout(std::u64::MAX);
 
-        let index = unsafe {
-            self.context
-                .device
-                .acquire_next_image2_khr(&info, None)
-                .result()?
-        };
+        let index =
+            unsafe { self.context.device.acquire_next_image2_khr(&info, None) }.map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to acquire the next frame image: {}", err);
+                AscheError::VkResult(err)
+            })?;
         let view = self.image_views[index as usize].raw;
         Ok(SwapchainFrame { index, view })
     }
@@ -141,8 +151,12 @@ impl Swapchain {
             self.context
                 .device
                 .queue_present_khr(graphic_queue, &present_info)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to queue the next frame: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }
@@ -177,8 +191,13 @@ impl Swapchain {
                 context
                     .device
                     .create_image_view(&imageview_create_info, None, None)
-                    .result()?
-            };
+            }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a swapchain image view: {}", err);
+                AscheError::VkResult(err)
+            })?;
+
             image_views.push(ImageView {
                 context: context.clone(),
                 raw,

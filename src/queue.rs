@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use erupt::vk;
+#[cfg(feature = "tracing")]
+use tracing::error;
 
 use crate::command::CommandBuffer;
 use crate::{
-    ComputeCommandBuffer, ComputeCommandPool, Context, GraphicsCommandBuffer, GraphicsCommandPool,
-    Result, TransferCommandBuffer, TransferCommandPool,
+    AscheError, ComputeCommandBuffer, ComputeCommandPool, Context, GraphicsCommandBuffer,
+    GraphicsCommandPool, Result, TransferCommandBuffer, TransferCommandPool,
 };
 
 macro_rules! impl_queue {
@@ -128,8 +130,12 @@ impl Queue {
             self.context
                 .device
                 .queue_submit2_khr(self.raw, &[submit_info], None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to queue and submit a command buffer: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }

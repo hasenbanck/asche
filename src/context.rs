@@ -5,10 +5,12 @@ use std::hash::Hasher;
 
 use erupt::vk;
 use parking_lot::Mutex;
+#[cfg(feature = "tracing")]
+use tracing::error;
 
 use crate::{
-    Instance, RenderPass, RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor,
-    Result,
+    AscheError, Instance, RenderPass, RenderPassColorAttachmentDescriptor,
+    RenderPassDepthAttachmentDescriptor, Result,
 };
 
 /// The internal context.
@@ -109,8 +111,12 @@ impl Context {
         let framebuffer = unsafe {
             self.device
                 .create_framebuffer(&framebuffer_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a frame buffer: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(framebuffer)
     }
@@ -136,11 +142,11 @@ impl Context {
             .object_name(&name)
             .object_type(object_type)
             .object_handle(object_handle);
-        unsafe {
-            self.device
-                .set_debug_utils_object_name_ext(&info)
-                .result()?
-        };
+        unsafe { self.device.set_debug_utils_object_name_ext(&info) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to set the debug object name: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }

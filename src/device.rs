@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
-use tracing::info;
+use tracing::{error, info};
 
 use crate::context::Context;
 use crate::instance::Instance;
@@ -244,8 +244,12 @@ impl Device {
                     self.context.instance.surface,
                     None,
                 )
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get the physical device surface formats: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         let capabilities = unsafe {
             self.context
@@ -256,8 +260,15 @@ impl Device {
                     self.context.instance.surface,
                     None,
                 )
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to get the physical device surface capabilities: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })?;
 
         let presentation_mode = unsafe {
             self.context
@@ -268,8 +279,12 @@ impl Device {
                     self.context.instance.surface,
                     None,
                 )
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get the physical device surface modes: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         let mut image_count = capabilities.min_image_count + 1;
         if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
@@ -359,8 +374,12 @@ impl Device {
             self.context
                 .device
                 .create_render_pass(&renderpass_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a render pass: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.0)?;
@@ -381,8 +400,12 @@ impl Device {
             self.context
                 .device
                 .create_pipeline_layout(&pipeline_layout_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a pipeline layout: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::PIPELINE_LAYOUT, pipeline_layout.0)?;
@@ -399,13 +422,19 @@ impl Device {
         name: &str,
         pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
     ) -> Result<GraphicsPipeline> {
-        let pipeline = unsafe {
+        let pipelines = unsafe {
             self.context
                 .device
                 .create_graphics_pipelines(None, &[pipeline_info], None)
-                .result()?[0]
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a graphic pipeline: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
+        assert_eq!(pipelines.len(), 1);
+        let pipeline = pipelines[0];
         self.context
             .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.0)?;
 
@@ -421,13 +450,19 @@ impl Device {
         name: &str,
         pipeline_info: vk::ComputePipelineCreateInfoBuilder,
     ) -> Result<ComputePipeline> {
-        let pipeline = unsafe {
+        let pipelines = unsafe {
             self.context
                 .device
                 .create_compute_pipelines(None, &[pipeline_info], None)
-                .result()?[0]
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a compute pipeline: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
+        assert_eq!(pipelines.len(), 1);
+        let pipeline = pipelines[0];
         self.context
             .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.0)?;
 
@@ -456,8 +491,12 @@ impl Device {
             self.context
                 .device
                 .create_descriptor_pool(&pool_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a descriptor pool: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         self.context
             .set_object_name(descriptor.name, vk::ObjectType::DESCRIPTOR_POOL, pool.0)?;
@@ -475,8 +514,12 @@ impl Device {
             self.context
                 .device
                 .create_descriptor_set_layout(&layout_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a descriptor set layout: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::DESCRIPTOR_SET_LAYOUT, layout.0)?;
@@ -492,8 +535,12 @@ impl Device {
             self.context
                 .device
                 .create_shader_module(&create_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a shader module: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SHADER_MODULE, module.0)?;
@@ -534,12 +581,13 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe {
-            self.context
-                .device
-                .create_buffer(&create_info, None, None)
-                .result()?
-        };
+        let raw = unsafe { self.context.device.create_buffer(&create_info, None, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a buffer: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -556,12 +604,11 @@ impl Device {
             .memory(allocation.device_memory)
             .memory_offset(allocation.offset);
 
-        unsafe {
-            self.context
-                .device
-                .bind_buffer_memory2(&[bind_infos])
-                .result()?
-        };
+        unsafe { self.context.device.bind_buffer_memory2(&[bind_infos]) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to bind buffer memory: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(Buffer {
             context: self.context.clone(),
@@ -607,12 +654,13 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe {
-            self.context
-                .device
-                .create_image(&create_info, None, None)
-                .result()?
-        };
+        let raw = unsafe { self.context.device.create_image(&create_info, None, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create an image: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -629,12 +677,11 @@ impl Device {
             .memory(allocation.device_memory)
             .memory_offset(allocation.offset);
 
-        unsafe {
-            self.context
-                .device
-                .bind_image_memory2(&[bind_infos])
-                .result()?
-        };
+        unsafe { self.context.device.bind_image_memory2(&[bind_infos]) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to bind image memory: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(Image {
             context: self.context.clone(),
@@ -662,8 +709,12 @@ impl Device {
             self.context
                 .device
                 .create_image_view(&create_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create an image view: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -709,12 +760,13 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe {
-            self.context
-                .device
-                .create_sampler(&create_info, None, None)
-                .result()?
-        };
+        let raw = unsafe { self.context.device.create_sampler(&create_info, None, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a sampler: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -740,8 +792,12 @@ impl Device {
             self.context
                 .device
                 .create_semaphore(&semaphore_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a semaphore: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
@@ -755,12 +811,11 @@ impl Device {
             .memory(allocation.device_memory)
             .size(allocation.size)
             .offset(allocation.offset)];
-        unsafe {
-            self.context
-                .device
-                .flush_mapped_memory_ranges(&ranges)
-                .result()?;
-        };
+        unsafe { self.context.device.flush_mapped_memory_ranges(&ranges) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to flush a mapped memory range: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }
@@ -771,12 +826,11 @@ impl Device {
             .memory(allocation.device_memory)
             .size(allocation.size)
             .offset(allocation.offset)];
-        unsafe {
-            self.context
-                .device
-                .invalidate_mapped_memory_ranges(&ranges)
-                .result()?;
-        };
+        unsafe { self.context.device.invalidate_mapped_memory_ranges(&ranges) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to invalidate a mapped memory range: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }

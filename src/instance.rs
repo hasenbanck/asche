@@ -118,8 +118,12 @@ impl Instance {
                 .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
                 .pfn_user_callback(Some(debug_utils_callback));
 
-            let utils =
-                unsafe { instance.create_debug_utils_messenger_ext(&info, None, None) }.result()?;
+            let utils = unsafe { instance.create_debug_utils_messenger_ext(&info, None, None) }
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to create the debug utils messenger: {}", err);
+                    AscheError::VkResult(err)
+                })?;
             Ok(utils)
         } else {
             Err(AscheError::DebugUtilsMissing)
@@ -209,7 +213,14 @@ impl Instance {
         let mut extensions: Vec<*const c_char> = configuration.extensions.clone();
 
         let required_extensions =
-            erupt::utils::surface::enumerate_required_extensions(window_handle).result()?;
+            erupt::utils::surface::enumerate_required_extensions(window_handle).map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to enumerate the required extensions for the surface creation: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })?;
         extensions.extend(required_extensions.iter());
 
         #[cfg(debug_assertions)]
@@ -241,7 +252,12 @@ impl Instance {
         vk::PhysicalDeviceProperties,
         vk::PhysicalDeviceDriverProperties,
     )> {
-        let physical_devices = unsafe { self.raw.enumerate_physical_devices(None).result()? };
+        let physical_devices =
+            unsafe { self.raw.enumerate_physical_devices(None) }.map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to enumerate the physical devices: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         // We try to find our preferred device type.
         let mut chosen = self.find_physical_device_inner_loop(device_type, &physical_devices);
@@ -618,8 +634,15 @@ impl Instance {
         let device_extensions = unsafe {
             self.raw
                 .enumerate_device_extension_properties(physical_device, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to enumerate the device extension properties: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })?;
 
         // Only keep available extensions.
         Instance::retain_extensions(&device_extensions, &mut extensions);
@@ -635,20 +658,25 @@ impl Instance {
     ) -> Result<u32> {
         let mut queue_id = None;
         for (id, family) in queue_family_properties.iter().enumerate() {
+            let surface_supported = unsafe {
+                self.raw.get_physical_device_surface_support_khr(
+                    physical_device,
+                    id as u32,
+                    self.surface,
+                    Some(vk::TRUE),
+                )
+            }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to get the physical device surface support: {}", err);
+                AscheError::VkResult(err)
+            })?;
+
             match target_family {
                 vk::QueueFlags::GRAPHICS => {
                     if family.queue_count > 0
                         && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                        && unsafe {
-                            self.raw
-                                .get_physical_device_surface_support_khr(
-                                    physical_device,
-                                    id as u32,
-                                    self.surface,
-                                    Some(vk::TRUE),
-                                )
-                                .result()?
-                        }
+                        && surface_supported
                     {
                         queue_id = Some(id as u32);
                     }
@@ -942,9 +970,7 @@ fn check_features(
     });
 
     if missing_features {
-        Err(AscheError::Unspecified(
-            "missing required features".to_owned(),
-        ))
+        Err(AscheError::DeviceFeatureMissing)
     } else {
         Ok(())
     }

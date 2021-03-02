@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use erupt::vk;
+#[cfg(feature = "tracing")]
+use tracing::error;
 
-use crate::{Context, Result};
+use crate::{AscheError, Context, Result};
 
 /// A semaphore that uses the timeline feature.
 pub struct TimelineSemaphore {
@@ -33,8 +35,12 @@ impl TimelineSemaphore {
             self.context
                 .device
                 .get_semaphore_counter_value(self.raw, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get a semaphore counter value: {}", err);
+            AscheError::VkResult(err)
+        })?;
         Ok(value)
     }
 
@@ -44,12 +50,11 @@ impl TimelineSemaphore {
             .semaphore(self.raw)
             .value(timeline_value);
 
-        unsafe {
-            self.context
-                .device
-                .signal_semaphore(&signal_info)
-                .result()?
-        };
+        unsafe { self.context.device.signal_semaphore(&signal_info) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to signal a semaphore: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }
@@ -64,11 +69,13 @@ impl TimelineSemaphore {
 
         unsafe {
             // 10 sec timeout
-            self.context
-                .device
-                .wait_semaphores(&wait_info, 10000000000)
-                .result()?
-        };
+            self.context.device.wait_semaphores(&wait_info, 10000000000)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to wait for a semaphore: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }

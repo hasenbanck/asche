@@ -35,7 +35,7 @@ pub enum AscheError {
     /// The selected format / color space for the swapchain is not supported by the device.
     SwapchainFormatIncompatible,
 
-    /// The requested feature couldn't be found.
+    /// The requested device feature couldn't be found.
     DeviceFeatureMissing,
 
     /// The selected presentation mode is unsupported.
@@ -43,9 +43,6 @@ pub enum AscheError {
 
     /// Swapchain is not initialized.
     SwapchainNotInitialized,
-
-    /// An unspecified asche error.
-    Unspecified(String),
 }
 
 impl std::fmt::Display for AscheError {
@@ -91,10 +88,7 @@ impl std::fmt::Display for AscheError {
                 write!(f, "the selected presentation mode is unsupported")
             }
             AscheError::DeviceFeatureMissing => {
-                write!(f, "the requested feature couldn't be found")
-            }
-            AscheError::Unspecified(message) => {
-                write!(f, "{}", message)
+                write!(f, "the requested device feature couldn't be found")
             }
         }
     }

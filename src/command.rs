@@ -5,13 +5,15 @@ use std::sync::Arc;
 
 use arrayvec::ArrayVec;
 use erupt::vk;
+#[cfg(feature = "tracing")]
+use tracing::error;
 
 use crate::context::Context;
 use crate::descriptor::DescriptorSet;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    Buffer, ComputePipeline, GraphicsPipeline, Image, PipelineLayout, QueueType, RenderPass,
-    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
+    AscheError, Buffer, ComputePipeline, GraphicsPipeline, Image, PipelineLayout, QueueType,
+    RenderPass, RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
 };
 
 macro_rules! impl_command_pool {
@@ -103,8 +105,12 @@ impl CommandPool {
             context
                 .device
                 .create_command_pool(&command_pool_info, None, None)
-                .result()?
-        };
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a command pool: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         context.set_object_name(
             &format!("Command Pool {} {}", queue_type, id),
@@ -133,12 +139,12 @@ impl CommandPool {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
-        let command_buffers = unsafe {
-            self.context
-                .device
-                .allocate_command_buffers(&info)
-                .result()?
-        };
+        let command_buffers = unsafe { self.context.device.allocate_command_buffers(&info) }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to allocate a command buffer: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context.set_object_name(
             &format!(
@@ -166,12 +172,11 @@ impl CommandPool {
     /// Resets a command pool.
     #[inline]
     pub fn reset(&self) -> Result<()> {
-        unsafe {
-            self.context
-                .device
-                .reset_command_pool(self.raw, None)
-                .result()?
-        };
+        unsafe { self.context.device.reset_command_pool(self.raw, None) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to reset a command pool: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
         Ok(())
     }
@@ -954,19 +959,22 @@ impl<'a> RenderPassEncoder<'a> {
 fn begin(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
     let info = vk::CommandBufferBeginInfoBuilder::new()
         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    unsafe {
-        context
-            .device
-            .begin_command_buffer(buffer, &info)
-            .result()?
-    };
+    unsafe { context.device.begin_command_buffer(buffer, &info) }.map_err(|err| {
+        #[cfg(feature = "tracing")]
+        error!("nable to begin a command buffer: {}", err);
+        AscheError::VkResult(err)
+    })?;
 
     Ok(())
 }
 
 #[inline]
 fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
-    unsafe { context.device.end_command_buffer(buffer).result()? };
+    unsafe { context.device.end_command_buffer(buffer) }.map_err(|err| {
+        #[cfg(feature = "tracing")]
+        error!("Unable to end a command buffer: {}", err);
+        AscheError::VkResult(err)
+    })?;
 
     Ok(())
 }
