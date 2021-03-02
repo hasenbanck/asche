@@ -471,9 +471,7 @@ impl Application {
         let transfer_buffer = transfer_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
-            vk::PipelineStageFlags2KHR::NONE_KHR,
             self.timeline_value + 1,
-            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         transfer_buffer.record(|encoder| {
@@ -519,9 +517,7 @@ impl Application {
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
-            vk::PipelineStageFlags2KHR::NONE_KHR,
             self.timeline_value + 1,
-            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         graphics_buffer.record(|encoder| {
@@ -593,9 +589,7 @@ impl Application {
         let transfer_buffer = transfer_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
-            vk::PipelineStageFlags2KHR::NONE_KHR,
             self.timeline_value + 1,
-            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         transfer_buffer.record(|encoder| {
@@ -625,9 +619,7 @@ impl Application {
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             &self.timeline,
             Timeline::RenderStart.with_offset(self.timeline_value),
-            vk::PipelineStageFlags2KHR::NONE_KHR,
             Timeline::RenderEnd.with_offset(self.timeline_value),
-            vk::PipelineStageFlags2KHR::NONE_KHR,
         )?;
 
         let m_matrix =

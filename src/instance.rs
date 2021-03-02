@@ -59,22 +59,18 @@ impl Instance {
 
         // Activate all needed instance layers and extensions.
         let instance_extensions =
-            unsafe { entry.enumerate_instance_extension_properties(None, None) }
-                .result()
-                .map_err(|err| {
+            unsafe { entry.enumerate_instance_extension_properties(None, None) }.map_err(
+                |err| {
                     #[cfg(feature = "tracing")]
-                    error!(
-                        "Unable to enumerate instance extensions: vk::Result({})",
-                        err.0
-                    );
+                    error!("Unable to enumerate instance extensions: {}", err);
                     AscheError::VkResult(err)
-                })?;
+                },
+            )?;
 
-        let instance_layers = unsafe { entry.enumerate_instance_layer_properties(None) }
-            .result()
-            .map_err(|err| {
+        let instance_layers =
+            unsafe { entry.enumerate_instance_layer_properties(None) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
-                error!("Unable to enumerate instance layers: {:?}", err);
+                error!("Unable to enumerate instance layers: {}", err);
                 AscheError::VkResult(err)
             })?;
 
@@ -84,7 +80,11 @@ impl Instance {
         let instance = Self::create_instance(&entry, &app_info, &extensions, &layers)?;
         let surface =
             unsafe { erupt::utils::surface::create_surface(&instance, window_handle, None) }
-                .result()?;
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to create a surface: {}", err);
+                    AscheError::VkResult(err)
+                })?;
 
         #[cfg(debug_assertions)]
         let debug_messenger = Self::create_debug_utils(&instance, instance_extensions)?;
@@ -179,10 +179,10 @@ impl Instance {
             .enabled_extension_names(instance_extensions);
 
         Ok(
-            erupt::InstanceLoader::new(&entry, &create_info, None).map_err(|e| {
+            erupt::InstanceLoader::new(&entry, &create_info, None).map_err(|err| {
                 #[cfg(feature = "tracing")]
-                error!("Unable to create Vulkan instance: {:?}", e);
-                AscheError::LoaderError(e)
+                error!("Unable to create Vulkan instance: {}", err);
+                AscheError::LoaderError(err)
             })?,
         )
     }

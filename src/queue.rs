@@ -110,13 +110,13 @@ impl Queue {
         let wait_semaphore_infos = [vk::SemaphoreSubmitInfoKHRBuilder::new()
             .semaphore(command_buffer.timeline_semaphore)
             .value(command_buffer.wait_value)
-            .stage_mask(command_buffer.wait_stage_mask)
+            .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
             .device_index(0)];
 
         let signal_semaphore_infos = [vk::SemaphoreSubmitInfoKHRBuilder::new()
             .semaphore(command_buffer.timeline_semaphore)
             .value(command_buffer.signal_value)
-            .stage_mask(command_buffer.signal_stage_mask)
+            .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
             .device_index(0)];
 
         let submit_info = vk::SubmitInfo2KHRBuilder::new()

@@ -36,17 +36,13 @@ macro_rules! impl_command_pool {
                 &mut self,
                 timeline_semaphore: &TimelineSemaphore,
                 wait_value: u64,
-                wait_stage_mask: vk::PipelineStageFlags2KHR,
                 signal_value: u64,
-                signal_stage_mask: vk::PipelineStageFlags2KHR,
             ) -> Result<$buffer_name> {
                 let inner = self.inner
                     .create_command_buffer(
                         timeline_semaphore.raw,
                         wait_value,
-                        wait_stage_mask,
                         signal_value,
-                        signal_stage_mask
                     )?;
                 Ok($buffer_name { inner })
             }
@@ -130,9 +126,7 @@ impl CommandPool {
         &mut self,
         timeline_semaphore: vk::Semaphore,
         wait_value: u64,
-        wait_stage_mask: vk::PipelineStageFlags2KHR,
         signal_value: u64,
-        signal_stage_mask: vk::PipelineStageFlags2KHR,
     ) -> Result<CommandBuffer> {
         let info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(self.raw)
@@ -161,9 +155,7 @@ impl CommandPool {
             command_buffers[0],
             timeline_semaphore,
             wait_value,
-            wait_stage_mask,
             signal_value,
-            signal_stage_mask,
         );
 
         self.command_buffer_counter += 1;
@@ -219,16 +211,12 @@ macro_rules! impl_command_buffer {
                     &mut self,
                     timeline_semaphore: TimelineSemaphore,
                     wait_value: u64,
-                    wait_stage_mask: vk::PipelineStageFlags2KHR,
                     signal_value: u64,
-                    signal_stage_mask: vk::PipelineStageFlags2KHR,
             ) {
                 self.inner.set_timeline_semaphore(
                     timeline_semaphore.raw,
                     wait_value,
-                    wait_stage_mask,
                     signal_value,
-                    signal_stage_mask
                 )
             }
         }
@@ -256,23 +244,18 @@ pub(crate) struct CommandBuffer {
     pub(crate) buffer: vk::CommandBuffer,
     pub(crate) timeline_semaphore: vk::Semaphore,
     pub(crate) wait_value: u64,
-    pub(crate) wait_stage_mask: vk::PipelineStageFlags2KHR,
     pub(crate) signal_value: u64,
-    pub(crate) signal_stage_mask: vk::PipelineStageFlags2KHR,
     context: Arc<Context>,
 }
 
 impl CommandBuffer {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         context: Arc<Context>,
         pool: vk::CommandPool,
         buffer: vk::CommandBuffer,
         timeline_semaphore: vk::Semaphore,
         wait_value: u64,
-        wait_stage_mask: vk::PipelineStageFlags2KHR,
         signal_value: u64,
-        signal_stage_mask: vk::PipelineStageFlags2KHR,
     ) -> Self {
         Self {
             context,
@@ -280,9 +263,7 @@ impl CommandBuffer {
             buffer,
             timeline_semaphore,
             wait_value,
-            wait_stage_mask,
             signal_value,
-            signal_stage_mask,
         }
     }
 
@@ -291,15 +272,11 @@ impl CommandBuffer {
         &mut self,
         timeline_semaphore: vk::Semaphore,
         wait_value: u64,
-        wait_stage_mask: vk::PipelineStageFlags2KHR,
         signal_value: u64,
-        signal_stage_mask: vk::PipelineStageFlags2KHR,
     ) {
         self.timeline_semaphore = timeline_semaphore;
         self.wait_value = wait_value;
-        self.wait_stage_mask = wait_stage_mask;
         self.signal_value = signal_value;
-        self.signal_stage_mask = signal_stage_mask;
     }
 }
 
