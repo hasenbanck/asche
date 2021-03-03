@@ -13,7 +13,8 @@ use crate::descriptor::DescriptorSet;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
     AscheError, Buffer, ComputePipeline, GraphicsPipeline, Image, PipelineLayout, QueueType,
-    RenderPass, RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
+    RayTracingPipeline, RenderPass, RenderPassColorAttachmentDescriptor,
+    RenderPassDepthAttachmentDescriptor, Result,
 };
 
 macro_rules! impl_command_pool {
@@ -579,6 +580,18 @@ impl<'a> GraphicsCommandEncoder<'a> {
         )
     }
 
+    /// Binds a raytracing pipeline.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    pub fn bind_raytrace_pipeline(&self, raytracing_pipeline: &RayTracingPipeline) {
+        bind_pipeline(
+            self.context,
+            self.buffer,
+            vk::PipelineBindPoint::RAY_TRACING_KHR,
+            raytracing_pipeline.raw,
+        )
+    }
+
     /// Binds a descriptor set.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
@@ -973,6 +986,68 @@ impl<'a> RenderPassEncoder<'a> {
                 count_buffer_offset,
                 max_draw_count,
                 stride,
+            )
+        };
+    }
+
+    /// Set the dynamic stack size for a ray tracing pipeline
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html
+    pub fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
+        unsafe {
+            self.context
+                .device
+                .cmd_set_ray_tracing_pipeline_stack_size_khr(self.buffer, stack_size)
+        };
+    }
+
+    /// Initialize an indirect ray tracing dispatch.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysIndirectKHR.html
+    pub fn trace_rays_indirect_khr(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        indirect_device_address: vk::DeviceAddress,
+    ) {
+        unsafe {
+            self.context.device.cmd_trace_rays_indirect_khr(
+                self.buffer,
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                indirect_device_address,
+            )
+        };
+    }
+
+    /// Initialize a ray tracing dispatch.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysKHR.html
+    #[allow(clippy::too_many_arguments)]
+    pub fn trace_rays_khr(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) {
+        unsafe {
+            self.context.device.cmd_trace_rays_khr(
+                self.buffer,
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                width,
+                height,
+                depth,
             )
         };
     }

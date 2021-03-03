@@ -56,7 +56,8 @@ fn main() -> Result<(), asche::AscheError> {
                 .timeline_semaphore(true)
                 .buffer_device_address(true)
                 .scalar_block_layout(true)
-                .descriptor_indexing(true),
+                .descriptor_indexing(true)
+                .uniform_buffer_standard_layout(true),
         ),
         features_raytracing: Some(
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
@@ -84,4 +85,10 @@ fn main() -> Result<(), asche::AscheError> {
     }
 
     Ok(())
+}
+
+struct RaytracingApplication {
+    renderpass: asche::RenderPass,
+    offscreen_pipeline: asche::GraphicsPipeline,
+    raytracing_pipeline: asche::RayTracingPipeline,
 }

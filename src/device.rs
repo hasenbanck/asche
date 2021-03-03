@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::os::raw::c_char;
 use std::sync::Arc;
 
@@ -12,8 +13,8 @@ use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
     AscheError, Buffer, BufferDescriptor, ComputePipeline, ComputeQueue, DescriptorPool,
     DescriptorPoolDescriptor, DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image,
-    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RenderPass, Result, Sampler,
-    SamplerDescriptor, ShaderModule, TransferQueue,
+    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RayTracingPipeline,
+    RenderPass, Result, Sampler, SamplerDescriptor, ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -451,6 +452,38 @@ impl Device {
         })
     }
 
+    /// Creates a new raytracing pipeline.
+    pub fn create_raytracing_pipeline(
+        &mut self,
+        name: &str,
+        deferred_operation: Option<vk::DeferredOperationKHR>,
+        pipeline_info: vk::RayTracingPipelineCreateInfoKHRBuilder,
+    ) -> Result<RayTracingPipeline> {
+        let pipelines = unsafe {
+            self.context.device.create_ray_tracing_pipelines_khr(
+                deferred_operation,
+                None,
+                &[pipeline_info],
+                None,
+            )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a ray tracing pipeline: {}", err);
+            AscheError::VkResult(err)
+        })?;
+
+        assert_eq!(pipelines.len(), 1);
+        let pipeline = pipelines[0];
+        self.context
+            .set_object_name(name, vk::ObjectType::PIPELINE, pipeline.0)?;
+
+        Ok(RayTracingPipeline {
+            context: self.context.clone(),
+            raw: pipeline,
+        })
+    }
+
     /// Creates a new compute pipeline.
     pub fn create_compute_pipeline(
         &mut self,
@@ -813,6 +846,8 @@ impl Device {
     }
 
     /// Flush mapped memory. Used for CPU->GPU transfers.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkFlushMappedMemoryRanges.html
     pub fn flush_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
         let ranges = [vk::MappedMemoryRangeBuilder::new()
             .memory(allocation.device_memory)
@@ -828,6 +863,8 @@ impl Device {
     }
 
     /// Invalidate mapped memory. Used for GPU->CPU transfers.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkInvalidateMappedMemoryRanges.html
     pub fn invalidate_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
         let ranges = [vk::MappedMemoryRangeBuilder::new()
             .memory(allocation.device_memory)
@@ -840,6 +877,88 @@ impl Device {
         })?;
 
         Ok(())
+    }
+
+    /// Query ray tracing capture replay pipeline shader group handles.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html
+    pub fn get_ray_tracing_capture_replay_shader_group_handles(
+        &self,
+        pipeline: vk::Pipeline,
+        first_group: u32,
+        group_count: u32,
+        data: &[u8],
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .get_ray_tracing_capture_replay_shader_group_handles_khr(
+                    pipeline,
+                    first_group,
+                    group_count,
+                    data.len(),
+                    data.as_ptr() as *mut c_void,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to query ray tracing capture replay pipeline shader group handles: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })?;
+
+        Ok(())
+    }
+
+    /// Query ray tracing pipeline shader group handles.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html
+    pub fn get_ray_tracing_shader_group_handles(
+        &self,
+        pipeline: vk::Pipeline,
+        first_group: u32,
+        group_count: u32,
+        data: &[u8],
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .get_ray_tracing_shader_group_handles_khr(
+                    pipeline,
+                    first_group,
+                    group_count,
+                    data.len(),
+                    data.as_ptr() as *mut c_void,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to query ray tracing pipeline shader group handles: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })?;
+
+        Ok(())
+    }
+
+    /// Query ray tracing pipeline shader group shader stack size.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupStackSizeKHR.html
+    pub fn get_ray_tracing_shader_group_stack_size(
+        &self,
+        pipeline: vk::Pipeline,
+        group: u32,
+        group_shader: vk::ShaderGroupShaderKHR,
+    ) -> u64 {
+        unsafe {
+            self.context
+                .device
+                .get_ray_tracing_shader_group_stack_size_khr(pipeline, group, group_shader)
+        }
     }
 }
 

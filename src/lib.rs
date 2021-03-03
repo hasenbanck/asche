@@ -120,6 +120,21 @@ impl Drop for ComputePipeline {
     }
 }
 
+/// Wraps a raytracing pipeline.
+pub struct RayTracingPipeline {
+    /// The raw vk::Pipeline.
+    pub raw: vk::Pipeline,
+    context: Arc<Context>,
+}
+
+impl Drop for RayTracingPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.device.destroy_pipeline(Some(self.raw), None);
+        };
+    }
+}
+
 /// Wraps a shader module.
 pub struct ShaderModule {
     /// The raw vk::ShaderModule.
