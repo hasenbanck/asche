@@ -173,7 +173,7 @@ impl Application {
         // Renderpass
         let attachments = [
             // Color
-            vk::AttachmentDescriptionBuilder::new()
+            vk::AttachmentDescription2Builder::new()
                 .format(vk::Format::B8G8R8A8_SRGB)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -183,7 +183,7 @@ impl Application {
                 .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                 .samples(vk::SampleCountFlagBits::_1),
             // Depth
-            vk::AttachmentDescriptionBuilder::new()
+            vk::AttachmentDescription2Builder::new()
                 .format(vk::Format::D32_SFLOAT)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -194,21 +194,20 @@ impl Application {
                 .samples(vk::SampleCountFlagBits::_1),
         ];
 
-        let color_attachment_references = [vk::AttachmentReferenceBuilder::new()
+        let color_attachment_references = [vk::AttachmentReference2Builder::new()
             .attachment(0)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
 
-        let depth_attachment_references = vk::AttachmentReference {
-            attachment: 1,
-            layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        };
+        let depth_attachment_references = vk::AttachmentReference2Builder::new()
+            .attachment(1)
+            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-        let subpasses = [vk::SubpassDescriptionBuilder::new()
+        let subpasses = [vk::SubpassDescription2Builder::new()
             .color_attachments(&color_attachment_references)
             .depth_stencil_attachment(&depth_attachment_references)
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
 
-        let renderpass_info = vk::RenderPassCreateInfoBuilder::new()
+        let renderpass_info = vk::RenderPassCreateInfo2Builder::new()
             .attachments(&attachments)
             .subpasses(&subpasses);
 

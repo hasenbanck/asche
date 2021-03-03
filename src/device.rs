@@ -371,7 +371,7 @@ impl Device {
     pub fn create_render_pass(
         &mut self,
         name: &str,
-        renderpass_info: vk::RenderPassCreateInfoBuilder,
+        renderpass_info: vk::RenderPassCreateInfo2Builder,
     ) -> Result<RenderPass> {
         debug_assert!(
             renderpass_info.attachment_count <= 4,
@@ -381,7 +381,7 @@ impl Device {
         let renderpass = unsafe {
             self.context
                 .device
-                .create_render_pass(&renderpass_info, None, None)
+                .create_render_pass2(&renderpass_info, None, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -958,6 +958,21 @@ impl Device {
             self.context
                 .device
                 .get_ray_tracing_shader_group_stack_size_khr(pipeline, group, group_shader)
+        }
+    }
+
+    /// Returns properties of a physical device.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetPhysicalDeviceProperties2.html
+    pub fn get_physical_device_properties(
+        &self,
+        properties: vk::PhysicalDeviceProperties2Builder,
+    ) -> vk::PhysicalDeviceProperties2 {
+        unsafe {
+            self.context.instance.raw.get_physical_device_properties2(
+                self.context.physical_device,
+                Some(properties.build()),
+            )
         }
     }
 }
