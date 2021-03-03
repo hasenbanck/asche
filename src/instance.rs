@@ -527,12 +527,30 @@ impl Instance {
         #[cfg(feature = "tracing")]
         Self::print_extensions("device", &device_extensions);
 
+        let raytracing_name =
+            unsafe { CStr::from_ptr(vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) };
+        let raytracing_enabled = device_extensions
+            .iter()
+            .any(|ext| unsafe { CStr::from_ptr(*ext) == raytracing_name });
+
+        let acceleration_name =
+            unsafe { CStr::from_ptr(vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) };
+        let acceleration_structure_enabled = device_extensions
+            .iter()
+            .any(|ext| unsafe { CStr::from_ptr(*ext) == acceleration_name });
+
         let (
             physical_features,
             physical_features11,
             physical_features12,
             physical_features_synchronization2,
-        ) = self.collect_physical_device_features(physical_device);
+            physical_features_raytracing,
+            physical_features_acceleration_structure,
+        ) = self.collect_physical_device_features(
+            physical_device,
+            raytracing_enabled,
+            acceleration_structure_enabled,
+        );
 
         let features = if let Some(features) = configuration.features_v1_0.take() {
             features
@@ -549,6 +567,18 @@ impl Instance {
         } else {
             vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
         };
+        let mut features_raytracing =
+            if let Some(features) = configuration.features_raytracing.take() {
+                features
+            } else {
+                vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
+            };
+        let mut features_acceleration_structure =
+            if let Some(features) = configuration.features_acceleration_structure.take() {
+                features
+            } else {
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
+            };
 
         features12 = features12
             .buffer_device_address(true)
@@ -562,10 +592,14 @@ impl Instance {
             &physical_features11,
             &physical_features12,
             &physical_features_synchronization2,
+            &physical_features_raytracing,
+            &physical_features_acceleration_structure,
             &features,
             &features11,
             &features12,
             &features_synchronization2,
+            &features_raytracing,
+            &features_acceleration_structure,
         )?;
 
         let device_create_info = vk::DeviceCreateInfoBuilder::new()
@@ -576,6 +610,18 @@ impl Instance {
             .extend_from(&mut features11)
             .extend_from(&mut features12)
             .extend_from(&mut features_synchronization2);
+
+        let device_create_info = if raytracing_enabled {
+            device_create_info.extend_from(&mut features_raytracing)
+        } else {
+            device_create_info
+        };
+
+        let device_create_info = if acceleration_structure_enabled {
+            device_create_info.extend_from(&mut features_acceleration_structure)
+        } else {
+            device_create_info
+        };
 
         let device =
             erupt::DeviceLoader::new(&self.raw, physical_device, &device_create_info, None)?;
@@ -594,29 +640,54 @@ impl Instance {
     fn collect_physical_device_features(
         &self,
         physical_device: vk::PhysicalDevice,
+        raytracing_enabled: bool,
+        acceleration_structure_enabled: bool,
     ) -> (
         vk::PhysicalDeviceFeatures,
         vk::PhysicalDeviceVulkan11FeaturesBuilder,
         vk::PhysicalDeviceVulkan12FeaturesBuilder,
         vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
+        vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder,
+        vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder,
     ) {
         let mut physical_features11 = vk::PhysicalDeviceVulkan11FeaturesBuilder::new();
         let mut physical_features12 = vk::PhysicalDeviceVulkan12FeaturesBuilder::new();
         let mut physical_feature_synchronization2 =
             vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new();
+        let mut physical_features_raytracing =
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new();
+        let mut physical_features_acceleration =
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new();
+
         let physical_features = unsafe {
             let physical_features = vk::PhysicalDeviceFeatures2Builder::new()
                 .extend_from(&mut physical_features11)
                 .extend_from(&mut physical_features12)
                 .extend_from(&mut physical_feature_synchronization2);
+
+            let physical_features = if raytracing_enabled {
+                physical_features.extend_from(&mut physical_features_raytracing)
+            } else {
+                physical_features
+            };
+
+            let physical_features = if acceleration_structure_enabled {
+                physical_features.extend_from(&mut physical_features_acceleration)
+            } else {
+                physical_features
+            };
+
             self.raw
                 .get_physical_device_features2(physical_device, Some(physical_features.build()))
         };
+
         (
             physical_features.features,
             physical_features11,
             physical_features12,
             physical_feature_synchronization2,
+            physical_features_raytracing,
+            physical_features_acceleration,
         )
     }
 
@@ -748,19 +819,27 @@ fn check_features(
     physical_features11: &vk::PhysicalDeviceVulkan11FeaturesBuilder,
     physical_features12: &vk::PhysicalDeviceVulkan12FeaturesBuilder,
     physical_features_synchronization2: &vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
+    physical_features_raytracing: &vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder,
+    physical_features_acceleration_structure: &vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder,
     features: &vk::PhysicalDeviceFeaturesBuilder,
     features11: &vk::PhysicalDeviceVulkan11FeaturesBuilder,
     features12: &vk::PhysicalDeviceVulkan12FeaturesBuilder,
     features_synchronization2: &vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
+    features_raytracing: &vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder,
+    features_acceleration_structure: &vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder,
 ) -> Result<()> {
     let mut physical_features_list: Vec<&str> = Vec::with_capacity(54);
     let mut physical_features11_list: Vec<&str> = Vec::with_capacity(11);
     let mut physical_features12_list: Vec<&str> = Vec::with_capacity(46);
     let mut physical_features_synchronization2_list: Vec<&str> = Vec::with_capacity(1);
+    let mut physical_features_raytracing_list: Vec<&str> = Vec::with_capacity(5);
+    let mut physical_features_acceleration_structure_list: Vec<&str> = Vec::with_capacity(5);
     let mut features_list: Vec<&str> = Vec::with_capacity(54);
     let mut features11_list: Vec<&str> = Vec::with_capacity(11);
     let mut features12_list: Vec<&str> = Vec::with_capacity(46);
     let mut features_synchronization2_list: Vec<&str> = Vec::with_capacity(1);
+    let mut features_raytracing_list: Vec<&str> = Vec::with_capacity(5);
+    let mut features_acceleration_structure_list: Vec<&str> = Vec::with_capacity(5);
 
     impl_feature_assemble!(
         physical_features, features, physical_features_list, features_list;
@@ -901,73 +980,149 @@ fn check_features(
         }
     );
 
+    impl_feature_assemble!(
+        physical_features_raytracing, features_raytracing, physical_features_raytracing_list, features_raytracing_list;
+        {
+            ray_tracing_pipeline
+            ray_tracing_pipeline_shader_group_handle_capture_replay
+            ray_tracing_pipeline_shader_group_handle_capture_replay_mixed
+            ray_tracing_pipeline_trace_rays_indirect
+            ray_traversal_primitive_culling
+        }
+    );
+
+    impl_feature_assemble!(
+        physical_features_acceleration_structure, features_acceleration_structure, physical_features_acceleration_structure_list, features_acceleration_structure_list;
+        {
+            acceleration_structure
+            acceleration_structure_capture_replay
+            acceleration_structure_host_commands
+            acceleration_structure_indirect_build
+            descriptor_binding_acceleration_structure_update_after_bind
+        }
+    );
+
     let mut missing_features = false;
 
     #[cfg(feature = "tracing")]
-    info!("Enabling Vulkan 1.0 device feature:");
-    features_list.retain(|&wanted| {
-        let found = physical_features_list
-            .iter()
-            .any(|present| *present == wanted);
-        if found {
-            info!("- {}", wanted);
-            true
-        } else {
-            #[cfg(feature = "tracing")]
-            error!("Unable to find Vulkan 1.0 feature: {}", wanted);
-            missing_features = true;
-            false
-        }
-    });
+    if features_list.len() > 0 {
+        info!("Enabling Vulkan 1.0 features:");
+        features_list.retain(|&wanted| {
+            let found = physical_features_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!("Unable to find Vulkan 1.0 feature: {}", wanted);
+                missing_features = true;
+                false
+            }
+        });
+    }
 
     #[cfg(feature = "tracing")]
-    info!("Enabling Vulkan 1.1 device feature:");
-    features11_list.retain(|&wanted| {
-        let found = physical_features11_list
-            .iter()
-            .any(|present| *present == wanted);
-        if found {
-            info!("- {}", wanted);
-            true
-        } else {
-            #[cfg(feature = "tracing")]
-            error!("Unable to find Vulkan 1.1 feature: {}", wanted);
-            missing_features = true;
-            false
-        }
-    });
+    if features11_list.len() > 0 {
+        info!("Enabling Vulkan 1.1 features:");
+        features11_list.retain(|&wanted| {
+            let found = physical_features11_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!("Unable to find Vulkan 1.1 feature: {}", wanted);
+                missing_features = true;
+                false
+            }
+        });
+    }
 
-    info!("Enabling Vulkan 1.2 device feature:");
-    features12_list.retain(|&wanted| {
-        let found = physical_features12_list
-            .iter()
-            .any(|present| *present == wanted);
-        if found {
-            info!("- {}", wanted);
-            true
-        } else {
-            #[cfg(feature = "tracing")]
-            error!("Unable to find Vulkan 1.2 feature: {}", wanted);
-            missing_features = true;
-            false
-        }
-    });
+    #[cfg(feature = "tracing")]
+    if features12_list.len() > 0 {
+        info!("Enabling Vulkan 1.2 features:");
+        features12_list.retain(|&wanted| {
+            let found = physical_features12_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!("Unable to find Vulkan 1.2 feature: {}", wanted);
+                missing_features = true;
+                false
+            }
+        });
+    }
 
-    info!("Enabling VK_KHR_synchronization2 device feature:");
-    features_synchronization2_list.retain(|&wanted| {
-        let found = physical_features_synchronization2_list
-            .iter()
-            .any(|present| *present == wanted);
-        if found {
-            info!("- {}", wanted);
-            true
-        } else {
-            #[cfg(feature = "tracing")]
-            error!("Unable to find VK_KHR_synchronization2 feature: {}", wanted);
-            missing_features = true;
-            false
-        }
-    });
+    #[cfg(feature = "tracing")]
+    if features_synchronization2_list.len() > 0 {
+        info!("Enabling VK_KHR_synchronization2 features:");
+        features_synchronization2_list.retain(|&wanted| {
+            let found = physical_features_synchronization2_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!("Unable to find VK_KHR_synchronization2 feature: {}", wanted);
+                missing_features = true;
+                false
+            }
+        });
+    }
+
+    #[cfg(feature = "tracing")]
+    if features_raytracing_list.len() > 0 {
+        info!("Enabling VK_KHR_ray_tracing_pipeline features:");
+        features_raytracing_list.retain(|&wanted| {
+            let found = physical_features_raytracing_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to find VK_KHR_ray_tracing_pipeline feature: {}",
+                    wanted
+                );
+                missing_features = true;
+                false
+            }
+        });
+    }
+
+    #[cfg(feature = "tracing")]
+    if features_acceleration_structure_list.len() > 0 {
+        info!("Enabling VK_KHR_acceleration_structure features:");
+        features_acceleration_structure_list.retain(|&wanted| {
+            let found = physical_features_acceleration_structure_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to find VK_KHR_acceleration_structure feature: {}",
+                    wanted
+                );
+                missing_features = true;
+                false
+            }
+        });
+    }
 
     if missing_features {
         Err(AscheError::DeviceFeatureMissing)
