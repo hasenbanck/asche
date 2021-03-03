@@ -639,6 +639,150 @@ impl<'a> GraphicsCommandEncoder<'a> {
     pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
+
+    /// Set the dynamic stack size for a ray tracing pipeline
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html
+    pub fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
+        unsafe {
+            self.context
+                .device
+                .cmd_set_ray_tracing_pipeline_stack_size_khr(self.buffer, stack_size)
+        };
+    }
+
+    /// Initialize an indirect ray tracing dispatch.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysIndirectKHR.html
+    pub fn trace_rays_indirect_khr(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        indirect_device_address: vk::DeviceAddress,
+    ) {
+        unsafe {
+            self.context.device.cmd_trace_rays_indirect_khr(
+                self.buffer,
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                indirect_device_address,
+            )
+        };
+    }
+
+    /// Initialize a ray tracing dispatch.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysKHR.html
+    #[allow(clippy::too_many_arguments)]
+    pub fn trace_rays_khr(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) {
+        unsafe {
+            self.context.device.cmd_trace_rays_khr(
+                self.buffer,
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                width,
+                height,
+                depth,
+            )
+        };
+    }
+
+    /// Create a deferred operation handle.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html
+    pub fn create_deferred_operation(
+        &self,
+        allocator: Option<&vk::AllocationCallbacks>,
+        deferred_operation: Option<vk::DeferredOperationKHR>,
+    ) -> Result<vk::DeferredOperationKHR> {
+        unsafe {
+            self.context
+                .device
+                .create_deferred_operation_khr(allocator, deferred_operation)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a deferred operation handle: {}", err);
+            AscheError::VkResult(err)
+        })
+    }
+
+    /// Assign a thread to a deferred operation.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeferredOperationJoinKHR.html
+    pub fn deferred_operation_join(&self, operation: vk::DeferredOperationKHR) -> Result<()> {
+        unsafe { self.context.device.deferred_operation_join_khr(operation) }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to assign a thread to a deferred operation: {}", err);
+            AscheError::VkResult(err)
+        })
+    }
+
+    /// Destroy a deferred operation handle.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDestroyDeferredOperationKHR.html
+    pub fn destroy_deferred_operation(
+        &self,
+        operation: Option<vk::DeferredOperationKHR>,
+        allocator: Option<&vk::AllocationCallbacks>,
+    ) {
+        unsafe {
+            self.context
+                .device
+                .destroy_deferred_operation_khr(operation, allocator)
+        }
+    }
+
+    /// Query the maximum concurrency on a deferred operation.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationMaxConcurrencyKHR.html
+    pub fn get_deferred_operation_max_concurrency(
+        &self,
+        operation: vk::DeferredOperationKHR,
+    ) -> u32 {
+        unsafe {
+            self.context
+                .device
+                .get_deferred_operation_max_concurrency_khr(operation)
+        }
+    }
+
+    /// Query the result of a deferred operation.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationResultKHR.html
+    pub fn get_deferred_operation_result_khr(
+        &self,
+        operation: vk::DeferredOperationKHR,
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .get_deferred_operation_result_khr(operation)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to query the result of a deferred operation: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
+    }
 }
 
 /// Used to encode command for a transfer command buffer.
@@ -989,68 +1133,6 @@ impl<'a> RenderPassEncoder<'a> {
             )
         };
     }
-
-    /// Set the dynamic stack size for a ray tracing pipeline
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html
-    pub fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
-        unsafe {
-            self.context
-                .device
-                .cmd_set_ray_tracing_pipeline_stack_size_khr(self.buffer, stack_size)
-        };
-    }
-
-    /// Initialize an indirect ray tracing dispatch.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysIndirectKHR.html
-    pub fn trace_rays_indirect_khr(
-        &self,
-        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        indirect_device_address: vk::DeviceAddress,
-    ) {
-        unsafe {
-            self.context.device.cmd_trace_rays_indirect_khr(
-                self.buffer,
-                raygen_shader_binding_table,
-                miss_shader_binding_table,
-                hit_shader_binding_table,
-                callable_shader_binding_table,
-                indirect_device_address,
-            )
-        };
-    }
-
-    /// Initialize a ray tracing dispatch.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysKHR.html
-    #[allow(clippy::too_many_arguments)]
-    pub fn trace_rays_khr(
-        &self,
-        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
-        width: u32,
-        height: u32,
-        depth: u32,
-    ) {
-        unsafe {
-            self.context.device.cmd_trace_rays_khr(
-                self.buffer,
-                raygen_shader_binding_table,
-                miss_shader_binding_table,
-                hit_shader_binding_table,
-                callable_shader_binding_table,
-                width,
-                height,
-                depth,
-            )
-        };
-    }
 }
 
 #[inline]
@@ -1059,7 +1141,7 @@ fn begin(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
     unsafe { context.device.begin_command_buffer(buffer, &info) }.map_err(|err| {
         #[cfg(feature = "tracing")]
-        error!("nable to begin a command buffer: {}", err);
+        error!("Unable to begin a command buffer: {}", err);
         AscheError::VkResult(err)
     })?;
 

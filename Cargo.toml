@@ -24,10 +24,8 @@ vk-alloc = { version = "0.4", features = ["tracing", "vk-buffer-device-address"]
 [dev-dependencies]
 bytemuck = "1.5"
 ddsfile = "0.4"
+gltf = "0.15"
 ultraviolet = { version = "0.7", features = ["bytemuck"] }
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 # TODO "bundled" doesn't work on windows currently
 sdl2 = { version = "0.34", default-features = false, features = ["raw-window-handle"] }
-
-[build-dependencies]
-shaderc = "0.7"
