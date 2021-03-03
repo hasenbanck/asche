@@ -74,11 +74,11 @@ impl Application {
         // Shader
         let vert_module = device.create_shader_module(
             "Vertex Shader Module",
-            include_bytes!("../../gen/shader/triangle.vert.spv"),
+            include_bytes!("shader/triangle.vert.spv"),
         )?;
         let frag_module = device.create_shader_module(
             "Fragment Shader Module",
-            include_bytes!("../../gen/shader/triangle.frag.spv"),
+            include_bytes!("shader/triangle.frag.spv"),
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();

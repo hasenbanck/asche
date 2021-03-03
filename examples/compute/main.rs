@@ -57,7 +57,7 @@ impl Application {
         // Shader
         let comp_module = device.create_shader_module(
             "Compute Shader Module",
-            include_bytes!("../../gen/shader/compute.comp.spv"),
+            include_bytes!("shader/compute.comp.spv"),
         )?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
