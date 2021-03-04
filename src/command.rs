@@ -1,5 +1,6 @@
 //! Implements command pools and command buffers.
 
+use std::cmp::max;
 use std::ffi::c_void;
 use std::sync::Arc;
 
@@ -460,6 +461,51 @@ impl<'a> ComputeCommandEncoder<'a> {
                 .cmd_dispatch_indirect(self.buffer, buffer.raw, offset)
         };
     }
+
+    /// Build an acceleration structure with some parameters provided on the device.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html
+    pub fn build_acceleration_structures(
+        &self,
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
+        build_range_infos: &[*const vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        unsafe {
+            self.context.device.cmd_build_acceleration_structures_khr(
+                self.buffer,
+                infos,
+                build_range_infos,
+            )
+        };
+    }
+
+    /// Build an acceleration structure with some parameters provided on the device.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html
+    pub fn build_acceleration_structures_indirect(
+        &self,
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
+        indirect_device_addresses: &[vk::DeviceAddress],
+        indirect_strides: &[u32],
+        max_primitive_counts: &[*const u32],
+    ) {
+        unsafe {
+            self.context
+                .device
+                .cmd_build_acceleration_structures_indirect_khr(
+                    self.buffer,
+                    infos,
+                    indirect_device_addresses,
+                    indirect_strides,
+                    max_primitive_counts,
+                )
+        };
+    }
+
+    // TODO vkCmdCopyAccelerationStructureKHR
+    // TODO vkCmdCopyAccelerationStructureToMemoryKHR
+    // TODO vkCmdCopyMemoryToAccelerationStructureKHR
+    // TODO vkCmdWriteAccelerationStructuresPropertiesKHR
 }
 
 /// Used to encode command for a graphics command buffer.
@@ -700,88 +746,6 @@ impl<'a> GraphicsCommandEncoder<'a> {
                 depth,
             )
         };
-    }
-
-    /// Create a deferred operation handle.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html
-    pub fn create_deferred_operation(
-        &self,
-        allocator: Option<&vk::AllocationCallbacks>,
-        deferred_operation: Option<vk::DeferredOperationKHR>,
-    ) -> Result<vk::DeferredOperationKHR> {
-        unsafe {
-            self.context
-                .device
-                .create_deferred_operation_khr(allocator, deferred_operation)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a deferred operation handle: {}", err);
-            AscheError::VkResult(err)
-        })
-    }
-
-    /// Assign a thread to a deferred operation.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeferredOperationJoinKHR.html
-    pub fn deferred_operation_join(&self, operation: vk::DeferredOperationKHR) -> Result<()> {
-        unsafe { self.context.device.deferred_operation_join_khr(operation) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to assign a thread to a deferred operation: {}", err);
-            AscheError::VkResult(err)
-        })
-    }
-
-    /// Destroy a deferred operation handle.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDestroyDeferredOperationKHR.html
-    pub fn destroy_deferred_operation(
-        &self,
-        operation: Option<vk::DeferredOperationKHR>,
-        allocator: Option<&vk::AllocationCallbacks>,
-    ) {
-        unsafe {
-            self.context
-                .device
-                .destroy_deferred_operation_khr(operation, allocator)
-        }
-    }
-
-    /// Query the maximum concurrency on a deferred operation.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationMaxConcurrencyKHR.html
-    pub fn get_deferred_operation_max_concurrency(
-        &self,
-        operation: vk::DeferredOperationKHR,
-    ) -> u32 {
-        unsafe {
-            self.context
-                .device
-                .get_deferred_operation_max_concurrency_khr(operation)
-        }
-    }
-
-    /// Query the result of a deferred operation.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationResultKHR.html
-    pub fn get_deferred_operation_result_khr(
-        &self,
-        operation: vk::DeferredOperationKHR,
-    ) -> Result<()> {
-        unsafe {
-            self.context
-                .device
-                .get_deferred_operation_result_khr(operation)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to query the result of a deferred operation: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
     }
 }
 

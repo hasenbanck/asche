@@ -11,10 +11,11 @@ use crate::instance::Instance;
 use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AscheError, Buffer, BufferDescriptor, ComputePipeline, ComputeQueue, DescriptorPool,
-    DescriptorPoolDescriptor, DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image,
-    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RayTracingPipeline,
-    RenderPass, Result, Sampler, SamplerDescriptor, ShaderModule, TransferQueue,
+    AccelerationStructure, AscheError, Buffer, BufferDescriptor, ComputePipeline, ComputeQueue,
+    DeferredOperation, DescriptorPool, DescriptorPoolDescriptor, DescriptorSetLayout,
+    GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView, ImageViewDescriptor,
+    PipelineLayout, RayTracingPipeline, RenderPass, Result, Sampler, SamplerDescriptor,
+    ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -882,7 +883,7 @@ impl Device {
     /// Query ray tracing capture replay pipeline shader group handles.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html
-    pub fn get_ray_tracing_capture_replay_shader_group_handles(
+    pub fn ray_tracing_capture_replay_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,
         first_group: u32,
@@ -915,7 +916,7 @@ impl Device {
     /// Query ray tracing pipeline shader group handles.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html
-    pub fn get_ray_tracing_shader_group_handles(
+    pub fn ray_tracing_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,
         first_group: u32,
@@ -948,7 +949,7 @@ impl Device {
     /// Query ray tracing pipeline shader group shader stack size.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupStackSizeKHR.html
-    pub fn get_ray_tracing_shader_group_stack_size(
+    pub fn ray_tracing_shader_group_stack_size(
         &self,
         pipeline: vk::Pipeline,
         group: u32,
@@ -964,7 +965,7 @@ impl Device {
     /// Returns properties of a physical device.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetPhysicalDeviceProperties2.html
-    pub fn get_physical_device_properties(
+    pub fn physical_device_properties(
         &self,
         properties: vk::PhysicalDeviceProperties2Builder,
     ) -> vk::PhysicalDeviceProperties2 {
@@ -974,6 +975,183 @@ impl Device {
                 Some(properties.build()),
             )
         }
+    }
+
+    /// Create a deferred operation handle.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html
+    pub fn create_deferred_operation(&self, name: &str) -> Result<DeferredOperation> {
+        let operation = unsafe {
+            self.context
+                .device
+                .create_deferred_operation_khr(None, None)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a deferred operation handle: {}", err);
+            AscheError::VkResult(err)
+        })?;
+
+        self.context
+            .set_object_name(name, vk::ObjectType::DEFERRED_OPERATION_KHR, operation.0)?;
+
+        Ok(DeferredOperation::new(operation, self.context.clone()))
+    }
+
+    /// Build an acceleration structure on the host.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBuildAccelerationStructuresKHR.html
+    pub fn build_acceleration_structures(
+        &self,
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
+        build_range_infos: &[*const vk::AccelerationStructureBuildRangeInfoKHR],
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .build_acceleration_structures_khr(None, infos, build_range_infos)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to build an acceleration structure on the host: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
+    }
+
+    /// Create a new acceleration structure object.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateAccelerationStructureKHR.html
+    pub fn create_acceleration_structure(
+        &self,
+        name: &str,
+        create_info: &vk::AccelerationStructureCreateInfoKHR,
+    ) -> Result<AccelerationStructure> {
+        let structure = unsafe {
+            self.context
+                .device
+                .create_acceleration_structure_khr(create_info, None, None)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to create a new acceleration structure object: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })?;
+
+        self.context.set_object_name(
+            name,
+            vk::ObjectType::ACCELERATION_STRUCTURE_KHR,
+            structure.0,
+        )?;
+
+        Ok(AccelerationStructure::new(structure, self.context.clone()))
+    }
+
+    /// Retrieve the required size for an acceleration structure.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+    pub fn acceleration_structure_build_sizes(
+        &self,
+        build_type: vk::AccelerationStructureBuildTypeKHR,
+        build_info: &vk::AccelerationStructureBuildGeometryInfoKHR,
+        max_primitive_counts: &[u32],
+    ) -> vk::AccelerationStructureBuildSizesInfoKHR {
+        unsafe {
+            self.context
+                .device
+                .get_acceleration_structure_build_sizes_khr(
+                    build_type,
+                    build_info,
+                    max_primitive_counts,
+                    None,
+                )
+        }
+    }
+
+    ///  Check if a serialized acceleration structure is compatible with the current device.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeviceAccelerationStructureCompatibilityKHR.html
+    pub fn device_acceleration_structure_compatibility(
+        &self,
+        version_info: &vk::AccelerationStructureVersionInfoKHR,
+        compatibility: Option<vk::AccelerationStructureCompatibilityKHR>,
+    ) -> vk::AccelerationStructureCompatibilityKHR {
+        unsafe {
+            self.context
+                .device
+                .get_device_acceleration_structure_compatibility_khr(version_info, compatibility)
+        }
+    }
+
+    /// Copy an acceleration structure on the host.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureKHR.html
+    pub fn copy_acceleration_structure(
+        &self,
+        info: &vk::CopyAccelerationStructureInfoKHRBuilder,
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .copy_acceleration_structure_khr(None, info)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to copy an acceleration structure on the host: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
+    }
+
+    /// Serialize an acceleration structure on the host.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureToMemoryKHR.html
+    pub fn copy_acceleration_structure_to_memory(
+        &self,
+        info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .copy_acceleration_structure_to_memory_khr(None, info)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to serialize an acceleration structure on the host: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
+    }
+
+    /// Deserialize an acceleration structure on the host.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyMemoryToAccelerationStructureKHR.html
+    pub fn copy_memory_to_acceleration_structure(
+        &self,
+        info: &vk::CopyMemoryToAccelerationStructureInfoKHR,
+    ) -> Result<()> {
+        unsafe {
+            self.context
+                .device
+                .copy_memory_to_acceleration_structure_khr(None, info)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to deserialize an acceleration structure on the host: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
     }
 }
 

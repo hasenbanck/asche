@@ -6,12 +6,14 @@ use std::sync::Arc;
 use erupt::vk;
 
 pub use {
+    acceleration_structure::AccelerationStructure,
     command::{
         ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool, GraphicsCommandBuffer,
         GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder, TransferCommandBuffer,
         TransferCommandEncoder, TransferCommandPool,
     },
     context::Context,
+    deferred_operation::DeferredOperation,
     descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},
     device::{BARSupport, Device, DeviceConfiguration, QueuePriorityDescriptor},
     error::AscheError,
@@ -21,8 +23,10 @@ pub use {
     swapchain::SwapchainFrame,
 };
 
+pub(crate) mod acceleration_structure;
 pub(crate) mod command;
 pub(crate) mod context;
+pub(crate) mod deferred_operation;
 pub(crate) mod descriptor;
 pub(crate) mod device;
 pub(crate) mod error;
