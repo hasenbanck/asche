@@ -44,11 +44,6 @@ fn main() -> Result<()> {
                 vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
                 vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
             ],
-            features_v1_0: Some(
-                vk::PhysicalDeviceFeaturesBuilder::new()
-                    .sampler_anisotropy(true)
-                    .texture_compression_bc(true),
-            ),
             features_v1_2: Some(
                 vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
                     .timeline_semaphore(true)
@@ -119,7 +114,6 @@ impl RayTracingApplication {
         height: u32,
     ) -> Result<Self> {
         let extent = vk::Extent2D { width, height };
-        let mainfunctionname = std::ffi::CString::new("main").unwrap();
 
         // Query for RT capabilities
         let mut raytrace_properties =
@@ -137,9 +131,60 @@ impl RayTracingApplication {
             ..Default::default()
         })?;
 
-        // ######### RT Renderpass #########
+        let (
+            raytracing_renderpass,
+            raytracing_descriptor_pool,
+            raytracing_pipeline_layout,
+            raytracing_pipeline,
+        ) = RayTracingApplication::create_rt_renderpass(&mut device, &mut raytrace_properties)?;
 
+        let (
+            postprocess_renderpass,
+            postprocess_descriptor_pool,
+            postprocess_descriptor_set,
+            postprocess_pipeline_layout,
+            postprocess_pipeline,
+        ) = RayTracingApplication::create_postprocess_renderpass(
+            &mut device,
+            &offscreen_attachment,
+            &sampler,
+        )?;
+
+        let timeline_value = 0;
+        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
+
+        Ok(Self {
+            timeline,
+            timeline_value,
+            offscreen_attachment,
+            postprocess_renderpass,
+            postprocess_pipeline,
+            postprocess_pipeline_layout,
+            postprocess_descriptor_pool,
+            postprocess_descriptor_set,
+            raytracing_renderpass,
+            raytracing_pipeline,
+            raytracing_pipeline_layout,
+            raytracing_descriptor_pool,
+            raytrace_properties: raytrace_properties.build(),
+            sampler,
+            graphics_queue,
+            transfer_queue,
+            device,
+        })
+    }
+
+    fn create_rt_renderpass(
+        device: &mut asche::Device,
+        raytrace_properties: &mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
+    ) -> Result<(
+        asche::RenderPass,
+        asche::DescriptorPool,
+        asche::PipelineLayout,
+        asche::RayTracingPipeline,
+    )> {
         // RT shader
+        let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let raygen_module = device.create_shader_module(
             "Raytrace Raygen Shader Module",
             include_bytes!("shader/raytrace.rgen.spv"),
@@ -263,9 +308,27 @@ impl RayTracingApplication {
         let raytracing_pipeline =
             device.create_raytracing_pipeline("RT Pipeline", None, rt_pipeline_info)?;
 
-        // ######### Postprocess Renderpass #########
+        Ok((
+            raytracing_renderpass,
+            raytracing_descriptor_pool,
+            raytracing_pipeline_layout,
+            raytracing_pipeline,
+        ))
+    }
 
+    fn create_postprocess_renderpass(
+        device: &mut asche::Device,
+        offscreen_attachment: &Texture,
+        sampler: &asche::Sampler,
+    ) -> Result<(
+        asche::RenderPass,
+        asche::DescriptorPool,
+        asche::DescriptorSet,
+        asche::PipelineLayout,
+        asche::GraphicsPipeline,
+    )> {
         // Postprocess shader
+        let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let frag_module = device.create_shader_module(
             "Postprocess Fragment Shader Module",
             include_bytes!("shader/postprocess.frag.spv"),
@@ -431,29 +494,13 @@ impl RayTracingApplication {
 
         let postprocess_pipeline =
             device.create_graphics_pipeline("Postprocess Pipeline", postprocess_pipeline_info)?;
-
-        let timeline_value = 0;
-        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
-
-        Ok(Self {
-            timeline,
-            timeline_value,
-            offscreen_attachment,
+        Ok((
             postprocess_renderpass,
-            postprocess_pipeline,
-            postprocess_pipeline_layout,
             postprocess_descriptor_pool,
             postprocess_descriptor_set,
-            raytracing_renderpass,
-            raytracing_pipeline,
-            raytracing_pipeline_layout,
-            raytracing_descriptor_pool,
-            raytrace_properties: raytrace_properties.build(),
-            sampler,
-            graphics_queue,
-            transfer_queue,
-            device,
-        })
+            postprocess_pipeline_layout,
+            postprocess_pipeline,
+        ))
     }
 
     /// Upload vertex data and prepares the TLAS and BLAS structures.
