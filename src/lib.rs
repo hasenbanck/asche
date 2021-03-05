@@ -7,6 +7,7 @@ use erupt::vk;
 
 pub use {
     acceleration_structure::AccelerationStructure,
+    buffer::{Buffer, BufferView},
     command::{
         ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool, GraphicsCommandBuffer,
         GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder, TransferCommandBuffer,
@@ -17,6 +18,7 @@ pub use {
     descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},
     device::{BARSupport, Device, DeviceConfiguration, QueuePriorityDescriptor},
     error::AscheError,
+    image::{Image, ImageView, Sampler},
     instance::{Instance, InstanceConfiguration},
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     semaphore::TimelineSemaphore,
@@ -24,12 +26,14 @@ pub use {
 };
 
 pub(crate) mod acceleration_structure;
+pub(crate) mod buffer;
 pub(crate) mod command;
 pub(crate) mod context;
 pub(crate) mod deferred_operation;
 pub(crate) mod descriptor;
 pub(crate) mod device;
 pub(crate) mod error;
+pub(crate) mod image;
 pub(crate) mod instance;
 pub(crate) mod queue;
 pub(crate) mod semaphore;
@@ -172,6 +176,22 @@ pub struct BufferDescriptor<'a> {
     pub size: u64,
     /// Additional flags.
     pub flags: Option<vk::BufferCreateFlags>,
+}
+
+/// Describes how an buffer view should be configured.
+pub struct BufferViewDescriptor<'a> {
+    /// Name used for debugging.
+    pub name: &'a str,
+    /// The handle of the buffer.
+    pub buffer: &'a Buffer,
+    /// The format of the buffer view.
+    pub format: vk::Format,
+    /// Offset.
+    pub offset: u64,
+    /// Range.
+    pub range: u64,
+    /// Additional flags.
+    pub flags: Option<vk::BufferViewCreateFlags>,
 }
 
 /// Describes how an image should be configured.
@@ -396,95 +416,4 @@ pub struct RenderPassDepthAttachmentDescriptor {
     pub attachment: vk::ImageView,
     /// Value used to clear the attachment.
     pub clear_value: vk::ClearValue,
-}
-
-/// Wraps a buffer.
-pub struct Buffer {
-    /// The raw Vulkan buffer.
-    pub raw: vk::Buffer,
-    /// The raw allocation.
-    pub allocation: vk_alloc::Allocation,
-    context: Arc<Context>,
-}
-
-impl Drop for Buffer {
-    fn drop(&mut self) {
-        unsafe {
-            self.context.device.destroy_buffer(Some(self.raw), None);
-            self.context
-                .allocator
-                .lock()
-                .deallocate(&self.context.device, &mut self.allocation)
-                .expect("can't free buffer allocation");
-        };
-    }
-}
-
-/// Wraps a buffer view.
-pub struct BufferView {
-    /// The raw Vulkan buffer view.
-    pub raw: vk::BufferView,
-    context: Arc<Context>,
-}
-
-impl Drop for BufferView {
-    fn drop(&mut self) {
-        unsafe {
-            self.context
-                .device
-                .destroy_buffer_view(Some(self.raw), None);
-        };
-    }
-}
-
-/// Wraps an image.
-pub struct Image {
-    /// The raw Vulkan image.
-    pub raw: vk::Image,
-    /// The raw allocation.
-    pub allocation: vk_alloc::Allocation,
-    context: Arc<Context>,
-}
-
-impl Drop for Image {
-    fn drop(&mut self) {
-        unsafe {
-            self.context.device.destroy_image(Some(self.raw), None);
-            self.context
-                .allocator
-                .lock()
-                .deallocate(&self.context.device, &self.allocation)
-                .expect("can't free image allocation");
-        };
-    }
-}
-
-/// Wraps an image view.
-pub struct ImageView {
-    /// The raw Vulkan image view.
-    pub raw: vk::ImageView,
-    context: Arc<Context>,
-}
-
-impl Drop for ImageView {
-    fn drop(&mut self) {
-        unsafe {
-            self.context.device.destroy_image_view(Some(self.raw), None);
-        };
-    }
-}
-
-/// Wraps a sampler.
-pub struct Sampler {
-    /// The raw Vulkan sampler.
-    pub raw: vk::Sampler,
-    context: Arc<Context>,
-}
-
-impl Drop for Sampler {
-    fn drop(&mut self) {
-        unsafe {
-            self.context.device.destroy_sampler(Some(self.raw), None);
-        };
-    }
 }

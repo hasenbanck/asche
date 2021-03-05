@@ -1,7 +1,11 @@
+use std::fs::read_to_string;
+
 use bytemuck::cast_slice;
 use erupt::{vk, ExtendableFrom};
 
-use crate::gltf::{Material, Mesh};
+use asche::BufferDescriptor;
+
+use crate::gltf::{Material, Mesh, Vertex};
 
 mod gltf;
 
@@ -65,8 +69,10 @@ fn main() -> Result<()> {
 
     let (width, height) = window.size();
 
-    let app = RayTracingApplication::new(device, graphics_queue, transfer_queue, width, height);
+    let mut app =
+        RayTracingApplication::new(device, graphics_queue, transfer_queue, width, height).unwrap();
     let (materials, meshes) = gltf::load_models(include_bytes!("model.glb"));
+    app.create_model(&materials, &meshes)?;
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
@@ -86,6 +92,7 @@ fn main() -> Result<()> {
 }
 
 struct RayTracingApplication {
+    models: Vec<Model>,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
     offscreen_attachment: Texture,
@@ -154,6 +161,7 @@ impl RayTracingApplication {
         let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
 
         Ok(Self {
+            models: vec![],
             timeline,
             timeline_value,
             offscreen_attachment,
@@ -504,35 +512,47 @@ impl RayTracingApplication {
     }
 
     /// Upload vertex data and prepares the TLAS and BLAS structures.
-    fn create_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Vec<Model> {
-        let mut models = vec![];
+    pub fn create_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Result<()> {
         for (id, mesh) in meshes.iter().enumerate() {
             let vertex_buffer = self
                 .create_buffer(
-                    &format!("model {} vertex buffer", id),
+                    &format!("Model {} Vertex Buffer", id),
                     cast_slice(mesh.vertices.as_slice()),
-                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    vk::BufferUsageFlags::VERTEX_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 )
                 .unwrap();
             let index_buffer = self
                 .create_buffer(
-                    &format!("model {} index buffer", id),
+                    &format!("Model {} Index Buffer", id),
                     cast_slice(mesh.indices.as_slice()),
-                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    vk::BufferUsageFlags::INDEX_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                )
+                .unwrap();
+            let transform_buffer = self
+                .create_buffer(
+                    &format!("Model {} Transform Buffer", id),
+                    cast_slice(&mesh.model_matrix),
+                    vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 )
                 .unwrap();
 
-            // TODO upload the TLAS nd BLAS
-
-            models.push(Model {
-                tlas_index: 0,
-                blas_index: 0,
+            self.models.push(Model {
+                max_vertex_index: mesh.vertices.len() as u32, // TODO could be one by 1
+                triangle_count: (mesh.indices.len() / 3) as u32,
+                tlas_index: id as u32,
+                blas_index: id as u32,
+                transform_buffer,
                 vertex_buffer,
                 index_buffer,
             })
         }
 
-        models
+        self.create_blas()?;
+
+        Ok(())
     }
 
     fn create_buffer(
@@ -592,6 +612,109 @@ impl RayTracingApplication {
         transfer_pool.reset()?;
 
         Ok(dst_buffer)
+    }
+
+    fn create_blas(&mut self) -> Result<()> {
+        for model in self.models.iter() {
+            let triangles = vk::AccelerationStructureGeometryTrianglesDataKHRBuilder::new()
+                .index_type(vk::IndexType::UINT32)
+                .index_data(vk::DeviceOrHostAddressConstKHR {
+                    device_address: model.index_buffer.device_address(),
+                })
+                .vertex_format(vk::Format::R32G32B32_SFLOAT)
+                .vertex_data(vk::DeviceOrHostAddressConstKHR {
+                    device_address: model.vertex_buffer.device_address(),
+                })
+                .max_vertex(model.max_vertex_index)
+                .vertex_stride(std::mem::size_of::<Vertex>() as u64)
+                .transform_data(vk::DeviceOrHostAddressConstKHR {
+                    device_address: model.transform_buffer.device_address(),
+                });
+
+            let geometry_data = vk::AccelerationStructureGeometryDataKHR {
+                triangles: triangles.build(),
+            };
+
+            let geometry = vk::AccelerationStructureGeometryKHRBuilder::new()
+                .geometry_type(vk::GeometryTypeKHR::TRIANGLES_KHR)
+                .geometry(geometry_data)
+                .flags(vk::GeometryFlagsKHR::OPAQUE_KHR);
+
+            let range = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
+                .primitive_count(model.triangle_count)
+                .primitive_offset(0)
+                .transform_offset(0)
+                .first_vertex(0);
+
+            let geometries = [geometry];
+            let info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+                .flags(
+                    vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
+                        | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR,
+                )
+                .geometries(&geometries)
+                .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
+
+            let size_info = self.device.acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::HOST_KHR,
+                &info,
+                &[model.triangle_count],
+            );
+
+            // TODO save me somewhere...
+            // TODO scratch buffer
+            let blas_structure = self.device.create_buffer(&BufferDescriptor {
+                name: "BLAS Model Buffer",
+                usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                memory_location: vk_alloc::MemoryLocation::GpuOnly,
+                sharing_mode: Default::default(),
+                queues: Default::default(),
+                size: size_info.acceleration_structure_size,
+                flags: None,
+            })?;
+
+            let scratch_pad = self.device.create_buffer(&BufferDescriptor {
+                name: "AS Scratchpad",
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                memory_location: vk_alloc::MemoryLocation::GpuOnly,
+                sharing_mode: Default::default(),
+                queues: Default::default(),
+                size: size_info.build_scratch_size,
+                flags: None,
+            })?;
+
+            let info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
+                .buffer(blas_structure.raw)
+                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
+
+            let structure = self
+                .device
+                .create_acceleration_structure("RT Acceleration Structure", &info)?;
+
+            let geometries = [geometry];
+            let info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+                .flags(
+                    vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
+                        | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR,
+                )
+                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR)
+                .geometries(&geometries)
+                .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+                .scratch_data(vk::DeviceOrHostAddressKHR {
+                    device_address: scratch_pad.device_address(),
+                })
+                .dst_acceleration_structure(structure.raw);
+
+            let ranges = [range.build()];
+            let infos = [info];
+
+            // TODO NVidia drivers don't support host side generation!
+            self.device.build_acceleration_structures(&infos, &ranges)?;
+        }
+        Ok(())
     }
 }
 
@@ -653,8 +776,11 @@ impl Texture {
 
 /// Each model has exactly one instance for this simple example.
 struct Model {
+    triangle_count: u32,
+    max_vertex_index: u32,
     tlas_index: u32,
     blas_index: u32,
+    transform_buffer: asche::Buffer,
     vertex_buffer: asche::Buffer,
     index_buffer: asche::Buffer,
 }

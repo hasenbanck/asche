@@ -12,8 +12,8 @@ use crate::context::Context;
 use crate::descriptor::DescriptorSet;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    AscheError, Buffer, ComputePipeline, GraphicsPipeline, Image, PipelineLayout, QueueType,
-    RayTracingPipeline, RenderPass, RenderPassColorAttachmentDescriptor,
+    AccelerationStructure, AscheError, Buffer, ComputePipeline, GraphicsPipeline, Image,
+    PipelineLayout, QueueType, RayTracingPipeline, RenderPass, RenderPassColorAttachmentDescriptor,
     RenderPassDepthAttachmentDescriptor, Result,
 };
 
@@ -501,10 +501,68 @@ impl<'a> ComputeCommandEncoder<'a> {
         };
     }
 
-    // TODO vkCmdCopyAccelerationStructureKHR
-    // TODO vkCmdCopyAccelerationStructureToMemoryKHR
-    // TODO vkCmdCopyMemoryToAccelerationStructureKHR
-    // TODO vkCmdWriteAccelerationStructuresPropertiesKHR
+    /// Copy an acceleration structure.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureKHR.html
+    pub fn copy_acceleration_structure(&self, info: &vk::CopyAccelerationStructureInfoKHR) {
+        unsafe {
+            self.context
+                .device
+                .cmd_copy_acceleration_structure_khr(self.buffer, info)
+        };
+    }
+
+    /// Copy an acceleration structure to device memory.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureToMemoryKHR.html
+    pub fn copy_acceleration_structure_to_memory(
+        &self,
+        info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
+    ) {
+        unsafe {
+            self.context
+                .device
+                .cmd_copy_acceleration_structure_to_memory_khr(self.buffer, info)
+        };
+    }
+
+    /// Copy device memory to an acceleration structure.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyMemoryToAccelerationStructureKHR.html
+    pub fn copy_memory_to_acceleration_structure(
+        &self,
+        info: &vk::CopyMemoryToAccelerationStructureInfoKHR,
+    ) {
+        unsafe {
+            self.context
+                .device
+                .cmd_copy_memory_to_acceleration_structure_khr(self.buffer, info)
+        };
+    }
+
+    /// Write acceleration structure result parameters to query results.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdWriteAccelerationStructuresPropertiesKHR.html
+    pub fn write_acceleration_structures_properties(
+        &self,
+        acceleration_structure: &AccelerationStructure,
+        query_type: vk::QueryType,
+        query_pool: vk::QueryPool,
+        first_query: u32,
+    ) {
+        let acceleration_structures = [acceleration_structure.raw];
+        unsafe {
+            self.context
+                .device
+                .cmd_write_acceleration_structures_properties_khr(
+                    self.buffer,
+                    &acceleration_structures,
+                    query_type,
+                    query_pool,
+                    first_query,
+                )
+        };
+    }
 }
 
 /// Used to encode command for a graphics command buffer.

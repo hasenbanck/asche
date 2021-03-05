@@ -2,7 +2,8 @@ use bytemuck::{Pod, Zeroable};
 use ultraviolet::{Mat4, Vec3, Vec4};
 
 pub(crate) struct Mesh {
-    pub(crate) model_matrix: Mat4,
+    /// Vulkan expects a 3x4 Row Major transform matrix.
+    pub(crate) model_matrix: [f32; 12],
     pub(crate) material: usize,
     pub(crate) vertices: Vec<Vertex>,
     pub(crate) indices: Vec<u32>,
@@ -98,10 +99,19 @@ pub(crate) fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
                 })
                 .collect();
 
-            let model_matrix = node.transform().matrix();
+            let cols = Mat4::from(node.transform().matrix()).cols;
+
+            // Ultraviolet is column major, vulkan expects row major
+            #[rustfmt::skip]
+                let model_matrix: [f32; 12] = [
+                cols[0].x, cols[0].y, cols[0].z,
+                cols[1].x, cols[1].y, cols[1].z,
+                cols[2].x, cols[2].y, cols[2].z,
+                cols[3].x, cols[3].y, cols[3].z,
+            ];
 
             Mesh {
-                model_matrix: Mat4::from(model_matrix),
+                model_matrix,
                 material: primitive.material().index().unwrap(),
                 vertices,
                 indices,

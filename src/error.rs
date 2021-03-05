@@ -43,6 +43,9 @@ pub enum AscheError {
 
     /// Swapchain is not initialized.
     SwapchainNotInitialized,
+
+    /// The requested buffer has a size of zero.
+    BufferZeroSize,
 }
 
 impl std::fmt::Display for AscheError {
@@ -89,6 +92,9 @@ impl std::fmt::Display for AscheError {
             }
             AscheError::DeviceFeatureMissing => {
                 write!(f, "the requested device feature couldn't be found")
+            }
+            AscheError::BufferZeroSize => {
+                write!(f, "the requested buffer has a size of zero")
             }
         }
     }

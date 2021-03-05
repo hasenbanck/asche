@@ -198,10 +198,7 @@ impl Swapchain {
                 AscheError::VkResult(err)
             })?;
 
-            image_views.push(ImageView {
-                context: context.clone(),
-                raw,
-            });
+            image_views.push(ImageView::new(raw, context.clone()));
         }
 
         Ok(image_views)

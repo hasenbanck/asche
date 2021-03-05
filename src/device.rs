@@ -11,11 +11,11 @@ use crate::instance::Instance;
 use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
-    AccelerationStructure, AscheError, Buffer, BufferDescriptor, ComputePipeline, ComputeQueue,
-    DeferredOperation, DescriptorPool, DescriptorPoolDescriptor, DescriptorSetLayout,
-    GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView, ImageViewDescriptor,
-    PipelineLayout, RayTracingPipeline, RenderPass, Result, Sampler, SamplerDescriptor,
-    ShaderModule, TransferQueue,
+    AccelerationStructure, AscheError, Buffer, BufferDescriptor, BufferView, BufferViewDescriptor,
+    ComputePipeline, ComputeQueue, DeferredOperation, DescriptorPool, DescriptorPoolDescriptor,
+    DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView,
+    ImageViewDescriptor, PipelineLayout, RayTracingPipeline, RenderPass, Result, Sampler,
+    SamplerDescriptor, ShaderModule, TransferQueue,
 };
 
 /// Defines the priorities of the queues.
@@ -594,6 +594,10 @@ impl Device {
 
     /// Creates a new buffer.
     pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> Result<Buffer> {
+        if descriptor.size == 0 {
+            return Err(AscheError::BufferZeroSize);
+        }
+
         let mut families = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
@@ -651,11 +655,39 @@ impl Device {
             AscheError::VkResult(err)
         })?;
 
-        Ok(Buffer {
-            context: self.context.clone(),
-            raw,
-            allocation,
-        })
+        Ok(Buffer::new(raw, allocation, self.context.clone()))
+    }
+
+    /// Creates a new buffer view.
+    pub fn create_buffer_view(&self, descriptor: &BufferViewDescriptor) -> Result<BufferView> {
+        let create_info = vk::BufferViewCreateInfoBuilder::new()
+            .buffer(descriptor.buffer.raw)
+            .format(descriptor.format)
+            .offset(descriptor.offset)
+            .range(descriptor.range);
+
+        let create_info = if let Some(flags) = descriptor.flags {
+            create_info.flags(flags)
+        } else {
+            create_info
+        };
+
+        let raw = unsafe {
+            self.context
+                .device
+                .create_buffer_view(&create_info, None, None)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create an buffer view: {}", err);
+            AscheError::VkResult(err)
+        })?;
+
+        #[cfg(debug_assertions)]
+        self.context
+            .set_object_name(&descriptor.name, vk::ObjectType::BUFFER_VIEW, raw.0)?;
+
+        Ok(BufferView::new(raw, self.context.clone()))
     }
 
     /// Creates a new image.
@@ -724,11 +756,7 @@ impl Device {
             AscheError::VkResult(err)
         })?;
 
-        Ok(Image {
-            context: self.context.clone(),
-            raw,
-            allocation,
-        })
+        Ok(Image::new(raw, allocation, self.context.clone()))
     }
 
     /// Creates a new image.
@@ -761,10 +789,7 @@ impl Device {
         self.context
             .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.0)?;
 
-        Ok(ImageView {
-            context: self.context.clone(),
-            raw,
-        })
+        Ok(ImageView::new(raw, self.context.clone()))
     }
 
     /// Creates a sampler.
@@ -813,10 +838,7 @@ impl Device {
         self.context
             .set_object_name(&descriptor.name, vk::ObjectType::SAMPLER, raw.0)?;
 
-        Ok(Sampler {
-            context: self.context.clone(),
-            raw,
-        })
+        Ok(Sampler::new(raw, self.context.clone()))
     }
 
     /// Creates a new timeline semaphore.
@@ -1004,12 +1026,17 @@ impl Device {
     pub fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
-        build_range_infos: &[*const vk::AccelerationStructureBuildRangeInfoKHR],
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
+        let build_range_infos: Vec<*const vk::AccelerationStructureBuildRangeInfoKHR> =
+            build_range_infos
+                .iter()
+                .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
+                .collect();
         unsafe {
             self.context
                 .device
-                .build_acceleration_structures_khr(None, infos, build_range_infos)
+                .build_acceleration_structures_khr(None, infos, &build_range_infos)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
