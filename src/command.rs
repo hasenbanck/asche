@@ -1,6 +1,5 @@
 //! Implements command pools and command buffers.
 
-use std::cmp::max;
 use std::ffi::c_void;
 use std::sync::Arc;
 

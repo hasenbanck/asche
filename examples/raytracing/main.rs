@@ -1,8 +1,6 @@
 use bytemuck::cast_slice;
 use erupt::{vk, ExtendableFrom};
 
-use asche::Buffer;
-
 use crate::gltf::{Material, Mesh};
 
 mod gltf;
@@ -128,7 +126,7 @@ impl RayTracingApplication {
             vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder::new();
         let properties =
             vk::PhysicalDeviceProperties2Builder::new().extend_from(&mut raytrace_properties);
-        device.get_physical_device_properties(properties);
+        device.physical_device_properties(properties);
 
         // Offscreen Attachment
         let offscreen_attachment = Texture::create_offscreen_attachment(&device, extent)?;
