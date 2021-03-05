@@ -8,7 +8,7 @@ mod gltf;
 type Result<T> = std::result::Result<T, asche::AscheError>;
 
 const SURFACE_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
-const OFFSCREEN_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
+const OFFSCREEN_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 
 fn main() -> Result<()> {
     let sdl_context = sdl2::init().unwrap();
