@@ -9,17 +9,11 @@ pub(crate) struct Mesh {
     pub(crate) indices: Vec<u32>,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
 pub(crate) struct Material {
     pub(crate) albedo: Vec4,
     pub(crate) metallic: f32,
-    pub(crate) rough: f32,
+    pub(crate) roughness: f32,
 }
-
-unsafe impl Pod for Material {}
-
-unsafe impl Zeroable for Material {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -48,7 +42,7 @@ pub(crate) fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
             Material {
                 albedo: Vec4::from(albedo),
                 metallic,
-                rough,
+                roughness: rough,
             }
         })
         .collect();

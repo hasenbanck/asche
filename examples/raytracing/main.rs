@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
 
 use asche::BufferDescriptor;
@@ -99,6 +99,8 @@ fn main() -> Result<()> {
 }
 
 struct RayTracingApplication {
+    tlas: Vec<TLAS>,
+    blas: Vec<BLAS>,
     models: Vec<Model>,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
@@ -177,6 +179,8 @@ impl RayTracingApplication {
         let transfer_pool = transfer_queue.create_command_pool()?;
 
         Ok(Self {
+            tlas: vec![],
+            blas: vec![],
             models: vec![],
             timeline,
             timeline_value,
@@ -534,6 +538,15 @@ impl RayTracingApplication {
     /// Upload vertex data and prepares the TLAS and BLAS structures.
     pub fn create_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Result<()> {
         for (id, mesh) in meshes.iter().enumerate() {
+            let material = &materials[mesh.material];
+
+            let material_data = MaterialData {
+                model_matrix: mesh.model_matrix,
+                albedo: material.albedo.into(),
+                metallic: material.metallic,
+                roughness: material.roughness,
+            };
+
             let vertex_buffer = self
                 .create_buffer(
                     &format!("Model {} Vertex Buffer", id),
@@ -551,11 +564,10 @@ impl RayTracingApplication {
                 )
                 .unwrap();
 
-            // TODO this could actually also include the material properties!
-            let transform_buffer = self
+            let material_buffer = self
                 .create_buffer(
-                    &format!("Model {} Transform Buffer", id),
-                    cast_slice(&mesh.model_matrix),
+                    &format!("Model {} Material Buffer", id),
+                    cast_slice(&[material_data]),
                     vk::BufferUsageFlags::STORAGE_BUFFER
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 )
@@ -566,13 +578,14 @@ impl RayTracingApplication {
                 triangle_count: (mesh.indices.len() / 3) as u32,
                 tlas_index: id as u32,
                 blas_index: id as u32,
-                transform_buffer,
+                material_buffer,
                 vertex_buffer,
                 index_buffer,
             })
         }
 
         self.create_blas()?;
+        self.create_tlas()?;
 
         Ok(())
     }
@@ -636,12 +649,10 @@ impl RayTracingApplication {
     }
 
     fn create_blas(&mut self) -> Result<()> {
-        let mut blas_vec = vec![];
-
         // Scratchpads needed for the generation of the AS.
         let mut scratch_pads: Vec<asche::Buffer> = vec![];
 
-        // We need to assemble all information that is needed to build the AS so that it outlices the loop were we assemble them.
+        // We need to assemble all information that is needed to build the AS so that it outlives the loop were we assemble them.
         let mut geometries: Vec<vk::AccelerationStructureGeometryKHRBuilder> = vec![];
         let mut infos: Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder> = vec![];
         let mut ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = vec![];
@@ -660,7 +671,7 @@ impl RayTracingApplication {
                 .max_vertex(model.max_vertex_index)
                 .vertex_stride(std::mem::size_of::<Vertex>() as u64)
                 .transform_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.transform_buffer.device_address(),
+                    device_address: model.material_buffer.device_address(),
                 });
 
             let geometry_data = vk::AccelerationStructureGeometryDataKHR {
@@ -726,6 +737,8 @@ impl RayTracingApplication {
 
             let blas = BLAS { structure, buffer };
 
+            // We could compat the BLAS by setting a flag for it. But then we would need to query the new size (vkGetQueryPoolResults), creating new AS and compact the new AS with (vkCmdCopyAccelerationStructureKHR using the vk::CopyAccelerationStructureModeKHR::COMPACT_KHR flag).
+            // TODO compact the AS.
             let geometry_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
                 .flags(
                     vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
@@ -747,10 +760,35 @@ impl RayTracingApplication {
 
             infos.push(geometry_info);
             ranges.push(range.build());
-            blas_vec.push(blas);
+            self.blas.push(blas);
         }
 
-        // Build all BLAS on the device using the compute queue.
+        self.create_as(&mut infos, &mut ranges)
+    }
+
+    fn create_tlas(&mut self) -> Result<()> {
+        // Scratchpads needed for the generation of the AS.
+        let mut scratch_pads: Vec<asche::Buffer> = vec![];
+
+        let mut infos: Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder> = vec![];
+        let mut ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = vec![];
+
+        // Iterate through all models and create their TLAS, scratchpads and geometry information.
+        for (id, model) in self.models.iter().enumerate() {
+            // A TLAS needs to have: instance transform, hit group, blas index
+
+            // TODO
+            //self.tlas.push(tlas);
+        }
+
+        Ok(())
+    }
+
+    fn create_as(
+        &mut self,
+        infos: &mut Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder>,
+        ranges: &mut Vec<vk::AccelerationStructureBuildRangeInfoKHR>,
+    ) -> Result<()> {
         let compute_buffer = self.compute_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
@@ -766,10 +804,13 @@ impl RayTracingApplication {
 
         // We need to wait, or else the scratch pads will get deleted before the building of the AS is finished.
         self.timeline.wait_for_value(self.timeline_value)?;
-        self.compute_pool.reset()?;
-
-        Ok(())
+        self.compute_pool.reset()
     }
+}
+
+struct TLAS {
+    structure: asche::AccelerationStructure,
+    buffer: asche::Buffer,
 }
 
 struct BLAS {
@@ -839,7 +880,20 @@ struct Model {
     max_vertex_index: u32,
     tlas_index: u32,
     blas_index: u32,
-    transform_buffer: asche::Buffer,
+    material_buffer: asche::Buffer,
     vertex_buffer: asche::Buffer,
     index_buffer: asche::Buffer,
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MaterialData {
+    model_matrix: [f32; 12],
+    albedo: [f32; 4],
+    metallic: f32,
+    roughness: f32,
+}
+
+unsafe impl Pod for MaterialData {}
+
+unsafe impl Zeroable for MaterialData {}
