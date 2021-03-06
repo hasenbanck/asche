@@ -20,7 +20,7 @@ impl Drop for Buffer {
             self.context
                 .allocator
                 .lock()
-                .deallocate(&self.context.device, &mut self.allocation)
+                .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free buffer allocation");
         };
     }

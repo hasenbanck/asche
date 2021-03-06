@@ -75,13 +75,18 @@ impl DeferredOperation {
     pub fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
-        build_range_infos: &[*const vk::AccelerationStructureBuildRangeInfoKHR],
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
+        let build_range_infos: Vec<*const vk::AccelerationStructureBuildRangeInfoKHR> =
+            build_range_infos
+                .iter()
+                .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
+                .collect();
         unsafe {
             self.context.device.build_acceleration_structures_khr(
                 Some(self.raw),
                 infos,
-                build_range_infos,
+                &build_range_infos,
             )
         }
         .map_err(|err| {

@@ -466,7 +466,8 @@ impl Application {
             self.timeline_value + 1,
         )?;
 
-        transfer_buffer.record(|encoder| {
+        {
+            let encoder = transfer_buffer.record()?;
             let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::UNDEFINED)
                 .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
@@ -501,8 +502,7 @@ impl Application {
                     .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
                     .image_extent(extent),
             );
-            Ok(())
-        })?;
+        }
         self.timeline_value += 1;
         self.transfer_queue.submit(&transfer_buffer)?;
 
@@ -512,7 +512,8 @@ impl Application {
             self.timeline_value + 1,
         )?;
 
-        graphics_buffer.record(|encoder| {
+        {
+            let encoder = graphics_buffer.record()?;
             let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -531,9 +532,7 @@ impl Application {
                 .buffer_memory_barriers(&[]);
 
             encoder.pipeline_barrier2(&depenency_info);
-
-            Ok(())
-        })?;
+        }
 
         self.timeline_value += 1;
         self.graphics_queue.submit(&graphics_buffer)?;
@@ -584,7 +583,8 @@ impl Application {
             self.timeline_value + 1,
         )?;
 
-        transfer_buffer.record(|encoder| {
+        {
+            let encoder = transfer_buffer.record()?;
             encoder.copy_buffer(
                 &stagging_buffer,
                 &dst_buffer,
@@ -592,10 +592,9 @@ impl Application {
                 0,
                 buffer_data.len() as u64,
             );
-            Ok(())
-        })?;
-        self.timeline_value += 1;
+        }
 
+        self.timeline_value += 1;
         self.transfer_queue.submit(&transfer_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
@@ -632,7 +631,8 @@ impl Application {
             },
         });
 
-        graphics_buffer.record(|encoder| {
+        {
+            let encoder = graphics_buffer.record()?;
             encoder.set_viewport_and_scissor(
                 vk::Rect2DBuilder::new()
                     .offset(vk::Offset2D { x: 0, y: 0 })
@@ -674,9 +674,7 @@ impl Application {
             );
 
             pass.draw_indexed(36, 1, 0, 0, 0);
-
-            Ok(())
-        })?;
+        }
 
         self.graphics_queue.submit(&graphics_buffer)?;
         self.timeline

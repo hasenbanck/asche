@@ -166,14 +166,12 @@ impl Application {
                 range: DATA_SIZE,
             },
         });
-
-        compute_buffer.record(|encoder| {
+        {
+            let encoder = compute_buffer.record()?;
             encoder.bind_pipeline(&self.pipeline);
             encoder.bind_descriptor_set(&self.pipeline_layout, 0, &set, &[]);
             encoder.dispatch(1024, 1, 1);
-            Ok(())
-        })?;
-
+        }
         self.compute_queue.submit(&compute_buffer)?;
         self.timeline_value += 1;
         self.timeline.wait_for_value(self.timeline_value)?;

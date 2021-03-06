@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::time::Duration;
 
 use bytemuck::cast_slice;
 use erupt::{vk, ExtendableFrom};
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
         },
     )?;
 
-    let (device, (_, graphics_queue, transfer_queue)) =
+    let (device, (compute_queue, graphics_queue, transfer_queue)) =
         instance.request_device(asche::DeviceConfiguration {
             extensions: vec![
                 vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
@@ -69,8 +69,15 @@ fn main() -> Result<()> {
 
     let (width, height) = window.size();
 
-    let mut app =
-        RayTracingApplication::new(device, graphics_queue, transfer_queue, width, height).unwrap();
+    let mut app = RayTracingApplication::new(
+        device,
+        compute_queue,
+        graphics_queue,
+        transfer_queue,
+        width,
+        height,
+    )
+    .unwrap();
     let (materials, meshes) = gltf::load_models(include_bytes!("model.glb"));
     app.create_model(&materials, &meshes)?;
 
@@ -107,6 +114,10 @@ struct RayTracingApplication {
     raytracing_descriptor_pool: asche::DescriptorPool,
     sampler: asche::Sampler,
     raytrace_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+    transfer_pool: asche::TransferCommandPool,
+    graphics_pool: asche::GraphicsCommandPool,
+    compute_pool: asche::ComputeCommandPool,
+    compute_queue: asche::ComputeQueue,
     graphics_queue: asche::GraphicsQueue,
     transfer_queue: asche::TransferQueue,
     device: asche::Device,
@@ -115,8 +126,9 @@ struct RayTracingApplication {
 impl RayTracingApplication {
     fn new(
         mut device: asche::Device,
-        graphics_queue: asche::GraphicsQueue,
-        transfer_queue: asche::TransferQueue,
+        mut compute_queue: asche::ComputeQueue,
+        mut graphics_queue: asche::GraphicsQueue,
+        mut transfer_queue: asche::TransferQueue,
         width: u32,
         height: u32,
     ) -> Result<Self> {
@@ -160,6 +172,10 @@ impl RayTracingApplication {
         let timeline_value = 0;
         let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
 
+        let compute_pool = compute_queue.create_command_pool()?;
+        let graphics_pool = graphics_queue.create_command_pool()?;
+        let transfer_pool = transfer_queue.create_command_pool()?;
+
         Ok(Self {
             models: vec![],
             timeline,
@@ -175,10 +191,14 @@ impl RayTracingApplication {
             raytracing_pipeline_layout,
             raytracing_descriptor_pool,
             raytrace_properties: raytrace_properties.build(),
+            transfer_pool,
+            graphics_pool,
             sampler,
+            compute_queue,
             graphics_queue,
             transfer_queue,
             device,
+            compute_pool,
         })
     }
 
@@ -530,6 +550,8 @@ impl RayTracingApplication {
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 )
                 .unwrap();
+
+            // TODO this could actually also include the material properties!
             let transform_buffer = self
                 .create_buffer(
                     &format!("Model {} Transform Buffer", id),
@@ -587,14 +609,14 @@ impl RayTracingApplication {
             flags: None,
         })?;
 
-        let mut transfer_pool = self.transfer_queue.create_command_pool()?;
-        let transfer_buffer = transfer_pool.create_command_buffer(
+        let transfer_buffer = self.transfer_pool.create_command_buffer(
             &self.timeline,
             self.timeline_value,
             self.timeline_value + 1,
         )?;
 
-        transfer_buffer.record(|encoder| {
+        {
+            let encoder = transfer_buffer.record()?;
             encoder.copy_buffer(
                 &stagging_buffer,
                 &dst_buffer,
@@ -602,120 +624,150 @@ impl RayTracingApplication {
                 0,
                 buffer_data.len() as u64,
             );
-            Ok(())
-        })?;
-        self.timeline_value += 1;
+        }
 
+        self.timeline_value += 1;
         self.transfer_queue.submit(&transfer_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
-        transfer_pool.reset()?;
+        self.transfer_pool.reset()?;
 
         Ok(dst_buffer)
     }
 
     fn create_blas(&mut self) -> Result<()> {
-        for model in self.models.iter() {
-            let triangles = vk::AccelerationStructureGeometryTrianglesDataKHRBuilder::new()
-                .index_type(vk::IndexType::UINT32)
-                .index_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.index_buffer.device_address(),
-                })
-                .vertex_format(vk::Format::R32G32B32_SFLOAT)
-                .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.vertex_buffer.device_address(),
-                })
-                .max_vertex(model.max_vertex_index)
-                .vertex_stride(std::mem::size_of::<Vertex>() as u64)
-                .transform_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.transform_buffer.device_address(),
-                });
+        let mut blas_vec = vec![];
 
-            let geometry_data = vk::AccelerationStructureGeometryDataKHR {
-                triangles: triangles.build(),
-            };
+        let compute_buffer = self.compute_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
+        self.timeline_value += 1;
 
-            let geometry = vk::AccelerationStructureGeometryKHRBuilder::new()
-                .geometry_type(vk::GeometryTypeKHR::TRIANGLES_KHR)
-                .geometry(geometry_data)
-                .flags(vk::GeometryFlagsKHR::OPAQUE_KHR);
+        // Iterate through all models and crate their BLAS.
+        {
+            let encoder = compute_buffer.record()?;
+            for model in self.models.iter() {
+                let triangles = vk::AccelerationStructureGeometryTrianglesDataKHRBuilder::new()
+                    .index_type(vk::IndexType::UINT32)
+                    .index_data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: model.index_buffer.device_address(),
+                    })
+                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
+                    .vertex_data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: model.vertex_buffer.device_address(),
+                    })
+                    .max_vertex(model.max_vertex_index)
+                    .vertex_stride(std::mem::size_of::<Vertex>() as u64)
+                    .transform_data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: model.transform_buffer.device_address(),
+                    });
 
-            let range = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
-                .primitive_count(model.triangle_count)
-                .primitive_offset(0)
-                .transform_offset(0)
-                .first_vertex(0);
+                let geometry_data = vk::AccelerationStructureGeometryDataKHR {
+                    triangles: triangles.build(),
+                };
 
-            let geometries = [geometry];
-            let info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
-                .flags(
-                    vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
-                        | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR,
-                )
-                .geometries(&geometries)
-                .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
-                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
+                let geometry = vk::AccelerationStructureGeometryKHRBuilder::new()
+                    .geometry_type(vk::GeometryTypeKHR::TRIANGLES_KHR)
+                    .geometry(geometry_data)
+                    .flags(vk::GeometryFlagsKHR::OPAQUE_KHR);
 
-            let size_info = self.device.acceleration_structure_build_sizes(
-                vk::AccelerationStructureBuildTypeKHR::HOST_KHR,
-                &info,
-                &[model.triangle_count],
-            );
+                let range = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
+                    .primitive_count(model.triangle_count)
+                    .primitive_offset(0)
+                    .transform_offset(0)
+                    .first_vertex(0);
 
-            // TODO save me somewhere...
-            // TODO scratch buffer
-            let blas_structure = self.device.create_buffer(&BufferDescriptor {
-                name: "BLAS Model Buffer",
-                usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_location: vk_alloc::MemoryLocation::GpuOnly,
-                sharing_mode: Default::default(),
-                queues: Default::default(),
-                size: size_info.acceleration_structure_size,
-                flags: None,
-            })?;
+                // TODO(3) I can't save the geometry in a vec so that it lives long enough (lifetimes on the builder!).
+                let geometries = [geometry];
 
-            let scratch_pad = self.device.create_buffer(&BufferDescriptor {
-                name: "AS Scratchpad",
-                usage: vk::BufferUsageFlags::STORAGE_BUFFER
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_location: vk_alloc::MemoryLocation::GpuOnly,
-                sharing_mode: Default::default(),
-                queues: Default::default(),
-                size: size_info.build_scratch_size,
-                flags: None,
-            })?;
+                let info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+                    .flags(
+                        vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
+                            | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR,
+                    )
+                    .geometries(&geometries)
+                    .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+                    ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
 
-            let info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
-                .buffer(blas_structure.raw)
-                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
+                let size_info = self.device.acceleration_structure_build_sizes(
+                    vk::AccelerationStructureBuildTypeKHR::HOST_KHR,
+                    &info,
+                    &[model.triangle_count],
+                );
 
-            let structure = self
-                .device
-                .create_acceleration_structure("RT Acceleration Structure", &info)?;
+                let buffer = self.device.create_buffer(&BufferDescriptor {
+                    name: "BLAS Model Buffer",
+                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    memory_location: vk_alloc::MemoryLocation::GpuOnly,
+                    sharing_mode: Default::default(),
+                    queues: Default::default(),
+                    size: size_info.acceleration_structure_size,
+                    flags: None,
+                })?;
 
-            let geometries = [geometry];
-            let info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
-                .flags(
-                    vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
-                        | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR,
-                )
-                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR)
-                .geometries(&geometries)
-                .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
-                .scratch_data(vk::DeviceOrHostAddressKHR {
-                    device_address: scratch_pad.device_address(),
-                })
-                .dst_acceleration_structure(structure.raw);
+                let scratch_pad = self.device.create_buffer(&BufferDescriptor {
+                    name: "AS Scratchpad",
+                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    memory_location: vk_alloc::MemoryLocation::GpuOnly,
+                    sharing_mode: Default::default(),
+                    queues: Default::default(),
+                    size: size_info.build_scratch_size,
+                    flags: None,
+                })?;
 
-            let ranges = [range.build()];
-            let infos = [info];
+                let info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
+                    .buffer(buffer.raw)
+                    ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
 
-            // TODO NVidia drivers don't support host side generation!
-            self.device.build_acceleration_structures(&infos, &ranges)?;
+                let structure = self
+                    .device
+                    .create_acceleration_structure("RT Acceleration Structure", &info)?;
+
+                let blas = BLAS { structure, buffer };
+
+                let geometries = [geometry];
+                let info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+                    .flags(
+                        vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
+                            | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR,
+                    )
+                    ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR)
+                    .geometries(&geometries)
+                    .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+                    .scratch_data(vk::DeviceOrHostAddressKHR {
+                        device_address: scratch_pad.device_address(),
+                    })
+                    .dst_acceleration_structure(blas.structure.raw);
+
+                // TODO(1) The problem: We are recording references, to arrays which will be gone when we submit to the queue...
+                let infos = [info];
+                let ranges = [range.build()];
+                encoder.build_acceleration_structures(&infos, &ranges);
+
+                // TODO(2) If record a command buffer for each AS and submit it here, the error is gone (but inefficient ... we want to batch!)
+                blas_vec.push(blas);
+            }
         }
+
+        self.compute_queue.submit(&compute_buffer)?;
+        self.timeline.wait_for_value(self.timeline_value)?;
+        self.compute_pool.reset()?;
+
+        // TODO(0) this results in a "Device lost". It seems that the calculation of the AS produces errors.
+        std::thread::sleep(Duration::from_millis(100));
+        self.compute_queue.wait_for_idle();
+
         Ok(())
     }
+}
+
+struct BLAS {
+    structure: asche::AccelerationStructure,
+    buffer: asche::Buffer,
 }
 
 struct Texture {

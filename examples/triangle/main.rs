@@ -196,32 +196,33 @@ impl Application {
             Timeline::RenderEnd.with_offset(self.timeline_value),
         )?;
 
-        graphics_buffer.record(|encoder| {
+        {
+            let encoder = graphics_buffer.record()?;
             encoder.set_viewport_and_scissor(
                 vk::Rect2DBuilder::new()
                     .offset(vk::Offset2D { x: 0, y: 0 })
                     .extent(self.extent),
             );
 
-            let pass = encoder.begin_render_pass(
-                &self.render_pass,
-                &[&asche::RenderPassColorAttachmentDescriptor {
-                    attachment: frame.view,
-                    clear_value: vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [1.0, 0.0, 1.0, 1.0],
+            {
+                let pass = encoder.begin_render_pass(
+                    &self.render_pass,
+                    &[&asche::RenderPassColorAttachmentDescriptor {
+                        attachment: frame.view,
+                        clear_value: vk::ClearValue {
+                            color: vk::ClearColorValue {
+                                float32: [1.0, 0.0, 1.0, 1.0],
+                            },
                         },
-                    },
-                }],
-                None,
-                self.extent,
-            )?;
+                    }],
+                    None,
+                    self.extent,
+                )?;
 
-            pass.bind_pipeline(&self.graphics_pipeline);
-            pass.draw(3, 1, 0, 0);
-
-            Ok(())
-        })?;
+                pass.bind_pipeline(&self.graphics_pipeline);
+                pass.draw(3, 1, 0, 0);
+            }
+        }
 
         self.graphics_queue.submit(&graphics_buffer)?;
         self.timeline

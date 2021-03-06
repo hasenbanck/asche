@@ -183,6 +183,8 @@ impl CommandPool {
     }
 }
 
+/// TODO the encoder and buffer could merge now... But this pattern forces the user to call begin/end...
+
 macro_rules! impl_command_buffer {
     (
         #[doc = $doc:expr]
@@ -195,21 +197,14 @@ macro_rules! impl_command_buffer {
         }
 
         impl $buffer_name {
-            /// Records the command buffer actions with the help of an encoder.
-            pub fn record<F>(&self, exec: F) -> Result<()>
-            where
-                F: Fn(&$encoder_name) -> Result<()>,
-            {
+            /// Begins to record the command buffer. Encoder will finish recording on drop.
+            pub fn record(&self) -> Result<$encoder_name> {
                 let encoder = $encoder_name {
                     context: &self.inner.context,
                     buffer: self.inner.buffer
                 };
-
                 encoder.begin()?;
-                exec(&encoder)?;
-                encoder.end()?;
-
-                Ok(())
+                Ok(encoder)
             }
 
             /// Sets the timeline semaphore of a command buffer.
@@ -461,21 +456,26 @@ impl<'a> ComputeCommandEncoder<'a> {
         };
     }
 
-    /// Build an acceleration structure with some parameters provided on the device.
+    /// Build acceleration structures with some parameters provided on the device.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html
     pub fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
-        build_range_infos: &[*const vk::AccelerationStructureBuildRangeInfoKHR],
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
+        let build_range_infos: Vec<*const vk::AccelerationStructureBuildRangeInfoKHR> =
+            build_range_infos
+                .iter()
+                .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
+                .collect();
         unsafe {
             self.context.device.cmd_build_acceleration_structures_khr(
                 self.buffer,
                 infos,
-                build_range_infos,
+                &build_range_infos,
             )
-        };
+        }
     }
 
     /// Build an acceleration structure with some parameters provided on the device.
@@ -562,6 +562,13 @@ impl<'a> ComputeCommandEncoder<'a> {
                     first_query,
                 )
         };
+    }
+}
+
+impl<'a> Drop for ComputeCommandEncoder<'a> {
+    fn drop(&mut self) {
+        self.end()
+            .expect("cant' finish recording the compute command buffer");
     }
 }
 
@@ -806,6 +813,13 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 }
 
+impl<'a> Drop for GraphicsCommandEncoder<'a> {
+    fn drop(&mut self) {
+        self.end()
+            .expect("cant' finish recording the graphics command buffer");
+    }
+}
+
 /// Used to encode command for a transfer command buffer.
 pub struct TransferCommandEncoder<'a> {
     context: &'a Context,
@@ -866,6 +880,13 @@ impl<'a> TransferCommandEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
     pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+}
+
+impl<'a> Drop for TransferCommandEncoder<'a> {
+    fn drop(&mut self) {
+        self.end()
+            .expect("cant' finish recording the transfer command buffer");
     }
 }
 

@@ -51,6 +51,11 @@ macro_rules! impl_queue {
             pub fn submit(&self, command_buffer: &$buffer_name) -> Result<()> {
                 self.inner.submit(&command_buffer.inner)
             }
+
+            /// TODO Only temporary
+            pub fn wait_for_idle(&self) {
+                unsafe { self.inner.context.device.queue_wait_idle(self.inner.raw).unwrap() };
+            }
         }
     };
 }
