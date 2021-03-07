@@ -886,13 +886,6 @@ impl RayTracingApplication {
     }
 
     fn init_tlas(&mut self) -> Result<()> {
-        let compute_buffer = self.compute_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
-        )?;
-        self.timeline_value += 1;
-
         // TODO vk::AccelerationStructureInstanceKHR could use bytemuck support!
         let instance_data: Vec<AccelerationStructureInstance> = self
             .blas
@@ -1003,16 +996,23 @@ impl RayTracingApplication {
             .first_vertex(0)
             .build()];
 
+        let compute_buffer = self.compute_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
+        self.timeline_value += 1;
         {
             let encoder = compute_buffer.record()?;
             encoder.build_acceleration_structures(&geometry_infos, &ranges);
         }
 
         self.compute_queue.submit(&compute_buffer)?;
-        // TODO I get a timeout error here.
         self.timeline.wait_for_value(self.timeline_value)?;
 
         self.tlas.push(TLAS { structure, buffer });
+
+        self.compute_pool.reset()?;
 
         Ok(())
     }
