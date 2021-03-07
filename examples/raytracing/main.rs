@@ -1,9 +1,7 @@
-use std::time::Duration;
-
 use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
 
-use asche::BufferDescriptor;
+use asche::{BufferDescriptor, ComputeCommandBuffer};
 
 use crate::gltf::{Material, Mesh, Vertex};
 
@@ -574,7 +572,7 @@ impl RayTracingApplication {
                 .unwrap();
 
             self.models.push(Model {
-                max_vertex_index: mesh.vertices.len() as u32, // TODO could be one by 1
+                max_vertex_index: mesh.vertices.len() as u32, // TODO could be off by one
                 triangle_count: (mesh.indices.len() / 3) as u32,
                 tlas_index: id as u32,
                 blas_index: id as u32,
@@ -585,7 +583,9 @@ impl RayTracingApplication {
         }
 
         self.create_blas()?;
-        self.create_tlas()?;
+
+        //TODO
+        //self.create_tlas()?;
 
         Ok(())
     }
@@ -649,44 +649,46 @@ impl RayTracingApplication {
     }
 
     fn create_blas(&mut self) -> Result<()> {
-        // Scratchpads needed for the generation of the AS.
-        let mut scratch_pads: Vec<asche::Buffer> = vec![];
-
-        // We need to assemble all information that is needed to build the AS so that it outlives the loop were we assemble them.
-        let mut geometries: Vec<vk::AccelerationStructureGeometryKHRBuilder> = vec![];
-        let mut infos: Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder> = vec![];
-        let mut ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = vec![];
+        // We need to assemble all information that is needed to build the AS so that it outlives the loop were we assemble the command buffers.
+        let mut scratchpad_size: u64 = 0;
+        let mut max_sizes: Vec<u64> = Vec::with_capacity(self.models.len());
+        let mut infos: Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder> =
+            Vec::with_capacity(self.models.len());
+        let mut ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> =
+            Vec::with_capacity(self.models.len());
 
         // Create all geometry information needed.
-        for model in self.models.iter() {
-            let triangles = vk::AccelerationStructureGeometryTrianglesDataKHRBuilder::new()
-                .index_type(vk::IndexType::UINT32)
-                .index_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.index_buffer.device_address(),
-                })
-                .vertex_format(vk::Format::R32G32B32_SFLOAT)
-                .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.vertex_buffer.device_address(),
-                })
-                .max_vertex(model.max_vertex_index)
-                .vertex_stride(std::mem::size_of::<Vertex>() as u64)
-                .transform_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: model.material_buffer.device_address(),
-                });
+        let geometries: Vec<vk::AccelerationStructureGeometryKHRBuilder> = self
+            .models
+            .iter()
+            .map(|model| {
+                let triangles = vk::AccelerationStructureGeometryTrianglesDataKHRBuilder::new()
+                    .index_type(vk::IndexType::UINT32)
+                    .index_data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: model.index_buffer.device_address(),
+                    })
+                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
+                    .vertex_data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: model.vertex_buffer.device_address(),
+                    })
+                    .max_vertex(model.max_vertex_index)
+                    .vertex_stride(std::mem::size_of::<Vertex>() as u64)
+                    .transform_data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: model.material_buffer.device_address(),
+                    });
 
-            let geometry_data = vk::AccelerationStructureGeometryDataKHR {
-                triangles: triangles.build(),
-            };
+                let geometry_data = vk::AccelerationStructureGeometryDataKHR {
+                    triangles: triangles.build(),
+                };
 
-            let geometry = vk::AccelerationStructureGeometryKHRBuilder::new()
-                .geometry_type(vk::GeometryTypeKHR::TRIANGLES_KHR)
-                .geometry(geometry_data)
-                .flags(vk::GeometryFlagsKHR::OPAQUE_KHR);
+                vk::AccelerationStructureGeometryKHRBuilder::new()
+                    .geometry_type(vk::GeometryTypeKHR::TRIANGLES_KHR)
+                    .geometry(geometry_data)
+                    .flags(vk::GeometryFlagsKHR::OPAQUE_KHR)
+            })
+            .collect();
 
-            geometries.push(geometry);
-        }
-
-        // Iterate through all models and create their BLAS, scratchpads and geometry information.
+        // Calculate the maximal sizes of the AS and the scratch pad.
         for (id, model) in self.models.iter().enumerate() {
             let query_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
                 .flags(
@@ -703,29 +705,40 @@ impl RayTracingApplication {
                 &[model.triangle_count],
             );
 
+            max_sizes.push(size_info.acceleration_structure_size);
+
+            if size_info.build_scratch_size > scratchpad_size {
+                scratchpad_size = size_info.build_scratch_size
+            }
+        }
+
+        // Create a scratch pad for the device to create the AS. We re-use it for each BLAS of a model.
+        let scratch_pad = self.device.create_buffer(&BufferDescriptor {
+            name: "AS Scratchpad",
+            usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: Default::default(),
+            queues: Default::default(),
+            size: scratchpad_size,
+            flags: None,
+        })?;
+        let scratch_pad_device_address = scratch_pad.device_address();
+
+        // Create for each model a BLAS. We do this in one command buffer each, since a BLAS creation could take a long time
+        // and this reduces the chance of timeouts and enabled to device to suspend the queue if needed (a device can only create
+        // one AS at a time anyway).
+        for (id, (model, size)) in self.models.iter().zip(max_sizes).enumerate() {
             let buffer = self.device.create_buffer(&BufferDescriptor {
-                name: "BLAS Model Buffer",
+                name: &format!("Model {} BLAS Buffer", id),
                 usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 memory_location: vk_alloc::MemoryLocation::GpuOnly,
                 sharing_mode: Default::default(),
                 queues: Default::default(),
-                size: size_info.acceleration_structure_size,
+                size,
                 flags: None,
             })?;
-
-            let scratch_pad = self.device.create_buffer(&BufferDescriptor {
-                name: "AS Scratchpad",
-                usage: vk::BufferUsageFlags::STORAGE_BUFFER
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_location: vk_alloc::MemoryLocation::GpuOnly,
-                sharing_mode: Default::default(),
-                queues: Default::default(),
-                size: size_info.build_scratch_size,
-                flags: None,
-            })?;
-            let scratch_pad_device_address = scratch_pad.device_address();
-            scratch_pads.push(scratch_pad);
 
             let creation_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
                 .buffer(buffer.raw)
@@ -733,12 +746,10 @@ impl RayTracingApplication {
 
             let structure = self
                 .device
-                .create_acceleration_structure("RT Acceleration Structure", &creation_info)?;
+                .create_acceleration_structure("Model {} BLAS", &creation_info)?;
 
             let blas = BLAS { structure, buffer };
 
-            // We could compat the BLAS by setting a flag for it. But then we would need to query the new size (vkGetQueryPoolResults), creating new AS and compact the new AS with (vkCmdCopyAccelerationStructureKHR using the vk::CopyAccelerationStructureModeKHR::COMPACT_KHR flag).
-            // TODO compact the AS.
             let geometry_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
                 .flags(
                     vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
@@ -763,49 +774,44 @@ impl RayTracingApplication {
             self.blas.push(blas);
         }
 
-        self.create_as(&mut infos, &mut ranges)
-    }
-
-    fn create_tlas(&mut self) -> Result<()> {
-        // Scratchpads needed for the generation of the AS.
-        let mut scratch_pads: Vec<asche::Buffer> = vec![];
-
-        let mut infos: Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder> = vec![];
-        let mut ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = vec![];
-
-        // Iterate through all models and create their TLAS, scratchpads and geometry information.
-        for (id, model) in self.models.iter().enumerate() {
-            // A TLAS needs to have: instance transform, hit group, blas index
-
-            // TODO
-            //self.tlas.push(tlas);
-        }
+        // Compact the BLAS.
+        self.submit_as_creation(&mut infos, &mut ranges)?;
 
         Ok(())
     }
 
-    fn create_as(
+    fn submit_as_creation(
         &mut self,
         infos: &mut Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder>,
         ranges: &mut Vec<vk::AccelerationStructureBuildRangeInfoKHR>,
     ) -> Result<()> {
-        let compute_buffer = self.compute_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
-        )?;
-        self.timeline_value += 1;
+        let mut command_buffers: Vec<ComputeCommandBuffer> = Vec::with_capacity(self.models.len());
+        for (id, _) in self.models.iter().enumerate() {
+            let compute_buffer = self.compute_pool.create_command_buffer(
+                &self.timeline,
+                self.timeline_value,
+                self.timeline_value + 1,
+            )?;
 
-        {
-            let encoder = compute_buffer.record()?;
-            encoder.build_acceleration_structures(&infos, &ranges);
+            {
+                let encoder = compute_buffer.record()?;
+                encoder.build_acceleration_structures(&infos[id..id + 1], &ranges[id..id + 1]);
+            }
+
+            command_buffers.push(compute_buffer);
+
+            self.timeline_value += 1;
         }
-        self.compute_queue.submit(&compute_buffer)?;
 
-        // We need to wait, or else the scratch pads will get deleted before the building of the AS is finished.
+        // Submit the command buffers and wait for them finishing.
+        self.compute_queue.submit_all(&command_buffers)?;
         self.timeline.wait_for_value(self.timeline_value)?;
-        self.compute_pool.reset()
+        self.compute_pool.reset()?;
+
+        Ok(())
     }
+
+    fn create_tlas(&mut self) {}
 }
 
 struct TLAS {

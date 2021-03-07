@@ -198,17 +198,17 @@ impl Device {
         context.set_object_name(
             "Compute Queue",
             vk::ObjectType::QUEUE,
-            compute_queue.inner.raw.0 as u64,
+            compute_queue.raw.0 as u64,
         )?;
         context.set_object_name(
             "Graphics Queue",
             vk::ObjectType::QUEUE,
-            graphics_queue.inner.raw.0 as u64,
+            graphics_queue.raw.0 as u64,
         )?;
         context.set_object_name(
             "Transfer Queue",
             vk::ObjectType::QUEUE,
-            transfer_queue.inner.raw.0 as u64,
+            transfer_queue.raw.0 as u64,
         )?;
 
         let mut device = Device {
@@ -365,7 +365,7 @@ impl Device {
             .swapchain
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?;
-        swapchain.queue_frame(frame, graphics_queue.inner.raw)
+        swapchain.queue_frame(frame, graphics_queue.raw)
     }
 
     /// Creates a new render pass.

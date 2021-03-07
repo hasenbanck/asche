@@ -24,14 +24,56 @@ macro_rules! impl_command_pool {
     ) => {
         #[doc = $doc]
         pub struct $pool_name {
-            inner: CommandPool,
+            /// The raw Vulkan command pool.
+            pub raw: vk::CommandPool,
+            queue_type: QueueType,
+            command_buffer_counter: u64,
+            context: Arc<Context>,
+        }
+
+        impl Drop for $pool_name {
+            fn drop(&mut self) {
+                unsafe {
+                    self.context
+                        .device
+                        .destroy_command_pool(Some(self.raw), None);
+                };
+            }
         }
 
         impl $pool_name {
             /// Creates a new command pool.
-            pub(crate) fn new(context: Arc<Context>, family_index: u32, id: u64) -> Result<Self> {
-                let inner = CommandPool::new(context, $queue_type, family_index, id)?;
-                Ok(Self { inner })
+            pub(crate) fn new(
+                context: Arc<Context>,
+                family_index: u32,
+                id: u64,
+            ) -> Result<Self> {
+                let command_pool_info =
+                    vk::CommandPoolCreateInfoBuilder::new().queue_family_index(family_index);
+
+                let raw = unsafe {
+                    context
+                        .device
+                        .create_command_pool(&command_pool_info, None, None)
+                }
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to create a command pool: {}", err);
+                    AscheError::VkResult(err)
+                })?;
+
+                context.set_object_name(
+                    &format!("Command Pool {} {}", $queue_type, id),
+                    vk::ObjectType::COMMAND_POOL,
+                    raw.0,
+                )?;
+
+                Ok(Self {
+                    context,
+                    raw,
+                    queue_type: $queue_type,
+                    command_buffer_counter: 0,
+                })
             }
 
             /// Creates a new command buffer.
@@ -41,18 +83,50 @@ macro_rules! impl_command_pool {
                 wait_value: u64,
                 signal_value: u64,
             ) -> Result<$buffer_name> {
-                let inner = self.inner
-                    .create_command_buffer(
-                        timeline_semaphore.raw,
-                        wait_value,
-                        signal_value,
-                    )?;
-                Ok($buffer_name { inner })
+                let info = vk::CommandBufferAllocateInfoBuilder::new()
+                    .command_pool(self.raw)
+                    .level(vk::CommandBufferLevel::PRIMARY)
+                    .command_buffer_count(1);
+
+                let command_buffers = unsafe { self.context.device.allocate_command_buffers(&info) }
+                    .map_err(|err| {
+                        #[cfg(feature = "tracing")]
+                        error!("Unable to allocate a command buffer: {}", err);
+                        AscheError::VkResult(err)
+                    })?;
+
+                self.context.set_object_name(
+                    &format!(
+                        "Command Buffer {} {}",
+                        self.queue_type, self.command_buffer_counter
+                    ),
+                    vk::ObjectType::COMMAND_BUFFER,
+                    command_buffers[0].0 as u64,
+                )?;
+
+                let command_buffer = $buffer_name::new(
+                    self.context.clone(),
+                    self.raw,
+                    command_buffers[0],
+                    timeline_semaphore.raw,
+                    wait_value,
+                    signal_value,
+                );
+
+                self.command_buffer_counter += 1;
+
+                Ok(command_buffer)
             }
 
             /// Resets a command pool.
             pub fn reset(&self) -> Result<()> {
-                self.inner.reset()
+                unsafe { self.context.device.reset_command_pool(self.raw, None) }.map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to reset a command pool: {}", err);
+                    AscheError::VkResult(err)
+                })?;
+
+                Ok(())
             }
         }
     };
@@ -73,118 +147,6 @@ impl_command_pool!(
     TransferCommandPool => TransferCommandBuffer, QueueType::Transfer
 );
 
-/// A wrapped command pool.
-struct CommandPool {
-    raw: vk::CommandPool,
-    queue_type: QueueType,
-    command_buffer_counter: u64,
-    context: Arc<Context>,
-}
-
-impl Drop for CommandPool {
-    fn drop(&mut self) {
-        unsafe {
-            self.context
-                .device
-                .destroy_command_pool(Some(self.raw), None);
-        };
-    }
-}
-
-impl CommandPool {
-    /// Creates a new command pool.
-    pub(crate) fn new(
-        context: Arc<Context>,
-        queue_type: QueueType,
-        family_index: u32,
-        id: u64,
-    ) -> Result<Self> {
-        let command_pool_info =
-            vk::CommandPoolCreateInfoBuilder::new().queue_family_index(family_index);
-
-        let raw = unsafe {
-            context
-                .device
-                .create_command_pool(&command_pool_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a command pool: {}", err);
-            AscheError::VkResult(err)
-        })?;
-
-        context.set_object_name(
-            &format!("Command Pool {} {}", queue_type, id),
-            vk::ObjectType::COMMAND_POOL,
-            raw.0,
-        )?;
-
-        Ok(Self {
-            context,
-            raw,
-            queue_type,
-            command_buffer_counter: 0,
-        })
-    }
-
-    /// Creates a new command buffer.
-    #[inline]
-    pub fn create_command_buffer(
-        &mut self,
-        timeline_semaphore: vk::Semaphore,
-        wait_value: u64,
-        signal_value: u64,
-    ) -> Result<CommandBuffer> {
-        let info = vk::CommandBufferAllocateInfoBuilder::new()
-            .command_pool(self.raw)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-
-        let command_buffers = unsafe { self.context.device.allocate_command_buffers(&info) }
-            .map_err(|err| {
-                #[cfg(feature = "tracing")]
-                error!("Unable to allocate a command buffer: {}", err);
-                AscheError::VkResult(err)
-            })?;
-
-        self.context.set_object_name(
-            &format!(
-                "Command Buffer {} {}",
-                self.queue_type, self.command_buffer_counter
-            ),
-            vk::ObjectType::COMMAND_BUFFER,
-            command_buffers[0].0 as u64,
-        )?;
-
-        let command_buffer = CommandBuffer::new(
-            self.context.clone(),
-            self.raw,
-            command_buffers[0],
-            timeline_semaphore,
-            wait_value,
-            signal_value,
-        );
-
-        self.command_buffer_counter += 1;
-
-        Ok(command_buffer)
-    }
-
-    /// Resets a command pool.
-    #[inline]
-    pub fn reset(&self) -> Result<()> {
-        unsafe { self.context.device.reset_command_pool(self.raw, None) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to reset a command pool: {}", err);
-            AscheError::VkResult(err)
-        })?;
-
-        Ok(())
-    }
-}
-
-/// TODO the encoder and buffer could merge now... But this pattern forces the user to call begin/end...
-
 macro_rules! impl_command_buffer {
     (
         #[doc = $doc:expr]
@@ -193,15 +155,39 @@ macro_rules! impl_command_buffer {
 
         #[doc = $doc]
         pub struct $buffer_name {
-            pub(crate) inner: CommandBuffer,
+            /// The raw Vulkan command buffer.
+            pub raw: vk::CommandBuffer,
+            pub(crate) timeline_semaphore: vk::Semaphore,
+            pub(crate) wait_value: u64,
+            pub(crate) signal_value: u64,
+            pool: vk::CommandPool,
+            context: Arc<Context>,
         }
 
         impl $buffer_name {
+            pub(crate) fn new(
+                context: Arc<Context>,
+                pool: vk::CommandPool,
+                buffer: vk::CommandBuffer,
+                timeline_semaphore: vk::Semaphore,
+                wait_value: u64,
+                signal_value: u64,
+            ) -> Self {
+                Self {
+                    context,
+                    pool,
+                    raw: buffer,
+                    timeline_semaphore,
+                    wait_value,
+                    signal_value,
+                }
+            }
+
             /// Begins to record the command buffer. Encoder will finish recording on drop.
             pub fn record(&self) -> Result<$encoder_name> {
                 let encoder = $encoder_name {
-                    context: &self.inner.context,
-                    buffer: self.inner.buffer
+                    context: &self.context,
+                    buffer: self.raw
                 };
                 encoder.begin()?;
                 Ok(encoder)
@@ -209,16 +195,24 @@ macro_rules! impl_command_buffer {
 
             /// Sets the timeline semaphore of a command buffer.
             pub fn set_timeline_semaphore(
-                    &mut self,
-                    timeline_semaphore: TimelineSemaphore,
-                    wait_value: u64,
-                    signal_value: u64,
+                &mut self,
+                timeline_semaphore: TimelineSemaphore,
+                wait_value: u64,
+                signal_value: u64,
             ) {
-                self.inner.set_timeline_semaphore(
-                    timeline_semaphore.raw,
-                    wait_value,
-                    signal_value,
-                )
+                self.timeline_semaphore = timeline_semaphore.raw;
+                self.wait_value = wait_value;
+                self.signal_value = signal_value;
+            }
+        }
+
+        impl Drop for $buffer_name {
+            fn drop(&mut self) {
+                unsafe {
+                    self.context
+                        .device
+                        .free_command_buffers(self.pool, &[self.raw])
+                };
             }
         }
     }
@@ -238,58 +232,6 @@ impl_command_buffer!(
     #[doc = "A command buffer for the transfer queue. Command buffer need to be reset using the parent pool."]
     TransferCommandBuffer => TransferCommandEncoder
 );
-
-/// A wrapped command buffer.
-pub(crate) struct CommandBuffer {
-    pool: vk::CommandPool,
-    pub(crate) buffer: vk::CommandBuffer,
-    pub(crate) timeline_semaphore: vk::Semaphore,
-    pub(crate) wait_value: u64,
-    pub(crate) signal_value: u64,
-    context: Arc<Context>,
-}
-
-impl CommandBuffer {
-    pub(crate) fn new(
-        context: Arc<Context>,
-        pool: vk::CommandPool,
-        buffer: vk::CommandBuffer,
-        timeline_semaphore: vk::Semaphore,
-        wait_value: u64,
-        signal_value: u64,
-    ) -> Self {
-        Self {
-            context,
-            pool,
-            buffer,
-            timeline_semaphore,
-            wait_value,
-            signal_value,
-        }
-    }
-
-    #[inline]
-    fn set_timeline_semaphore(
-        &mut self,
-        timeline_semaphore: vk::Semaphore,
-        wait_value: u64,
-        signal_value: u64,
-    ) {
-        self.timeline_semaphore = timeline_semaphore;
-        self.wait_value = wait_value;
-        self.signal_value = signal_value;
-    }
-}
-
-impl Drop for CommandBuffer {
-    fn drop(&mut self) {
-        unsafe {
-            self.context
-                .device
-                .free_command_buffers(self.pool, &[self.buffer])
-        };
-    }
-}
 
 /// Used to encode command for a compute command buffer.
 pub struct ComputeCommandEncoder<'a> {
