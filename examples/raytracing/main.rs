@@ -1,3 +1,5 @@
+use std::alloc::alloc;
+
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
@@ -754,7 +756,7 @@ impl RayTracingApplication {
         }
 
         let compacted_sizes = self.create_as_on_device(&infos, &ranges)?;
-        self.compact_blas(&mut max_sizes, &compacted_sizes);
+        self.compact_blas(&mut max_sizes, &compacted_sizes)?;
 
         self.compute_pool.reset()?;
 
@@ -767,6 +769,7 @@ impl RayTracingApplication {
             self.timeline_value,
             self.timeline_value + 1,
         )?;
+        self.timeline_value += 1;
 
         let mut compacted_blas = Vec::with_capacity(self.blas.len());
         {
@@ -783,7 +786,6 @@ impl RayTracingApplication {
             }
         }
 
-        self.timeline_value += 1;
         self.compute_queue.submit(&command_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
@@ -848,6 +850,7 @@ impl RayTracingApplication {
                 self.timeline_value,
                 self.timeline_value + 1,
             )?;
+            self.timeline_value += 1;
 
             {
                 let encoder = compute_buffer.record()?;
@@ -862,8 +865,6 @@ impl RayTracingApplication {
             }
 
             command_buffers.push(compute_buffer);
-
-            self.timeline_value += 1;
         }
 
         // Submit the command buffers and wait for them finishing.
@@ -890,14 +891,16 @@ impl RayTracingApplication {
             self.timeline_value,
             self.timeline_value + 1,
         )?;
+        self.timeline_value += 1;
 
-        let instance_data: Vec<vk::AccelerationStructureInstanceKHR> = self
+        // TODO vk::AccelerationStructureInstanceKHR could use bytemuck support!
+        let instance_data: Vec<AccelerationStructureInstance> = self
             .blas
             .iter()
             .enumerate()
             .map(|(id, blas)| {
                 #[rustfmt::skip]
-                    let matrix: [[f32; 4]; 3] = [
+                let matrix: [[f32; 4]; 3] = [
                     [1.0, 0.0, 0.0, 0.0],
                     [0.0, 1.0, 0.0, 0.0],
                     [0.0, 0.0, 1.0, 0.0],
@@ -905,31 +908,25 @@ impl RayTracingApplication {
 
                 let address: vk::DeviceAddress = blas.structure.raw.0;
 
-                vk::AccelerationStructureInstanceKHRBuilder::new()
-                    .transform(vk::TransformMatrixKHR { matrix })
-                    .instance_custom_index(id as u32)
-                    .instance_shader_binding_table_record_offset(0) // "HitGroupId"
-                    .acceleration_structure_reference(address)
-                    .mask(u32::MAX)
-                    .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
-                    .build()
+                AccelerationStructureInstance {
+                    transform: vk::TransformMatrixKHR { matrix },
+                    instance_custom_index: id as u32,
+                    mask: u32::MAX,
+                    instance_shader_binding_table_record_offset: 0, // "HitGroupId"
+                    flags: vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR,
+                    acceleration_structure_reference: address,
+                }
             })
             .collect();
 
-        let size = (instance_data.len()
-            * std::mem::size_of::<vk::AccelerationStructureInstanceKHR>())
-            as u64;
+        let instance_count = instance_data.len() as u32;
 
-        let buffer = self.device.create_buffer(&BufferDescriptor {
-            name: "Model TLAS Instances",
-            usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+        let buffer = self.create_buffer(
+            "Model TLAS Instances",
+            &cast_slice(instance_data.as_slice()),
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            sharing_mode: Default::default(),
-            queues: Default::default(),
-            size,
-            flags: None,
-        })?;
+        )?;
 
         let geometry_instance_data =
             vk::AccelerationStructureGeometryInstancesDataKHRBuilder::new()
@@ -954,7 +951,7 @@ impl RayTracingApplication {
         let size_info = self.device.acceleration_structure_build_sizes(
             vk::AccelerationStructureBuildTypeKHR::DEVICE_KHR,
             &query_info,
-            &[instance_data.len() as u32],
+            &[instance_count],
         );
 
         let buffer = self.device.create_buffer(&BufferDescriptor {
@@ -1000,7 +997,7 @@ impl RayTracingApplication {
             })];
 
         let ranges = [vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
-            .primitive_count(instance_data.len() as u32)
+            .primitive_count(instance_count)
             .primitive_offset(0)
             .transform_offset(0)
             .first_vertex(0)
@@ -1011,11 +1008,9 @@ impl RayTracingApplication {
             encoder.build_acceleration_structures(&geometry_infos, &ranges);
         }
 
-        self.timeline_value += 1;
         self.compute_queue.submit(&compute_buffer)?;
+        // TODO I get a timeout error here.
         self.timeline.wait_for_value(self.timeline_value)?;
-
-        // TODO VK_ERROR_DEVICE_LOST. Something is wrong again.
 
         self.tlas.push(TLAS { structure, buffer });
 
@@ -1023,13 +1018,20 @@ impl RayTracingApplication {
     }
 }
 
-struct InstanceData {
-    transform: Mat4,
-    instance_custom_id: u32,
-    blas_id: u32,
-    hit_group_id: u32,
-    flags: vk::GeometryInstanceFlagBitsKHR,
+// Hard copy of https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkAccelerationStructureInstanceKHR.html for bytemuck support.
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct AccelerationStructureInstance {
+    pub transform: vk::TransformMatrixKHR,
+    pub instance_custom_index: u32,
+    pub mask: u32,
+    pub instance_shader_binding_table_record_offset: u32,
+    pub flags: vk::GeometryInstanceFlagsKHR,
+    pub acceleration_structure_reference: u64,
 }
+
+unsafe impl Pod for AccelerationStructureInstance {}
+unsafe impl Zeroable for AccelerationStructureInstance {}
 
 struct TLAS {
     structure: asche::AccelerationStructure,
