@@ -20,6 +20,7 @@ pub use {
     error::AscheError,
     image::{Image, ImageView, Sampler},
     instance::{Instance, InstanceConfiguration},
+    query::QueryPool,
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     semaphore::TimelineSemaphore,
     swapchain::SwapchainFrame,
@@ -35,6 +36,7 @@ pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod image;
 pub(crate) mod instance;
+pub(crate) mod query;
 pub(crate) mod queue;
 pub(crate) mod semaphore;
 pub(crate) mod swapchain;

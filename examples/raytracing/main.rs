@@ -1,5 +1,7 @@
-use bytemuck::{cast_slice, Pod, Zeroable};
+use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
+#[cfg(feature = "tracing")]
+use tracing::info;
 
 use asche::{BufferDescriptor, ComputeCommandBuffer};
 
@@ -582,7 +584,7 @@ impl RayTracingApplication {
             })
         }
 
-        self.create_blas()?;
+        self.init_blas()?;
 
         //TODO
         //self.create_tlas()?;
@@ -648,7 +650,7 @@ impl RayTracingApplication {
         Ok(dst_buffer)
     }
 
-    fn create_blas(&mut self) -> Result<()> {
+    fn init_blas(&mut self) -> Result<()> {
         // We need to assemble all information that is needed to build the AS so that it outlives the loop were we assemble the command buffers.
         let mut scratchpad_size: u64 = 0;
         let mut max_sizes: Vec<u64> = Vec::with_capacity(self.models.len());
@@ -728,28 +730,8 @@ impl RayTracingApplication {
         // Create for each model a BLAS. We do this in one command buffer each, since a BLAS creation could take a long time
         // and this reduces the chance of timeouts and enabled to device to suspend the queue if needed (a device can only create
         // one AS at a time anyway).
-        for (id, (model, size)) in self.models.iter().zip(max_sizes).enumerate() {
-            let buffer = self.device.create_buffer(&BufferDescriptor {
-                name: &format!("Model {} BLAS Buffer", id),
-                usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_location: vk_alloc::MemoryLocation::GpuOnly,
-                sharing_mode: Default::default(),
-                queues: Default::default(),
-                size,
-                flags: None,
-            })?;
-
-            let creation_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
-                .buffer(buffer.raw)
-                ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
-
-            let structure = self
-                .device
-                .create_acceleration_structure("Model {} BLAS", &creation_info)?;
-
-            let blas = BLAS { structure, buffer };
-
+        for (id, (model, size)) in self.models.iter().zip(&max_sizes).enumerate() {
+            let blas = self.create_new_blas(&id, *size)?;
             let geometry_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
                 .flags(
                     vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION_KHR
@@ -774,17 +756,94 @@ impl RayTracingApplication {
             self.blas.push(blas);
         }
 
-        // Compact the BLAS.
-        self.submit_as_creation(&mut infos, &mut ranges)?;
+        let compacted_sizes = self.create_as_on_device(&infos, &ranges)?;
+        self.compact_blas(&mut max_sizes, &compacted_sizes);
+
+        self.compute_pool.reset()?;
 
         Ok(())
     }
 
-    fn submit_as_creation(
+    fn compact_blas(&mut self, max_sizes: &mut [u64], compacted_sizes: &[u64]) -> Result<()> {
+        let command_buffer = self.compute_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
+
+        let mut compacted_blas = Vec::with_capacity(self.blas.len());
+        {
+            let encoder = command_buffer.record()?;
+            for ((id, blas), compacted) in self.blas.iter().enumerate().zip(compacted_sizes) {
+                let compact_blas = self.create_new_blas(&id, *compacted)?;
+                compacted_blas.push(compact_blas);
+
+                let info = vk::CopyAccelerationStructureInfoKHRBuilder::new()
+                    .mode(vk::CopyAccelerationStructureModeKHR::COMPACT_KHR)
+                    .src(blas.structure.raw)
+                    .dst(compacted_blas[compacted_blas.len() - 1].structure.raw);
+                encoder.copy_acceleration_structure(&info);
+            }
+        }
+
+        self.timeline_value += 1;
+        self.compute_queue.submit(&command_buffer)?;
+        self.timeline.wait_for_value(self.timeline_value)?;
+
+        // Replace the old BLAS with the compacted ones.
+        self.blas = compacted_blas;
+
+        #[cfg(feature = "tracing")]
+        {
+            let max_size: u64 = max_sizes.iter().sum();
+            let compacted_size: u64 = compacted_sizes.iter().sum();
+            info!(
+                "Compacted BLAS from {} KiB to {} KiB",
+                max_size / 1024,
+                compacted_size / 1024
+            );
+        }
+
+        Ok(())
+    }
+
+    fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<BLAS> {
+        let buffer = self.device.create_buffer(&BufferDescriptor {
+            name: &format!("Model {} BLAS Buffer", id),
+            usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: Default::default(),
+            queues: Default::default(),
+            size: compacted,
+            flags: None,
+        })?;
+
+        let creation_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
+            .buffer(buffer.raw)
+            .size(compacted)
+            ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
+
+        let structure = self
+            .device
+            .create_acceleration_structure("Model {} BLAS", &creation_info)?;
+
+        Ok(BLAS { structure, buffer })
+    }
+
+    // Returns a query pool with the compacted sized.
+    fn create_as_on_device(
         &mut self,
-        infos: &mut Vec<vk::AccelerationStructureBuildGeometryInfoKHRBuilder>,
-        ranges: &mut Vec<vk::AccelerationStructureBuildRangeInfoKHR>,
-    ) -> Result<()> {
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
+        ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) -> Result<Vec<u64>> {
+        let query_pool = self.device.create_query_pool(
+            "BLAS Compacted Size Query Pool",
+            vk::QueryPoolCreateInfoBuilder::new()
+                .query_type(vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR)
+                .query_count(self.models.len() as u32),
+        )?;
+
         let mut command_buffers: Vec<ComputeCommandBuffer> = Vec::with_capacity(self.models.len());
         for (id, _) in self.models.iter().enumerate() {
             let compute_buffer = self.compute_pool.create_command_buffer(
@@ -796,6 +855,13 @@ impl RayTracingApplication {
             {
                 let encoder = compute_buffer.record()?;
                 encoder.build_acceleration_structures(&infos[id..id + 1], &ranges[id..id + 1]);
+                encoder.reset_query_pool(&query_pool, id as u32, 1);
+                encoder.write_acceleration_structures_properties(
+                    &self.blas[id].structure,
+                    vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
+                    &query_pool,
+                    id as u32,
+                )
             }
 
             command_buffers.push(compute_buffer);
@@ -806,12 +872,22 @@ impl RayTracingApplication {
         // Submit the command buffers and wait for them finishing.
         self.compute_queue.submit_all(&command_buffers)?;
         self.timeline.wait_for_value(self.timeline_value)?;
-        self.compute_pool.reset()?;
 
-        Ok(())
+        // Get the compacted sizes
+        let size = self.models.len();
+        let mut compact_sizes = vec![0; size];
+        query_pool.results(
+            0,
+            size as u32,
+            cast_slice_mut(compact_sizes.as_mut_slice()),
+            std::mem::size_of::<u64>() as u64,
+            Some(vk::QueryResultFlags::WAIT),
+        )?;
+
+        Ok(compact_sizes)
     }
 
-    fn create_tlas(&mut self) {}
+    fn init_tlas(&mut self) {}
 }
 
 struct TLAS {

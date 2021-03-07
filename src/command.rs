@@ -10,6 +10,7 @@ use tracing::error;
 
 use crate::context::Context;
 use crate::descriptor::DescriptorSet;
+use crate::query::QueryPool;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
     AccelerationStructure, AscheError, Buffer, ComputePipeline, GraphicsPipeline, Image,
@@ -489,7 +490,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         &self,
         acceleration_structure: &AccelerationStructure,
         query_type: vk::QueryType,
-        query_pool: vk::QueryPool,
+        query_pool: &QueryPool,
         first_query: u32,
     ) {
         let acceleration_structures = [acceleration_structure.raw];
@@ -500,9 +501,23 @@ impl<'a> ComputeCommandEncoder<'a> {
                     self.buffer,
                     &acceleration_structures,
                     query_type,
-                    query_pool,
+                    query_pool.raw,
                     first_query,
                 )
+        };
+    }
+
+    /// Reset queries in a query pool.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html
+    pub fn reset_query_pool(&self, query_pool: &QueryPool, first_query: u32, query_count: u32) {
+        unsafe {
+            self.context.device.cmd_reset_query_pool(
+                self.buffer,
+                query_pool.raw,
+                first_query,
+                query_count,
+            )
         };
     }
 }
@@ -750,6 +765,20 @@ impl<'a> GraphicsCommandEncoder<'a> {
                 width,
                 height,
                 depth,
+            )
+        };
+    }
+
+    /// Reset queries in a query pool.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html
+    pub fn reset_query_pool(&self, query_pool: &QueryPool, first_query: u32, query_count: u32) {
+        unsafe {
+            self.context.device.cmd_reset_query_pool(
+                self.buffer,
+                query_pool.raw,
+                first_query,
+                query_count,
             )
         };
     }

@@ -8,6 +8,7 @@ use tracing::{error, info};
 
 use crate::context::Context;
 use crate::instance::Instance;
+use crate::query::QueryPool;
 use crate::semaphore::TimelineSemaphore;
 use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
@@ -866,6 +867,26 @@ impl Device {
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
 
         Ok(TimelineSemaphore::new(self.context.clone(), raw))
+    }
+
+    /// Creates a new query pool.
+    pub fn create_query_pool(
+        &mut self,
+        name: &str,
+        query_pool_info: vk::QueryPoolCreateInfoBuilder,
+    ) -> Result<QueryPool> {
+        let info = query_pool_info.build();
+        let query_pool = unsafe { self.context.device.create_query_pool(&info, None, None) }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a query pool: {}", err);
+                AscheError::VkResult(err)
+            })?;
+
+        self.context
+            .set_object_name(name, vk::ObjectType::QUERY_POOL, query_pool.0)?;
+
+        Ok(QueryPool::new(query_pool, self.context.clone()))
     }
 
     /// Flush mapped memory. Used for CPU->GPU transfers.
