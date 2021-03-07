@@ -2,6 +2,7 @@ use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
 use tracing::info;
+use ultraviolet::Mat4;
 
 use asche::{BufferDescriptor, ComputeCommandBuffer};
 
@@ -306,8 +307,6 @@ impl RayTracingApplication {
 
         // RT Pipeline
         let shader_stages = vec![raygen_stage, miss_stage, close_hit_stage];
-
-        // TODO set a sensible limit
         let max_bounce = raytrace_properties.max_ray_recursion_depth.min(2);
 
         let groups = [
@@ -585,9 +584,7 @@ impl RayTracingApplication {
         }
 
         self.init_blas()?;
-
-        //TODO
-        //self.create_tlas()?;
+        self.init_tlas()?;
 
         Ok(())
     }
@@ -702,7 +699,7 @@ impl RayTracingApplication {
                 ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
 
             let size_info = self.device.acceleration_structure_build_sizes(
-                vk::AccelerationStructureBuildTypeKHR::HOST_KHR,
+                vk::AccelerationStructureBuildTypeKHR::DEVICE_KHR,
                 &query_info,
                 &[model.triangle_count],
             );
@@ -887,7 +884,151 @@ impl RayTracingApplication {
         Ok(compact_sizes)
     }
 
-    fn init_tlas(&mut self) {}
+    fn init_tlas(&mut self) -> Result<()> {
+        let compute_buffer = self.compute_pool.create_command_buffer(
+            &self.timeline,
+            self.timeline_value,
+            self.timeline_value + 1,
+        )?;
+
+        let instance_data: Vec<vk::AccelerationStructureInstanceKHR> = self
+            .blas
+            .iter()
+            .enumerate()
+            .map(|(id, blas)| {
+                #[rustfmt::skip]
+                    let matrix: [[f32; 4]; 3] = [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                ];
+
+                let address: vk::DeviceAddress = blas.structure.raw.0;
+
+                vk::AccelerationStructureInstanceKHRBuilder::new()
+                    .transform(vk::TransformMatrixKHR { matrix })
+                    .instance_custom_index(id as u32)
+                    .instance_shader_binding_table_record_offset(0) // "HitGroupId"
+                    .acceleration_structure_reference(address)
+                    .mask(u32::MAX)
+                    .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
+                    .build()
+            })
+            .collect();
+
+        let size = (instance_data.len()
+            * std::mem::size_of::<vk::AccelerationStructureInstanceKHR>())
+            as u64;
+
+        let buffer = self.device.create_buffer(&BufferDescriptor {
+            name: "Model TLAS Instances",
+            usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: Default::default(),
+            queues: Default::default(),
+            size,
+            flags: None,
+        })?;
+
+        let geometry_instance_data =
+            vk::AccelerationStructureGeometryInstancesDataKHRBuilder::new()
+                .data(vk::DeviceOrHostAddressConstKHR {
+                    device_address: buffer.device_address(),
+                })
+                .array_of_pointers(false);
+
+        let geometries = [vk::AccelerationStructureGeometryKHRBuilder::new()
+            .geometry_type(vk::GeometryTypeKHR::INSTANCES_KHR)
+            .geometry(vk::AccelerationStructureGeometryDataKHR {
+                instances: geometry_instance_data.build(),
+            })];
+
+        // Get the build size
+        let query_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR)
+            .geometries(&geometries)
+            .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+            ._type(vk::AccelerationStructureTypeKHR::TOP_LEVEL_KHR);
+
+        let size_info = self.device.acceleration_structure_build_sizes(
+            vk::AccelerationStructureBuildTypeKHR::DEVICE_KHR,
+            &query_info,
+            &[instance_data.len() as u32],
+        );
+
+        let buffer = self.device.create_buffer(&BufferDescriptor {
+            name: "Model TLAS Buffer",
+            usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: Default::default(),
+            queues: Default::default(),
+            size: size_info.acceleration_structure_size,
+            flags: None,
+        })?;
+
+        let scratchpad = self.device.create_buffer(&BufferDescriptor {
+            name: "Model TLAS Scratchpad",
+            usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: Default::default(),
+            queues: Default::default(),
+            size: size_info.build_scratch_size,
+            flags: None,
+        })?;
+
+        let creation_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
+            .buffer(buffer.raw)
+            .size(size_info.acceleration_structure_size)
+            ._type(vk::AccelerationStructureTypeKHR::TOP_LEVEL_KHR);
+
+        let structure = self
+            .device
+            .create_acceleration_structure("Model TLAS", &creation_info)?;
+
+        let geometry_infos = [vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR)
+            .geometries(&geometries)
+            .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+            ._type(vk::AccelerationStructureTypeKHR::TOP_LEVEL_KHR)
+            .src_acceleration_structure(vk::AccelerationStructureKHR::null())
+            .dst_acceleration_structure(structure.raw)
+            .scratch_data(vk::DeviceOrHostAddressKHR {
+                device_address: scratchpad.device_address(),
+            })];
+
+        let ranges = [vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
+            .primitive_count(instance_data.len() as u32)
+            .primitive_offset(0)
+            .transform_offset(0)
+            .first_vertex(0)
+            .build()];
+
+        {
+            let encoder = compute_buffer.record()?;
+            encoder.build_acceleration_structures(&geometry_infos, &ranges);
+        }
+
+        self.timeline_value += 1;
+        self.compute_queue.submit(&compute_buffer)?;
+        self.timeline.wait_for_value(self.timeline_value)?;
+
+        // TODO VK_ERROR_DEVICE_LOST. Something is wrong again.
+
+        self.tlas.push(TLAS { structure, buffer });
+
+        Ok(())
+    }
+}
+
+struct InstanceData {
+    transform: Mat4,
+    instance_custom_id: u32,
+    blas_id: u32,
+    hit_group_id: u32,
+    flags: vk::GeometryInstanceFlagBitsKHR,
 }
 
 struct TLAS {
