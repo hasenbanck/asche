@@ -1201,6 +1201,21 @@ impl Device {
             AscheError::VkResult(err)
         })
     }
+
+    /// Update the contents of a descriptor set object.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkUpdateDescriptorSets.html
+    pub fn update_descriptor_sets(
+        &self,
+        descriptor_writes: &[vk::WriteDescriptorSetBuilder],
+        descriptor_copies: &[vk::CopyDescriptorSetBuilder],
+    ) {
+        unsafe {
+            self.context
+                .device
+                .update_descriptor_sets(descriptor_writes, descriptor_copies)
+        }
+    }
 }
 
 fn query_support_resizable_bar(

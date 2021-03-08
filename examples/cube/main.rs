@@ -621,15 +621,16 @@ impl Application {
             .descriptor_pool
             .create_descriptor_set("Cube Descriptor Set", &self.descriptor_set_layout)?;
 
-        let texture = &self.textures[0];
-        set.update(&asche::UpdateDescriptorSetDescriptor {
-            binding: 0,
-            update: asche::DescriptorSetUpdate::CombinedImageSampler {
-                sampler: &self.sampler,
-                image_view: &texture.view,
-                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            },
-        });
+        let image_info = [vk::DescriptorImageInfoBuilder::new()
+            .sampler(self.sampler.raw)
+            .image_view(self.textures[0].view.raw)
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
+        let write = vk::WriteDescriptorSetBuilder::new()
+            .dst_set(set.raw)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&image_info);
+        self.device.update_descriptor_sets(&[write], &[]);
 
         {
             let encoder = graphics_buffer.record()?;

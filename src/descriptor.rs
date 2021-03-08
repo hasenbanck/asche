@@ -4,7 +4,7 @@ use erupt::vk;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
-use crate::{AscheError, Context, DescriptorSetUpdate, Result, UpdateDescriptorSetDescriptor};
+use crate::{AscheError, Context, Result};
 
 /// Wraps a descriptor pool.
 pub struct DescriptorPool {
@@ -104,113 +104,6 @@ pub struct DescriptorSet {
 }
 
 impl DescriptorSet {
-    /// Creates a new descriptor set with the given `DescriptorSetLayout``.
-    pub fn update(&self, descriptor: &UpdateDescriptorSetDescriptor) {
-        let write = vk::WriteDescriptorSetBuilder::new().dst_set(self.raw);
-
-        match descriptor.update {
-            DescriptorSetUpdate::Sampler { .. } => {
-                unimplemented!("Not implemented yet.")
-            }
-            DescriptorSetUpdate::CombinedImageSampler {
-                sampler,
-                image_view,
-                image_layout,
-            } => {
-                let image_info = vk::DescriptorImageInfoBuilder::new()
-                    .image_layout(image_layout)
-                    .image_view(image_view.raw)
-                    .sampler(sampler.raw);
-                self.inner_update(
-                    write
-                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        .image_info(&[image_info]),
-                );
-            }
-            DescriptorSetUpdate::SampledImage { .. } => {
-                unimplemented!("Not implemented yet.")
-            }
-            DescriptorSetUpdate::StorageImage { .. } => {
-                unimplemented!("Not implemented yet.")
-            }
-            DescriptorSetUpdate::UniformTexelBuffer { .. } => {
-                unimplemented!("Not implemented yet.")
-            }
-            DescriptorSetUpdate::StorageTexelBuffer { .. } => {
-                unimplemented!("Not implemented yet.")
-            }
-            DescriptorSetUpdate::UniformBuffer {
-                buffer,
-                offset,
-                range,
-            } => {
-                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                    .buffer(buffer.raw)
-                    .offset(offset)
-                    .range(range);
-                self.inner_update(
-                    write
-                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                        .buffer_info(&[buffer_info]),
-                );
-            }
-            DescriptorSetUpdate::StorageBuffer {
-                buffer,
-                offset,
-                range,
-            } => {
-                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                    .buffer(buffer.raw)
-                    .offset(offset)
-                    .range(range);
-                self.inner_update(
-                    write
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(&[buffer_info]),
-                );
-            }
-            DescriptorSetUpdate::UniformBufferDynamic {
-                buffer,
-                offset,
-                range,
-            } => {
-                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                    .buffer(buffer.raw)
-                    .offset(offset)
-                    .range(range);
-                self.inner_update(
-                    write
-                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                        .buffer_info(&[buffer_info]),
-                );
-            }
-            DescriptorSetUpdate::StorageBufferDynamic {
-                buffer,
-                offset,
-                range,
-            } => {
-                let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                    .buffer(buffer.raw)
-                    .offset(offset)
-                    .range(range);
-                self.inner_update(
-                    write
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
-                        .buffer_info(&[buffer_info]),
-                );
-            }
-            DescriptorSetUpdate::InputAttachment { .. } => {
-                unimplemented!("Not implemented yet.")
-            }
-        }
-    }
-
-    fn inner_update(&self, writes: vk::WriteDescriptorSetBuilder) {
-        unsafe {
-            self.context.device.update_descriptor_sets(&[writes], &[]);
-        };
-    }
-
     /// Resets the descriptor set. Needs to be created from a pool with the
     /// `vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET` flag set.
     pub fn reset(&mut self) -> Result<()> {

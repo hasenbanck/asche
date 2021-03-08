@@ -158,14 +158,17 @@ impl Application {
             .descriptor_pool
             .create_descriptor_set("Compute Descriptor Set", &self.descriptor_set_layout)?;
 
-        set.update(&asche::UpdateDescriptorSetDescriptor {
-            binding: 0,
-            update: asche::DescriptorSetUpdate::StorageBuffer {
-                buffer: &buffer,
-                offset: 0,
-                range: DATA_SIZE,
-            },
-        });
+        let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(buffer.raw)
+            .offset(0)
+            .range(DATA_SIZE)];
+        let write = vk::WriteDescriptorSetBuilder::new()
+            .dst_set(set.raw)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(&buffer_info);
+        self.device.update_descriptor_sets(&[write], &[]);
+
         {
             let encoder = compute_buffer.record()?;
             encoder.bind_pipeline(&self.pipeline);
