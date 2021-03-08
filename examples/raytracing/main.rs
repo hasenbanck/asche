@@ -886,7 +886,6 @@ impl RayTracingApplication {
     }
 
     fn init_tlas(&mut self) -> Result<()> {
-        // TODO vk::AccelerationStructureInstanceKHR could use bytemuck support!
         let instance_data: Vec<AccelerationStructureInstance> = self
             .blas
             .iter()
@@ -901,14 +900,22 @@ impl RayTracingApplication {
 
                 let address: vk::DeviceAddress = blas.structure.raw.0;
 
-                AccelerationStructureInstance {
+                let flags: u32 =
+                    vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR.bits();
+                let hit_group_id: u32 = 0;
+
+                let ici = (id as u32 & 0x00FFFFFF) | (u32::MAX & 0xFF) << 24;
+                let isb = (hit_group_id & 0x00FFFFFF) | (flags & 0xFF) << 24;
+                let asi = AccelerationStructureInstance {
                     transform: vk::TransformMatrixKHR { matrix },
-                    instance_custom_index: id as u32,
-                    mask: u32::MAX,
-                    instance_shader_binding_table_record_offset: 0, // "HitGroupId"
-                    flags: vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR,
+                    instance_custom_index_and_mask: ici,
+                    instance_shader_binding_table_record_offset_and_flags: isb,
                     acceleration_structure_reference: address,
-                }
+                };
+
+                dbg!(asi);
+
+                asi
             })
             .collect();
 
@@ -1018,15 +1025,13 @@ impl RayTracingApplication {
     }
 }
 
-// Hard copy of https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkAccelerationStructureInstanceKHR.html for bytemuck support.
-#[derive(Copy, Clone)]
+// Hard copy with a workaround for following issue: https://gitlab.com/Friz64/erupt/-/issues/10
 #[repr(C)]
+#[derive(Copy, Clone, Debug)]
 pub struct AccelerationStructureInstance {
     pub transform: vk::TransformMatrixKHR,
-    pub instance_custom_index: u32,
-    pub mask: u32,
-    pub instance_shader_binding_table_record_offset: u32,
-    pub flags: vk::GeometryInstanceFlagsKHR,
+    pub instance_custom_index_and_mask: u32,
+    pub instance_shader_binding_table_record_offset_and_flags: u32,
     pub acceleration_structure_reference: u64,
 }
 
