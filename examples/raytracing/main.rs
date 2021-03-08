@@ -165,11 +165,7 @@ impl RayTracingApplication {
             postprocess_descriptor_set,
             postprocess_pipeline_layout,
             postprocess_pipeline,
-        ) = RayTracingApplication::create_postprocess_renderpass(
-            &mut device,
-            &offscreen_attachment,
-            &sampler,
-        )?;
+        ) = RayTracingApplication::create_postprocess_renderpass(&mut device)?;
 
         let timeline_value = 0;
         let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
@@ -422,8 +418,6 @@ impl RayTracingApplication {
 
     fn create_postprocess_renderpass(
         device: &mut asche::Device,
-        offscreen_attachment: &Texture,
-        sampler: &asche::Sampler,
     ) -> Result<(
         asche::RenderPass,
         asche::DescriptorPool,
@@ -1321,6 +1315,17 @@ impl Texture {
     }
 }
 
+/// Each model has exactly one instance for this simple example.
+struct Model {
+    index_count: u32,
+    vertex_count: u32,
+    tlas_index: u32,
+    blas_index: u32,
+    material_buffer: asche::Buffer,
+    vertex_buffer: asche::Buffer,
+    index_buffer: asche::Buffer,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct CameraUniforms {
@@ -1345,17 +1350,6 @@ struct LightUniforms {
 unsafe impl Pod for LightUniforms {}
 
 unsafe impl Zeroable for LightUniforms {}
-
-/// Each model has exactly one instance for this simple example.
-struct Model {
-    index_count: u32,
-    vertex_count: u32,
-    tlas_index: u32,
-    blas_index: u32,
-    material_buffer: asche::Buffer,
-    vertex_buffer: asche::Buffer,
-    index_buffer: asche::Buffer,
-}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
