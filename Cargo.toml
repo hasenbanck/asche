@@ -14,11 +14,11 @@ edition = "2018"
 default = ["tracing"]
 
 [dependencies]
-erupt = { version = "0.17", git = "https://gitlab.com/Friz64/erupt/" }
+erupt = "0.17"
 raw-window-handle = "0.3"
 tracing = { version = "0.1", default-features = false, optional = true }
 parking_lot = "0.11"
-vk-alloc = { version = "0.4", features = ["tracing", "vk-buffer-device-address"], path = "../vk-alloc" }
+vk-alloc = { version = "0.4", features = ["tracing", "vk-buffer-device-address"] }
 
 [dev-dependencies]
 bytemuck = "1.5"
@@ -28,3 +28,6 @@ ultraviolet = { version = "0.7", features = ["bytemuck"] }
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 # TODO "bundled" doesn't work on windows currently
 sdl2 = { version = "0.34", default-features = false, features = ["raw-window-handle"] }
+
+[patch.crates-io]
+erupt = { git = "https://gitlab.com/Friz64/erupt" }
