@@ -58,7 +58,7 @@ impl Context {
     pub(crate) fn get_framebuffer(
         &self,
         render_pass: &RenderPass,
-        color_attachments: &[&RenderPassColorAttachmentDescriptor],
+        color_attachments: &[RenderPassColorAttachmentDescriptor],
         depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {
@@ -91,7 +91,7 @@ impl Context {
     fn create_framebuffer(
         &self,
         render_pass: &RenderPass,
-        color_attachments: &[&RenderPassColorAttachmentDescriptor],
+        color_attachments: &[RenderPassColorAttachmentDescriptor],
         depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {

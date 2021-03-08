@@ -9,13 +9,10 @@ use erupt::vk;
 use tracing::error;
 
 use crate::context::Context;
-use crate::descriptor::DescriptorSet;
-use crate::query::QueryPool;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    AccelerationStructure, AscheError, Buffer, ComputePipeline, GraphicsPipeline, Image,
-    PipelineLayout, QueueType, RayTracingPipeline, RenderPass, RenderPassColorAttachmentDescriptor,
-    RenderPassDepthAttachmentDescriptor, Result,
+    AscheError, ComputePipeline, GraphicsPipeline, QueueType, RayTracingPipeline, RenderPass,
+    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
 };
 
 macro_rules! impl_command_pool {
@@ -254,8 +251,8 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// Copies data between two buffer.
     pub fn copy_buffer(
         &self,
-        src_buffer: &Buffer,
-        dst_buffer: &Buffer,
+        src_buffer: vk::Buffer,
+        dst_buffer: vk::Buffer,
         src_offset: u64,
         dst_offset: u64,
         size: u64,
@@ -263,8 +260,8 @@ impl<'a> ComputeCommandEncoder<'a> {
         copy_buffer(
             self.context,
             self.buffer,
-            src_buffer.raw,
-            dst_buffer.raw,
+            src_buffer,
+            dst_buffer,
             src_offset,
             dst_offset,
             size,
@@ -274,16 +271,16 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// Copies data from a buffer to an image.
     pub fn copy_buffer_to_image(
         &self,
-        src_buffer: &Buffer,
-        dst_image: &Image,
+        src_buffer: vk::Buffer,
+        dst_image: vk::Image,
         dst_image_layout: vk::ImageLayout,
         region: vk::BufferImageCopyBuilder,
     ) {
         copy_buffer_to_image(
             self.context,
             self.buffer,
-            src_buffer.raw,
-            dst_image.raw,
+            src_buffer,
+            dst_image,
             dst_image_layout,
             region,
         )
@@ -306,18 +303,18 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
     pub fn bind_descriptor_set(
         &self,
-        layout: &PipelineLayout,
+        layout: vk::PipelineLayout,
         set: u32,
-        descriptor_set: &DescriptorSet,
+        descriptor_set: vk::DescriptorSet,
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
             self.context,
             self.buffer,
             vk::PipelineBindPoint::COMPUTE,
-            layout.raw,
+            layout,
             set,
-            descriptor_set.raw,
+            descriptor_set,
             dynamic_offsets,
         )
     }
@@ -391,11 +388,11 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// Dispatch compute work items using indirect parameters.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchIndirect.html
-    pub fn dispatch_indirect(&self, buffer: &Buffer, offset: u64) {
+    pub fn dispatch_indirect(&self, buffer: vk::Buffer, offset: u64) {
         unsafe {
             self.context
                 .device
-                .cmd_dispatch_indirect(self.buffer, buffer.raw, offset)
+                .cmd_dispatch_indirect(self.buffer, buffer, offset)
         };
     }
 
@@ -488,20 +485,19 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdWriteAccelerationStructuresPropertiesKHR.html
     pub fn write_acceleration_structures_properties(
         &self,
-        acceleration_structure: &AccelerationStructure,
+        acceleration_structures: &[vk::AccelerationStructureKHR],
         query_type: vk::QueryType,
-        query_pool: &QueryPool,
+        query_pool: vk::QueryPool,
         first_query: u32,
     ) {
-        let acceleration_structures = [acceleration_structure.raw];
         unsafe {
             self.context
                 .device
                 .cmd_write_acceleration_structures_properties_khr(
                     self.buffer,
-                    &acceleration_structures,
+                    acceleration_structures,
                     query_type,
-                    query_pool.raw,
+                    query_pool,
                     first_query,
                 )
         };
@@ -510,11 +506,11 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// Reset queries in a query pool.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html
-    pub fn reset_query_pool(&self, query_pool: &QueryPool, first_query: u32, query_count: u32) {
+    pub fn reset_query_pool(&self, query_pool: vk::QueryPool, first_query: u32, query_count: u32) {
         unsafe {
             self.context.device.cmd_reset_query_pool(
                 self.buffer,
-                query_pool.raw,
+                query_pool,
                 first_query,
                 query_count,
             )
@@ -549,8 +545,8 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// Copies data between two buffer.
     pub fn copy_buffer(
         &self,
-        src_buffer: &Buffer,
-        dst_buffer: &Buffer,
+        src_buffer: vk::Buffer,
+        dst_buffer: vk::Buffer,
         src_offset: u64,
         dst_offset: u64,
         size: u64,
@@ -558,8 +554,8 @@ impl<'a> GraphicsCommandEncoder<'a> {
         copy_buffer(
             self.context,
             self.buffer,
-            src_buffer.raw,
-            dst_buffer.raw,
+            src_buffer,
+            dst_buffer,
             src_offset,
             dst_offset,
             size,
@@ -569,16 +565,16 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// Copies data from a buffer to an image.
     pub fn copy_buffer_to_image(
         &self,
-        src_buffer: &Buffer,
-        dst_image: &Image,
+        src_buffer: vk::Buffer,
+        dst_image: vk::Image,
         dst_image_layout: vk::ImageLayout,
         region: vk::BufferImageCopyBuilder,
     ) {
         copy_buffer_to_image(
             self.context,
             self.buffer,
-            src_buffer.raw,
-            dst_image.raw,
+            src_buffer,
+            dst_image,
             dst_image_layout,
             region,
         )
@@ -588,7 +584,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     pub fn begin_render_pass(
         &self,
         render_pass: &RenderPass,
-        color_attachments: &[&RenderPassColorAttachmentDescriptor],
+        color_attachments: &[RenderPassColorAttachmentDescriptor],
         depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<RenderPassEncoder> {
@@ -664,18 +660,18 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
     pub fn bind_descriptor_set(
         &self,
-        layout: &PipelineLayout,
+        layout: vk::PipelineLayout,
         set: u32,
-        descriptor_set: &DescriptorSet,
+        descriptor_set: vk::DescriptorSet,
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
             self.context,
             self.buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            layout.raw,
+            layout,
             set,
-            descriptor_set.raw,
+            descriptor_set,
             dynamic_offsets,
         )
     }
@@ -772,11 +768,11 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// Reset queries in a query pool.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html
-    pub fn reset_query_pool(&self, query_pool: &QueryPool, first_query: u32, query_count: u32) {
+    pub fn reset_query_pool(&self, query_pool: vk::QueryPool, first_query: u32, query_count: u32) {
         unsafe {
             self.context.device.cmd_reset_query_pool(
                 self.buffer,
-                query_pool.raw,
+                query_pool,
                 first_query,
                 query_count,
             )
@@ -811,8 +807,8 @@ impl<'a> TransferCommandEncoder<'a> {
     /// Copies data between two buffer.
     pub fn copy_buffer(
         &self,
-        src_buffer: &Buffer,
-        dst_buffer: &Buffer,
+        src_buffer: vk::Buffer,
+        dst_buffer: vk::Buffer,
         src_offset: u64,
         dst_offset: u64,
         size: u64,
@@ -820,8 +816,8 @@ impl<'a> TransferCommandEncoder<'a> {
         copy_buffer(
             self.context,
             self.buffer,
-            src_buffer.raw,
-            dst_buffer.raw,
+            src_buffer,
+            dst_buffer,
             src_offset,
             dst_offset,
             size,
@@ -831,16 +827,16 @@ impl<'a> TransferCommandEncoder<'a> {
     /// Copies data from a buffer to an image.
     pub fn copy_buffer_to_image(
         &self,
-        src_buffer: &Buffer,
-        dst_image: &Image,
+        src_buffer: vk::Buffer,
+        dst_image: vk::Image,
         dst_image_layout: vk::ImageLayout,
         region: vk::BufferImageCopyBuilder,
     ) {
         copy_buffer_to_image(
             self.context,
             self.buffer,
-            src_buffer.raw,
-            dst_image.raw,
+            src_buffer,
+            dst_image,
             dst_image_layout,
             region,
         )
@@ -916,18 +912,18 @@ impl<'a> RenderPassEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
     pub fn bind_descriptor_set(
         &self,
-        layout: &PipelineLayout,
+        layout: vk::PipelineLayout,
         set: u32,
-        descriptor_set: &DescriptorSet,
+        descriptor_set: vk::DescriptorSet,
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
             self.context,
             self.buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            layout.raw,
+            layout,
             set,
-            descriptor_set.raw,
+            descriptor_set,
             dynamic_offsets,
         )
     }
@@ -935,56 +931,23 @@ impl<'a> RenderPassEncoder<'a> {
     /// Bind an index buffer to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
-    pub fn bind_index_buffer(&self, index_buffer: &Buffer, offset: u64, index_type: vk::IndexType) {
+    pub fn bind_index_buffer(&self, buffer: vk::Buffer, offset: u64, index_type: vk::IndexType) {
         unsafe {
-            self.context.device.cmd_bind_index_buffer(
-                self.buffer,
-                index_buffer.raw,
-                offset,
-                index_type,
-            )
-        };
-    }
-
-    /// Bind a vertex buffer to a command buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
-    pub fn bind_vertex_buffer(&self, binding: u32, vertex_buffer: &Buffer, offset: u64) {
-        unsafe {
-            self.context.device.cmd_bind_vertex_buffers(
-                self.buffer,
-                binding,
-                &[vertex_buffer.raw],
-                &[offset],
-            )
+            self.context
+                .device
+                .cmd_bind_index_buffer(self.buffer, buffer, offset, index_type)
         };
     }
 
     /// Bind vertex buffers to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
-    pub fn bind_vertex_buffers(
-        &self,
-        first_binding: u32,
-        vertex_buffers: &[&Buffer],
-        offsets: &[u64],
-    ) {
-        debug_assert!(
-            vertex_buffers.len() <= 6,
-            "Can't bind more than 6 vertex buffers at the same time. This is an artificial limit."
-        );
-
-        let mut buffers = ArrayVec::<[vk::Buffer; 6]>::new();
-        vertex_buffers
-            .iter()
-            .map(|x| x.raw)
-            .for_each(|x| buffers.push(x));
-
+    pub fn bind_vertex_buffers(&self, first_binding: u32, buffers: &[vk::Buffer], offsets: &[u64]) {
         unsafe {
             self.context.device.cmd_bind_vertex_buffers(
                 self.buffer,
                 first_binding,
-                &buffers,
+                buffers,
                 offsets,
             )
         };
@@ -1066,7 +1029,7 @@ impl<'a> RenderPassEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
     pub fn draw_indexed_indirect(
         &self,
-        buffer: &Buffer,
+        buffer: vk::Buffer,
         offset: u64,
         draw_count: u32,
         stride: u32,
@@ -1074,7 +1037,7 @@ impl<'a> RenderPassEncoder<'a> {
         unsafe {
             self.context.device.cmd_draw_indexed_indirect(
                 self.buffer,
-                buffer.raw,
+                buffer,
                 offset,
                 draw_count,
                 stride,
@@ -1087,9 +1050,9 @@ impl<'a> RenderPassEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
     pub fn draw_indexed_indirect_count(
         &self,
-        buffer: &Buffer,
+        buffer: vk::Buffer,
         offset: u64,
-        count_buffer: &Buffer,
+        count_buffer: vk::Buffer,
         count_buffer_offset: u64,
         max_draw_count: u32,
         stride: u32,
@@ -1097,9 +1060,9 @@ impl<'a> RenderPassEncoder<'a> {
         unsafe {
             self.context.device.cmd_draw_indexed_indirect_count(
                 self.buffer,
-                buffer.raw,
+                buffer,
                 offset,
-                count_buffer.raw,
+                count_buffer,
                 count_buffer_offset,
                 max_draw_count,
                 stride,
@@ -1110,15 +1073,11 @@ impl<'a> RenderPassEncoder<'a> {
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
-    pub fn draw_indirect(&self, buffer: &Buffer, offset: u64, draw_count: u32, stride: u32) {
+    pub fn draw_indirect(&self, buffer: vk::Buffer, offset: u64, draw_count: u32, stride: u32) {
         unsafe {
-            self.context.device.cmd_draw_indirect(
-                self.buffer,
-                buffer.raw,
-                offset,
-                draw_count,
-                stride,
-            )
+            self.context
+                .device
+                .cmd_draw_indirect(self.buffer, buffer, offset, draw_count, stride)
         };
     }
 
@@ -1127,9 +1086,9 @@ impl<'a> RenderPassEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCount.html
     pub fn draw_indirect_count(
         &self,
-        buffer: &Buffer,
+        buffer: vk::Buffer,
         offset: u64,
-        count_buffer: &Buffer,
+        count_buffer: vk::Buffer,
         count_buffer_offset: u64,
         max_draw_count: u32,
         stride: u32,
@@ -1137,9 +1096,9 @@ impl<'a> RenderPassEncoder<'a> {
         unsafe {
             self.context.device.cmd_draw_indirect_count(
                 self.buffer,
-                buffer.raw,
+                buffer,
                 offset,
-                count_buffer.raw,
+                count_buffer,
                 count_buffer_offset,
                 max_draw_count,
                 stride,

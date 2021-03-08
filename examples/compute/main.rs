@@ -172,7 +172,7 @@ impl Application {
         {
             let encoder = compute_buffer.record()?;
             encoder.bind_pipeline(&self.pipeline);
-            encoder.bind_descriptor_set(&self.pipeline_layout, 0, &set, &[]);
+            encoder.bind_descriptor_set(self.pipeline_layout.raw, 0, set.raw, &[]);
             encoder.dispatch(1024, 1, 1);
         }
         self.compute_queue.submit(&compute_buffer)?;

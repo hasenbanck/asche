@@ -207,7 +207,7 @@ impl Application {
             {
                 let pass = encoder.begin_render_pass(
                     &self.render_pass,
-                    &[&asche::RenderPassColorAttachmentDescriptor {
+                    &[asche::RenderPassColorAttachmentDescriptor {
                         attachment: frame.view,
                         clear_value: vk::ClearValue {
                             color: vk::ClearColorValue {

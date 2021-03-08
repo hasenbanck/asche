@@ -4,8 +4,6 @@ use erupt::{vk, ExtendableFrom};
 use tracing::info;
 use ultraviolet::{Mat4, Vec3, Vec4};
 
-use asche::{BufferDescriptor, ComputeCommandBuffer};
-
 use crate::gltf::{Material, Mesh, Vertex};
 
 mod gltf;
@@ -845,8 +843,8 @@ impl RayTracingApplication {
         {
             let encoder = transfer_buffer.record()?;
             encoder.copy_buffer(
-                &stagging_buffer,
-                &dst_buffer,
+                stagging_buffer.raw,
+                dst_buffer.raw,
                 0,
                 0,
                 buffer_data.len() as u64,
@@ -927,7 +925,7 @@ impl RayTracingApplication {
         }
 
         // Create a scratch pad for the device to create the AS. We re-use it for each BLAS of a model.
-        let scratch_pad = self.device.create_buffer(&BufferDescriptor {
+        let scratch_pad = self.device.create_buffer(&asche::BufferDescriptor {
             name: "AS Scratchpad",
             usage: vk::BufferUsageFlags::STORAGE_BUFFER
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -1020,7 +1018,7 @@ impl RayTracingApplication {
     }
 
     fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<BLAS> {
-        let buffer = self.device.create_buffer(&BufferDescriptor {
+        let buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name: &format!("Model {} BLAS Buffer", id),
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -1056,7 +1054,8 @@ impl RayTracingApplication {
                 .query_count(self.models.len() as u32),
         )?;
 
-        let mut command_buffers: Vec<ComputeCommandBuffer> = Vec::with_capacity(self.models.len());
+        let mut command_buffers: Vec<asche::ComputeCommandBuffer> =
+            Vec::with_capacity(self.models.len());
         for (id, _) in self.models.iter().enumerate() {
             let compute_buffer = self.compute_pool.create_command_buffer(
                 &self.timeline,
@@ -1068,11 +1067,11 @@ impl RayTracingApplication {
             {
                 let encoder = compute_buffer.record()?;
                 encoder.build_acceleration_structures(&infos[id..id + 1], &ranges[id..id + 1]);
-                encoder.reset_query_pool(&query_pool, id as u32, 1);
+                encoder.reset_query_pool(query_pool.raw, id as u32, 1);
                 encoder.write_acceleration_structures_properties(
-                    &self.blas[id].structure,
+                    &[self.blas[id].structure.raw],
                     vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                    &query_pool,
+                    query_pool.raw,
                     id as u32,
                 )
             }
@@ -1165,7 +1164,7 @@ impl RayTracingApplication {
             &[instance_count],
         );
 
-        let buffer = self.device.create_buffer(&BufferDescriptor {
+        let buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name: "Model TLAS Buffer",
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -1176,7 +1175,7 @@ impl RayTracingApplication {
             flags: None,
         })?;
 
-        let scratchpad = self.device.create_buffer(&BufferDescriptor {
+        let scratchpad = self.device.create_buffer(&asche::BufferDescriptor {
             name: "Model TLAS Scratchpad",
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,

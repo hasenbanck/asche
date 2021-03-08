@@ -486,8 +486,8 @@ impl Application {
             encoder.pipeline_barrier2(&depenency_info);
 
             encoder.copy_buffer_to_image(
-                &stagging_buffer,
-                &image,
+                stagging_buffer.raw,
+                image.raw,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 vk::BufferImageCopyBuilder::new()
                     .buffer_offset(0)
@@ -586,8 +586,8 @@ impl Application {
         {
             let encoder = transfer_buffer.record()?;
             encoder.copy_buffer(
-                &stagging_buffer,
-                &dst_buffer,
+                stagging_buffer.raw,
+                dst_buffer.raw,
                 0,
                 0,
                 buffer_data.len() as u64,
@@ -642,7 +642,7 @@ impl Application {
 
             let pass = encoder.begin_render_pass(
                 &self.render_pass,
-                &[&asche::RenderPassColorAttachmentDescriptor {
+                &[asche::RenderPassColorAttachmentDescriptor {
                     attachment: frame.view,
                     clear_value: vk::ClearValue {
                         color: vk::ClearColorValue {
@@ -662,10 +662,10 @@ impl Application {
             )?;
 
             pass.bind_pipeline(&self.pipeline);
-            pass.bind_descriptor_set(&self.pipeline_layout, 0, &set, &[]);
+            pass.bind_descriptor_set(self.pipeline_layout.raw, 0, set.raw, &[]);
 
-            pass.bind_index_buffer(&self.index_buffer[0], 0, vk::IndexType::UINT32);
-            pass.bind_vertex_buffer(0, &self.vertex_buffer[0], 0);
+            pass.bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
+            pass.bind_vertex_buffers(0, &[self.vertex_buffer[0].raw], &[0]);
 
             pass.push_constants(
                 self.pipeline_layout.raw,
