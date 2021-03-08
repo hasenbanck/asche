@@ -3,8 +3,8 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 
-use arrayvec::ArrayVec;
 use erupt::vk;
+use erupt::vk::ClearValue;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
@@ -600,13 +600,11 @@ impl<'a> GraphicsCommandEncoder<'a> {
             extent,
         )?;
 
-        // 64 byte array on the stack.
-        let mut clear_values = ArrayVec::<[vk::ClearValue; 4]>::new();
-        color_attachments
+        let clear_values: Vec<ClearValue> = color_attachments
             .iter()
             .map(|x| x.clear_value)
             .chain(depth_attachment.iter().map(|x| x.clear_value))
-            .for_each(|x| clear_values.push(x));
+            .collect();
 
         encoder.begin(render_pass.raw, framebuffer, &clear_values, extent);
 
