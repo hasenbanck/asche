@@ -81,6 +81,7 @@ fn main() -> Result<()> {
         height,
     )
     .unwrap();
+
     let (materials, meshes) = gltf::load_models(include_bytes!("model.glb"));
     app.create_model(&materials, &meshes)?;
 
@@ -548,34 +549,27 @@ impl RayTracingApplication {
                 roughness: material.roughness,
             };
 
-            let vertex_buffer = self
-                .create_buffer(
-                    &format!("Model {} Vertex Buffer", id),
-                    cast_slice(mesh.vertices.as_slice()),
-                    vk::BufferUsageFlags::VERTEX_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                )
-                .unwrap();
-            let index_buffer = self
-                .create_buffer(
-                    &format!("Model {} Index Buffer", id),
-                    cast_slice(mesh.indices.as_slice()),
-                    vk::BufferUsageFlags::INDEX_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                )
-                .unwrap();
-
-            let material_buffer = self
-                .create_buffer(
-                    &format!("Model {} Material Buffer", id),
-                    cast_slice(&[material_data]),
-                    vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                )
-                .unwrap();
+            let vertex_buffer = self.create_buffer(
+                &format!("Model {} Vertex Buffer", id),
+                cast_slice(mesh.vertices.as_slice()),
+                vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
+            )?;
+            let index_buffer = self.create_buffer(
+                &format!("Model {} Index Buffer", id),
+                cast_slice(mesh.indices.as_slice()),
+                vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
+            )?;
+            let material_buffer = self.create_buffer(
+                &format!("Model {} Material Buffer", id),
+                cast_slice(&[material_data]),
+                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
+            )?;
 
             self.models.push(Model {
-                max_vertex_index: mesh.vertices.len() as u32, // TODO could be off by one
+                max_vertex_index: mesh.vertices.len() as u32,
                 triangle_count: (mesh.indices.len() / 3) as u32,
                 tlas_index: id as u32,
                 blas_index: id as u32,
@@ -596,13 +590,14 @@ impl RayTracingApplication {
         name: &str,
         buffer_data: &[u8],
         buffer_type: vk::BufferUsageFlags,
+        queues: vk::QueueFlags,
     ) -> Result<asche::Buffer> {
         let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name: "Staging Buffer",
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
             sharing_mode: vk::SharingMode::CONCURRENT,
-            queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
+            queues: vk::QueueFlags::TRANSFER | queues,
             size: buffer_data.len() as u64,
             flags: None,
         })?;
@@ -618,7 +613,7 @@ impl RayTracingApplication {
             usage: buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::CONCURRENT,
-            queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
+            queues: vk::QueueFlags::TRANSFER | queues,
             size: stagging_buffer.allocation.size,
             flags: None,
         })?;
@@ -898,24 +893,21 @@ impl RayTracingApplication {
                     [0.0, 0.0, 1.0, 0.0],
                 ];
 
-                let address: vk::DeviceAddress = blas.structure.raw.0;
+                let address: vk::DeviceAddress = blas.structure.device_address();
 
+                let mask = u32::MAX;
+                let hit_group_id: u32 = 0;
                 let flags: u32 =
                     vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR.bits();
-                let hit_group_id: u32 = 0;
 
-                let ici = (id as u32 & 0x00FFFFFF) | (u32::MAX & 0xFF) << 24;
-                let isb = (hit_group_id & 0x00FFFFFF) | (flags & 0xFF) << 24;
-                let asi = AccelerationStructureInstance {
+                let ici = (id as u32 & 0x00FFFFFF) | mask << 24;
+                let isb = (hit_group_id & 0x00FFFFFF) | flags << 24;
+                AccelerationStructureInstance {
                     transform: vk::TransformMatrixKHR { matrix },
                     instance_custom_index_and_mask: ici,
                     instance_shader_binding_table_record_offset_and_flags: isb,
                     acceleration_structure_reference: address,
-                };
-
-                dbg!(asi);
-
-                asi
+                }
             })
             .collect();
 
@@ -926,6 +918,7 @@ impl RayTracingApplication {
             &cast_slice(instance_data.as_slice()),
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
         )?;
 
         let geometry_instance_data =
@@ -959,8 +952,8 @@ impl RayTracingApplication {
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            sharing_mode: Default::default(),
-            queues: Default::default(),
+            sharing_mode: vk::SharingMode::CONCURRENT,
+            queues: vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             size: size_info.acceleration_structure_size,
             flags: None,
         })?;
@@ -970,8 +963,8 @@ impl RayTracingApplication {
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            sharing_mode: Default::default(),
-            queues: Default::default(),
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queues: vk::QueueFlags::COMPUTE,
             size: size_info.build_scratch_size,
             flags: None,
         })?;
