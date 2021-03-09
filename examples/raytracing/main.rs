@@ -124,22 +124,21 @@ struct RayTracingApplication {
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
     offscreen_attachment: Texture,
-    postprocess_renderpass: asche::RenderPass,
+    renderpass: asche::RenderPass,
     postprocess_pipeline_layout: asche::PipelineLayout,
     postprocess_pipeline: asche::GraphicsPipeline,
-    postprocess_descriptor_pool: asche::DescriptorPool,
-    postprocess_descriptor_set_layout: asche::DescriptorSetLayout,
+    _postprocess_descriptor_pool: asche::DescriptorPool,
+    _postprocess_descriptor_set_layout: asche::DescriptorSetLayout,
     postprocess_descriptor_set: asche::DescriptorSet,
-    raytracing_renderpass: asche::RenderPass,
     raytracing_pipeline_layout: asche::PipelineLayout,
     raytracing_pipeline: asche::RayTracingPipeline,
-    vertex_descriptor_set_layout: asche::DescriptorSetLayout,
+    _vertex_descriptor_set_layout: asche::DescriptorSetLayout,
     vertex_descriptor_set: asche::DescriptorSet,
-    index_descriptor_set_layout: asche::DescriptorSetLayout,
+    _index_descriptor_set_layout: asche::DescriptorSetLayout,
     index_descriptor_set: asche::DescriptorSet,
-    storage_descriptor_pool: asche::DescriptorPool,
-    raytracing_descriptor_pool: asche::DescriptorPool,
-    raytracing_descriptor_set_layout: asche::DescriptorSetLayout,
+    _storage_descriptor_pool: asche::DescriptorPool,
+    _raytracing_descriptor_pool: asche::DescriptorPool,
+    _raytracing_descriptor_set_layout: asche::DescriptorSetLayout,
     raytracing_descriptor_set: asche::DescriptorSet,
     sampler: asche::Sampler,
     uploader: Uploader,
@@ -179,9 +178,17 @@ impl RayTracingApplication {
 
         let mut uploader = Uploader::new(&device, transfer_queue)?;
 
-        // Render passes
+        // Render pass
         let (
-            raytracing_renderpass,
+            renderpass,
+            postprocess_descriptor_pool,
+            postprocess_descriptor_set_layout,
+            postprocess_descriptor_set,
+            postprocess_pipeline_layout,
+            postprocess_pipeline,
+        ) = RayTracingApplication::create_postprocess_renderpass(&mut device)?;
+
+        let (
             raytracing_descriptor_pool,
             raytracing_descriptor_set_layout,
             raytracing_descriptor_set,
@@ -195,15 +202,6 @@ impl RayTracingApplication {
             sbt,
         ) = RayTracingApplication::create_rt_renderpass(&mut device, &mut uploader)?;
 
-        let (
-            postprocess_renderpass,
-            postprocess_descriptor_pool,
-            postprocess_descriptor_set_layout,
-            postprocess_descriptor_set,
-            postprocess_pipeline_layout,
-            postprocess_pipeline,
-        ) = RayTracingApplication::create_postprocess_renderpass(&mut device)?;
-
         Ok(Self {
             uniforms: vec![],
             _sbt: sbt,
@@ -214,22 +212,21 @@ impl RayTracingApplication {
             timeline,
             timeline_value,
             offscreen_attachment,
-            postprocess_renderpass,
             postprocess_pipeline,
             postprocess_pipeline_layout,
-            postprocess_descriptor_pool,
-            postprocess_descriptor_set_layout,
+            _postprocess_descriptor_pool: postprocess_descriptor_pool,
+            _postprocess_descriptor_set_layout: postprocess_descriptor_set_layout,
             postprocess_descriptor_set,
-            raytracing_renderpass,
+            renderpass,
             raytracing_pipeline,
-            vertex_descriptor_set_layout,
+            _vertex_descriptor_set_layout: vertex_descriptor_set_layout,
             vertex_descriptor_set,
-            index_descriptor_set_layout,
+            _index_descriptor_set_layout: index_descriptor_set_layout,
             index_descriptor_set,
-            storage_descriptor_pool,
+            _storage_descriptor_pool: storage_descriptor_pool,
             raytracing_pipeline_layout,
-            raytracing_descriptor_pool,
-            raytracing_descriptor_set_layout,
+            _raytracing_descriptor_pool: raytracing_descriptor_pool,
+            _raytracing_descriptor_set_layout: raytracing_descriptor_set_layout,
             raytracing_descriptor_set,
             compute_pool,
             graphics_pool,
@@ -246,7 +243,6 @@ impl RayTracingApplication {
         device: &mut asche::Device,
         uploader: &mut Uploader,
     ) -> Result<(
-        asche::RenderPass,
         asche::DescriptorPool,
         asche::DescriptorSetLayout,
         asche::DescriptorSet,
@@ -293,34 +289,6 @@ impl RayTracingApplication {
             .stage(vk::ShaderStageFlagBits::MISS_KHR)
             .module(miss_module.raw)
             .name(&mainfunctionname);
-
-        // RT renderpass
-        let attachments = [
-            // Offscreen Attachment
-            vk::AttachmentDescription2Builder::new()
-                .format(OFFSCREEN_FORMAT)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::GENERAL)
-                .samples(vk::SampleCountFlagBits::_1),
-        ];
-
-        let color_attachments = [vk::AttachmentReference2Builder::new()
-            .attachment(0)
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
-
-        let subpasses = [vk::SubpassDescription2Builder::new()
-            .color_attachments(&color_attachments)
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
-
-        let renderpass_info = vk::RenderPassCreateInfo2Builder::new()
-            .attachments(&attachments)
-            .subpasses(&subpasses);
-
-        let raytracing_renderpass = device.create_render_pass("RT Render Pass", renderpass_info)?;
 
         // RT descriptor set layouts
         let bindings = [
@@ -465,19 +433,12 @@ impl RayTracingApplication {
         )?;
 
         // RT pipeline layout
-        let push_constants_ranges = [vk::PushConstantRangeBuilder::new()
-            .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-            .offset(0)
-            .size(36)];
-
         let layouts = [
             raytracing_descriptor_set_layout.raw,
             vertex_descriptor_set_layout.raw,
             index_descriptor_set_layout.raw,
         ];
-        let layout_info = vk::PipelineLayoutCreateInfoBuilder::new()
-            .push_constant_ranges(&push_constants_ranges)
-            .set_layouts(&layouts);
+        let layout_info = vk::PipelineLayoutCreateInfoBuilder::new().set_layouts(&layouts);
         let raytracing_pipeline_layout =
             device.create_pipeline_layout("RT Pipeline Layout", layout_info)?;
 
@@ -535,7 +496,6 @@ impl RayTracingApplication {
         )?;
 
         Ok((
-            raytracing_renderpass,
             raytracing_descriptor_pool,
             raytracing_descriptor_set_layout,
             raytracing_descriptor_set,
@@ -665,7 +625,7 @@ impl RayTracingApplication {
         let rasterization_state = vk::PipelineRasterizationStateCreateInfoBuilder::new()
             .line_width(1.0)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-            .cull_mode(vk::CullModeFlags::BACK)
+            .cull_mode(vk::CullModeFlags::NONE)
             .polygon_mode(vk::PolygonMode::FILL);
         let multisample_state = vk::PipelineMultisampleStateCreateInfoBuilder::new()
             .rasterization_samples(vk::SampleCountFlagBits::_1);
@@ -1314,24 +1274,35 @@ impl RayTracingApplication {
     pub fn render(&mut self) -> Result<()> {
         let frame = self.device.get_next_frame()?;
 
-        let graphics_buffer = self.graphics_pool.create_command_buffer(
+        let command_buffer = self.graphics_pool.create_command_buffer(
             &self.timeline,
             Timeline::RenderStart.with_offset(self.timeline_value),
             Timeline::RenderEnd.with_offset(self.timeline_value),
         )?;
 
         {
-            let encoder = graphics_buffer.record()?;
+            let encoder = command_buffer.record()?;
             encoder.set_viewport_and_scissor(
                 vk::Rect2DBuilder::new()
                     .offset(vk::Offset2D { x: 0, y: 0 })
                     .extent(self.extent),
             );
 
-            // TODO RT render pass
+            encoder.bind_raytrace_pipeline(&self.raytracing_pipeline);
+            encoder.bind_descriptor_set(
+                self.raytracing_pipeline_layout.raw,
+                0,
+                &[
+                    self.raytracing_descriptor_set.raw,
+                    self.vertex_descriptor_set.raw,
+                    self.index_descriptor_set.raw,
+                ],
+                &[],
+            );
+            // TODO call encoder.trace_rays_khr()
 
             let pass = encoder.begin_render_pass(
-                &self.postprocess_renderpass,
+                &self.renderpass,
                 &[asche::RenderPassColorAttachmentDescriptor {
                     attachment: frame.view,
                     clear_value: Some(vk::ClearValue {
@@ -1345,17 +1316,18 @@ impl RayTracingApplication {
             )?;
 
             pass.bind_pipeline(&self.postprocess_pipeline);
-            pass.bind_descriptor_set(
+            pass.bind_descriptor_sets(
                 self.postprocess_pipeline_layout.raw,
                 0,
-                self.postprocess_descriptor_set.raw,
+                &[self.postprocess_descriptor_set.raw],
                 &[],
             );
 
-            pass.draw(6, 1, 0, 0);
+            // Draw the fullscreen triangle.
+            pass.draw(3, 1, 0, 0);
         }
 
-        self.graphics_queue.submit(&graphics_buffer)?;
+        self.graphics_queue.submit(&command_buffer)?;
         self.timeline
             .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 

@@ -298,14 +298,14 @@ impl<'a> ComputeCommandEncoder<'a> {
         )
     }
 
-    /// Binds a descriptor set.
+    /// Binds descriptor sets.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
-    pub fn bind_descriptor_set(
+    pub fn bind_descriptor_sets(
         &self,
         layout: vk::PipelineLayout,
         set: u32,
-        descriptor_set: vk::DescriptorSet,
+        descriptor_sets: &[vk::DescriptorSet],
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
@@ -314,7 +314,7 @@ impl<'a> ComputeCommandEncoder<'a> {
             vk::PipelineBindPoint::COMPUTE,
             layout,
             set,
-            descriptor_set,
+            descriptor_sets,
             dynamic_offsets,
         )
     }
@@ -659,14 +659,14 @@ impl<'a> GraphicsCommandEncoder<'a> {
         )
     }
 
-    /// Binds a descriptor set.
+    /// Binds descriptor sets.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
     pub fn bind_descriptor_set(
         &self,
         layout: vk::PipelineLayout,
         set: u32,
-        descriptor_set: vk::DescriptorSet,
+        descriptor_sets: &[vk::DescriptorSet],
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
@@ -675,7 +675,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
             vk::PipelineBindPoint::GRAPHICS,
             layout,
             set,
-            descriptor_set,
+            descriptor_sets,
             dynamic_offsets,
         )
     }
@@ -911,14 +911,14 @@ impl<'a> RenderPassEncoder<'a> {
         )
     }
 
-    /// Binds a descriptor set.
+    /// Binds descriptor sets.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
-    pub fn bind_descriptor_set(
+    pub fn bind_descriptor_sets(
         &self,
         layout: vk::PipelineLayout,
         set: u32,
-        descriptor_set: vk::DescriptorSet,
+        descriptor_sets: &[vk::DescriptorSet],
         dynamic_offsets: &[u32],
     ) {
         bind_descriptor_sets(
@@ -927,7 +927,7 @@ impl<'a> RenderPassEncoder<'a> {
             vk::PipelineBindPoint::GRAPHICS,
             layout,
             set,
-            descriptor_set,
+            descriptor_sets,
             dynamic_offsets,
         )
     }
@@ -1156,17 +1156,16 @@ fn bind_descriptor_sets(
     pipeline_bind_point: vk::PipelineBindPoint,
     layout: vk::PipelineLayout,
     set: u32,
-    descriptor_set: vk::DescriptorSet,
+    descriptor_sets: &[vk::DescriptorSet],
     dynamic_offsets: &[u32],
 ) {
-    let descriptor_sets = [descriptor_set];
     unsafe {
         context.device.cmd_bind_descriptor_sets(
             buffer,
             pipeline_bind_point,
             layout,
             set,
-            &descriptor_sets,
+            descriptor_sets,
             dynamic_offsets,
         )
     };
