@@ -1,0 +1,49 @@
+#version 460
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : enable
+
+#include "common.glsl"
+
+layout(location = 0) rayPayloadEXT hitPayload payload;
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT tlas;
+layout(set = 0, binding = 1, std430) uniform CameraUniforms
+{
+    mat4 view;
+    mat4 proj;
+    mat4 inv_view;
+    mat4 inv_proj;
+}
+camera;
+layout(set = 0, binding = 2, rgba16f) uniform image2D offscreen_image;
+
+void main()
+{
+    const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+    const vec2 in_uv = pixel_center / vec2(gl_LaunchSizeEXT.xy);
+    vec2 d = in_uv * 2.0 - 1.0;
+
+    vec4 origin = camera.inv_view * vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 target = camera.inv_proj * vec4(d.x, d.y, 1.0, 1.0);
+    vec4 direction = camera.inv_view * vec4(normalize(target.xyz), 0.0);
+
+    uint ray_flags = gl_RayFlagsOpaqueEXT;
+    float min_t = 0.1;
+    float max_t = 1000.0;
+
+    traceRayEXT(tlas,
+    ray_flags,
+    0xFF, // cullMask
+    0, // sbtRecordOffset
+    0, // sbtRecordStride
+    0, // missIndex
+    origin.xyz,
+    min_t,
+    direction.xyz,
+    max_t,
+    0// payload (location = 0)
+    );
+
+    imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
+}

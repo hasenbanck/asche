@@ -4,4 +4,4 @@
 Cargo.lock
 *.dll
 *.lib
-examples/raytracing/shader/
+examples/raytracing/shader/*.spv

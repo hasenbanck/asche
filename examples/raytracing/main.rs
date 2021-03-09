@@ -345,7 +345,9 @@ impl RayTracingApplication {
                 .binding(3)
                 .descriptor_count(1)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR),
+                .stage_flags(
+                    vk::ShaderStageFlags::CLOSEST_HIT_KHR | vk::ShaderStageFlags::MISS_KHR,
+                ),
             // Materials
             vk::DescriptorSetLayoutBindingBuilder::new()
                 .binding(4)
@@ -1212,6 +1214,7 @@ impl RayTracingApplication {
                 let flags: u32 =
                     vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR.bits();
 
+                // The ID is used to get the material later on (instance = model).
                 let ici = (id as u32 & 0x00FFFFFF) | mask << 24;
                 let isb = (hit_group_id & 0x00FFFFFF) | flags << 24;
                 AccelerationStructureInstance {
