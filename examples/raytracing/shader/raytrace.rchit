@@ -46,13 +46,13 @@ void main()
     normal = normalize(vec3(material.model_matrix * vec4(normal, 0.0)));
 
     // Computing the coordinates of the hit position.
-    vec3 world_pos = v0.position * barycentrics.x + v1.position * barycentrics.y + v2.position * barycentrics.z;
+    vec3 pos = v0.position * barycentrics.x + v1.position * barycentrics.y + v2.position * barycentrics.z;
 
     // Transforming the position to world space.
-    world_pos = vec3(material.model_matrix * vec4(world_pos, 1.0));
+    vec3 world_pos = vec3(material.model_matrix * vec4(pos, 1.0));
 
     // Light calculation.
-    vec3  L = normalize(light.light_position.xyz - vec3(0.0));
+    vec3  L = normalize(light.light_position.xyz);
     float dot_normal_L = max(dot(normal, L), 0.2);
 
     payload.hit_value = material.albedo * dot_normal_L;
