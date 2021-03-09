@@ -5,13 +5,20 @@ use tracing::info;
 use ultraviolet::{Mat4, Vec3, Vec4};
 
 use crate::gltf::{Material, Mesh, Vertex};
+use crate::uploader::Uploader;
 
 mod gltf;
+mod uploader;
 
 type Result<T> = std::result::Result<T, asche::AscheError>;
 
 const SURFACE_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
 const OFFSCREEN_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+
+#[inline]
+fn align_up(offset: u32, alignment: u32) -> u32 {
+    (offset + (alignment - 1u32)) & !(alignment - 1u32)
+}
 
 fn main() -> Result<()> {
     let sdl_context = sdl2::init().unwrap();
@@ -47,13 +54,18 @@ fn main() -> Result<()> {
                 vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
                 vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
             ],
+            //  shaderStorageBufferArrayNonUniformIndexing
             features_v1_2: Some(
                 vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
                     .timeline_semaphore(true)
                     .buffer_device_address(true)
                     .scalar_block_layout(true)
+                    .uniform_buffer_standard_layout(true)
                     .descriptor_indexing(true)
-                    .uniform_buffer_standard_layout(true),
+                    .descriptor_binding_partially_bound(true)
+                    .descriptor_binding_variable_descriptor_count(true)
+                    .runtime_descriptor_array(true)
+                    .shader_storage_buffer_array_non_uniform_indexing(true),
             ),
             features_raytracing: Some(
                 vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
@@ -102,6 +114,7 @@ fn main() -> Result<()> {
 
 struct RayTracingApplication {
     uniforms: Vec<asche::Buffer>,
+    sbt: asche::Buffer,
     tlas: Vec<TLAS>,
     blas: Vec<BLAS>,
     models: Vec<Model>,
@@ -113,17 +126,23 @@ struct RayTracingApplication {
     postprocess_pipeline_layout: asche::PipelineLayout,
     postprocess_pipeline: asche::GraphicsPipeline,
     postprocess_descriptor_pool: asche::DescriptorPool,
+    postprocess_descriptor_set_layout: asche::DescriptorSetLayout,
     postprocess_descriptor_set: asche::DescriptorSet,
     raytracing_renderpass: asche::RenderPass,
     raytracing_pipeline_layout: asche::PipelineLayout,
     raytracing_pipeline: asche::RayTracingPipeline,
+    vertex_descriptor_set_layout: asche::DescriptorSetLayout,
+    vertex_descriptor_set: asche::DescriptorSet,
+    index_descriptor_set_layout: asche::DescriptorSetLayout,
+    index_descriptor_set: asche::DescriptorSet,
+    storage_descriptor_pool: asche::DescriptorPool,
     raytracing_descriptor_pool: asche::DescriptorPool,
+    raytracing_descriptor_set_layout: asche::DescriptorSetLayout,
     raytracing_descriptor_set: asche::DescriptorSet,
     sampler: asche::Sampler,
-    transfer_pool: asche::TransferCommandPool,
+    uploader: Uploader,
     graphics_pool: asche::GraphicsCommandPool,
     compute_pool: asche::ComputeCommandPool,
-    transfer_queue: asche::TransferQueue,
     graphics_queue: asche::GraphicsQueue,
     compute_queue: asche::ComputeQueue,
     device: asche::Device,
@@ -134,7 +153,7 @@ impl RayTracingApplication {
         mut device: asche::Device,
         mut compute_queue: asche::ComputeQueue,
         mut graphics_queue: asche::GraphicsQueue,
-        mut transfer_queue: asche::TransferQueue,
+        transfer_queue: asche::TransferQueue,
         width: u32,
         height: u32,
     ) -> Result<Self> {
@@ -149,31 +168,43 @@ impl RayTracingApplication {
             ..Default::default()
         })?;
 
-        let (
-            raytracing_renderpass,
-            raytracing_descriptor_pool,
-            raytracing_descriptor_set,
-            raytracing_pipeline_layout,
-            raytracing_pipeline,
-        ) = RayTracingApplication::create_rt_renderpass(&mut device)?;
-
-        let (
-            postprocess_renderpass,
-            postprocess_descriptor_pool,
-            postprocess_descriptor_set,
-            postprocess_pipeline_layout,
-            postprocess_pipeline,
-        ) = RayTracingApplication::create_postprocess_renderpass(&mut device)?;
-
+        // Utility
         let timeline_value = 0;
         let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
 
         let compute_pool = compute_queue.create_command_pool()?;
         let graphics_pool = graphics_queue.create_command_pool()?;
-        let transfer_pool = transfer_queue.create_command_pool()?;
+
+        let mut uploader = Uploader::new(&device, transfer_queue)?;
+
+        // Render passes
+        let (
+            raytracing_renderpass,
+            raytracing_descriptor_pool,
+            raytracing_descriptor_set_layout,
+            raytracing_descriptor_set,
+            storage_descriptor_pool,
+            vertex_descriptor_set_layout,
+            vertex_descriptor_set,
+            index_descriptor_set_layout,
+            index_descriptor_set,
+            raytracing_pipeline_layout,
+            raytracing_pipeline,
+            sbt,
+        ) = RayTracingApplication::create_rt_renderpass(&mut device, &mut uploader)?;
+
+        let (
+            postprocess_renderpass,
+            postprocess_descriptor_pool,
+            postprocess_descriptor_set_layout,
+            postprocess_descriptor_set,
+            postprocess_pipeline_layout,
+            postprocess_pipeline,
+        ) = RayTracingApplication::create_postprocess_renderpass(&mut device)?;
 
         Ok(Self {
             uniforms: vec![],
+            sbt,
             tlas: vec![],
             blas: vec![],
             models: vec![],
@@ -185,31 +216,46 @@ impl RayTracingApplication {
             postprocess_pipeline,
             postprocess_pipeline_layout,
             postprocess_descriptor_pool,
+            postprocess_descriptor_set_layout,
             postprocess_descriptor_set,
             raytracing_renderpass,
             raytracing_pipeline,
+            vertex_descriptor_set_layout,
+            vertex_descriptor_set,
+            index_descriptor_set_layout,
+            index_descriptor_set,
+            storage_descriptor_pool,
             raytracing_pipeline_layout,
             raytracing_descriptor_pool,
+            raytracing_descriptor_set_layout,
             raytracing_descriptor_set,
-            transfer_pool,
+            compute_pool,
             graphics_pool,
             sampler,
+            uploader,
             compute_queue,
             graphics_queue,
-            transfer_queue,
             device,
-            compute_pool,
         })
     }
 
+    #[allow(clippy::type_complexity)]
     fn create_rt_renderpass(
         device: &mut asche::Device,
+        uploader: &mut Uploader,
     ) -> Result<(
         asche::RenderPass,
         asche::DescriptorPool,
+        asche::DescriptorSetLayout,
+        asche::DescriptorSet,
+        asche::DescriptorPool,
+        asche::DescriptorSetLayout,
+        asche::DescriptorSet,
+        asche::DescriptorSetLayout,
         asche::DescriptorSet,
         asche::PipelineLayout,
         asche::RayTracingPipeline,
+        asche::Buffer,
     )> {
         // Query for RT capabilities
         let mut raytrace_properties =
@@ -256,7 +302,7 @@ impl RayTracingApplication {
                 .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .final_layout(vk::ImageLayout::GENERAL)
                 .samples(vk::SampleCountFlagBits::_1),
         ];
 
@@ -274,7 +320,7 @@ impl RayTracingApplication {
 
         let raytracing_renderpass = device.create_render_pass("RT Render Pass", renderpass_info)?;
 
-        // RT descriptor set layout
+        // RT descriptor set layouts
         let bindings = [
             // TLAS
             vk::DescriptorSetLayoutBindingBuilder::new()
@@ -292,7 +338,7 @@ impl RayTracingApplication {
             vk::DescriptorSetLayoutBindingBuilder::new()
                 .binding(2)
                 .descriptor_count(1)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR),
             // Light Uniforms
             vk::DescriptorSetLayoutBindingBuilder::new()
@@ -303,27 +349,63 @@ impl RayTracingApplication {
             // Materials
             vk::DescriptorSetLayoutBindingBuilder::new()
                 .binding(4)
-                .descriptor_count(1)
-                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR),
-            // Vertices
-            vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(5)
-                .descriptor_count(1)
-                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR),
-            // Indexes
-            vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(6)
-                .descriptor_count(1)
+                .descriptor_count(1024)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR),
         ];
-        let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
-        let rt_descriptor_set_layout =
+        let flags = [
+            vk::DescriptorBindingFlags::default(),
+            vk::DescriptorBindingFlags::default(),
+            vk::DescriptorBindingFlags::default(),
+            vk::DescriptorBindingFlags::default(),
+            vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
+                | vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+        ];
+        let mut layout_flags =
+            vk::DescriptorSetLayoutBindingFlagsCreateInfoBuilder::new().binding_flags(&flags);
+        let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new()
+            .bindings(&bindings)
+            .extend_from(&mut layout_flags);
+        let raytracing_descriptor_set_layout =
             device.create_descriptor_set_layout("RT Descriptor Set Layout", layout_info)?;
 
-        // RT descriptor pool + set
+        let vertex_bindings = [
+            // Vertices
+            vk::DescriptorSetLayoutBindingBuilder::new()
+                .binding(0)
+                .descriptor_count(1024)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR),
+        ];
+        let flags = [vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
+            | vk::DescriptorBindingFlags::PARTIALLY_BOUND];
+        let mut layout_flags =
+            vk::DescriptorSetLayoutBindingFlagsCreateInfoBuilder::new().binding_flags(&flags);
+        let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new()
+            .bindings(&vertex_bindings)
+            .extend_from(&mut layout_flags);
+        let vertex_descriptor_set_layout =
+            device.create_descriptor_set_layout("Vertex Descriptor Set Layout", layout_info)?;
+
+        let index_bindings = [
+            // Indexes
+            vk::DescriptorSetLayoutBindingBuilder::new()
+                .binding(0)
+                .descriptor_count(1024)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR),
+        ];
+        let flags = [vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
+            | vk::DescriptorBindingFlags::PARTIALLY_BOUND];
+        let mut layout_flags =
+            vk::DescriptorSetLayoutBindingFlagsCreateInfoBuilder::new().binding_flags(&flags);
+        let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new()
+            .bindings(&index_bindings)
+            .extend_from(&mut layout_flags);
+        let index_descriptor_set_layout =
+            device.create_descriptor_set_layout("Index Descriptor Set Layout", layout_info)?;
+
+        // RT descriptor pools + sets
         let pool_sizes = [
             vk::DescriptorPoolSizeBuilder::new()
                 .descriptor_count(1)
@@ -333,18 +415,12 @@ impl RayTracingApplication {
                 ._type(vk::DescriptorType::UNIFORM_BUFFER),
             vk::DescriptorPoolSizeBuilder::new()
                 .descriptor_count(1)
-                ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
+                ._type(vk::DescriptorType::STORAGE_IMAGE),
             vk::DescriptorPoolSizeBuilder::new()
                 .descriptor_count(1)
                 ._type(vk::DescriptorType::UNIFORM_BUFFER),
             vk::DescriptorPoolSizeBuilder::new()
-                .descriptor_count(1)
-                ._type(vk::DescriptorType::STORAGE_BUFFER),
-            vk::DescriptorPoolSizeBuilder::new()
-                .descriptor_count(1)
-                ._type(vk::DescriptorType::STORAGE_BUFFER),
-            vk::DescriptorPoolSizeBuilder::new()
-                .descriptor_count(1)
+                .descriptor_count(1024)
                 ._type(vk::DescriptorType::STORAGE_BUFFER),
         ];
         let raytracing_descriptor_pool =
@@ -355,8 +431,34 @@ impl RayTracingApplication {
                 flags: None,
             })?;
 
-        let raytracing_descriptor_set = raytracing_descriptor_pool
-            .create_descriptor_set("RT Descriptor Set", &rt_descriptor_set_layout)?;
+        let raytracing_descriptor_set = raytracing_descriptor_pool.create_descriptor_set(
+            "RT Descriptor Set",
+            &raytracing_descriptor_set_layout,
+            Some(1024),
+        )?;
+
+        let storage_pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
+            .descriptor_count(1024)
+            ._type(vk::DescriptorType::STORAGE_BUFFER)];
+        let storage_descriptor_pool =
+            device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
+                name: "Storage Descriptor Pool",
+                max_sets: 4,
+                pool_sizes: &storage_pool_sizes,
+                flags: None,
+            })?;
+
+        let vertex_descriptor_set = storage_descriptor_pool.create_descriptor_set(
+            "Vertex Descriptor Set",
+            &vertex_descriptor_set_layout,
+            Some(1024),
+        )?;
+
+        let index_descriptor_set = storage_descriptor_pool.create_descriptor_set(
+            "Index Descriptor Set",
+            &index_descriptor_set_layout,
+            Some(1024),
+        )?;
 
         // RT pipeline layout
         let push_constants_ranges = [vk::PushConstantRangeBuilder::new()
@@ -364,7 +466,11 @@ impl RayTracingApplication {
             .offset(0)
             .size(36)];
 
-        let layouts = [rt_descriptor_set_layout.raw];
+        let layouts = [
+            raytracing_descriptor_set_layout.raw,
+            vertex_descriptor_set_layout.raw,
+            index_descriptor_set_layout.raw,
+        ];
         let layout_info = vk::PipelineLayoutCreateInfoBuilder::new()
             .push_constant_ranges(&push_constants_ranges)
             .set_layouts(&layouts);
@@ -405,13 +511,51 @@ impl RayTracingApplication {
         let raytracing_pipeline =
             device.create_raytracing_pipeline("RT Pipeline", None, rt_pipeline_info)?;
 
+        // SBT
+        let group_count = groups.len() as u32;
+        let sbt_size = RayTracingApplication::calculate_sbt_size(raytrace_properties, group_count);
+        let mut sbt_data: Vec<u8> = vec![0; sbt_size as usize];
+        device.ray_tracing_shader_group_handles(
+            raytracing_pipeline.raw,
+            0,
+            group_count,
+            sbt_data.as_mut_slice(),
+        )?;
+
+        let sbt = uploader.create_buffer_with_data(
+            device,
+            "SBT Buffer",
+            cast_slice(sbt_data.as_slice()),
+            vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
+            vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
+        )?;
+
         Ok((
             raytracing_renderpass,
             raytracing_descriptor_pool,
+            raytracing_descriptor_set_layout,
             raytracing_descriptor_set,
+            storage_descriptor_pool,
+            vertex_descriptor_set_layout,
+            vertex_descriptor_set,
+            index_descriptor_set_layout,
+            index_descriptor_set,
             raytracing_pipeline_layout,
             raytracing_pipeline,
+            sbt,
         ))
+    }
+
+    fn calculate_sbt_size(
+        raytrace_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
+        group_count: u32,
+    ) -> u32 {
+        let group_handle_size = raytrace_properties.shader_group_handle_size;
+        let group_size_aligned = align_up(
+            group_handle_size,
+            raytrace_properties.shader_group_base_alignment,
+        );
+        group_count * group_size_aligned
     }
 
     fn create_postprocess_renderpass(
@@ -419,6 +563,7 @@ impl RayTracingApplication {
     ) -> Result<(
         asche::RenderPass,
         asche::DescriptorPool,
+        asche::DescriptorSetLayout,
         asche::DescriptorSet,
         asche::PipelineLayout,
         asche::GraphicsPipeline,
@@ -522,6 +667,7 @@ impl RayTracingApplication {
         let postprocess_descriptor_set = postprocess_descriptor_pool.create_descriptor_set(
             "Postprocess Descriptor Set",
             &postprocess_descriptor_set_layout,
+            None,
         )?;
 
         // Postprocess pipeline layout
@@ -583,6 +729,7 @@ impl RayTracingApplication {
         Ok((
             postprocess_renderpass,
             postprocess_descriptor_pool,
+            postprocess_descriptor_set_layout,
             postprocess_descriptor_set,
             postprocess_pipeline_layout,
             postprocess_pipeline,
@@ -615,14 +762,16 @@ impl RayTracingApplication {
             light_color,
         };
 
-        let camera_uniforms_buffer = self.create_buffer_with_data(
+        let camera_uniforms_buffer = self.uploader.create_buffer_with_data(
+            &self.device,
             "Camera Uniforms Buffer",
             cast_slice(&[camera_uniforms]),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
         )?;
 
-        let light_uniforms_buffer = self.create_buffer_with_data(
+        let light_uniforms_buffer = self.uploader.create_buffer_with_data(
+            &self.device,
             "Lights Uniforms Buffer",
             cast_slice(&[light_uniforms]),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
@@ -642,12 +791,11 @@ impl RayTracingApplication {
             .sampler(self.sampler.raw)
             .image_view(self.offscreen_attachment.view.raw)
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
-        let write = vk::WriteDescriptorSetBuilder::new()
+        let postprocess_write = vk::WriteDescriptorSetBuilder::new()
             .dst_set(self.postprocess_descriptor_set.raw)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .image_info(&image_info);
-        self.device.update_descriptor_sets(&[write], &[]);
 
         // RT Renderpass
         // TLAS
@@ -657,11 +805,12 @@ impl RayTracingApplication {
         let mut structure_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
             .acceleration_structures(&structures)
             .build();
-        let tlas_write = vk::WriteDescriptorSetBuilder::new()
+        let mut tlas_write = vk::WriteDescriptorSetBuilder::new()
             .dst_set(self.raytracing_descriptor_set.raw)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
             .extend_from(&mut structure_info);
+        tlas_write.descriptor_count = 1;
 
         // Camera Uniform
         let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
@@ -676,13 +825,12 @@ impl RayTracingApplication {
 
         // Offscreen Image
         let image_info = [vk::DescriptorImageInfoBuilder::new()
-            .sampler(self.sampler.raw)
             .image_view(self.offscreen_attachment.view.raw)
-            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
+            .image_layout(vk::ImageLayout::GENERAL)];
         let offscreen_write = vk::WriteDescriptorSetBuilder::new()
             .dst_set(self.raytracing_descriptor_set.raw)
             .dst_binding(2)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
             .image_info(&image_info);
 
         // Light Uniform
@@ -697,11 +845,11 @@ impl RayTracingApplication {
             .buffer_info(&buffer_info);
 
         // Material, vertex and index buffer.
-        let mut material_buffer: Vec<vk::DescriptorBufferInfoBuilder> =
+        let mut material_buffers: Vec<vk::DescriptorBufferInfoBuilder> =
             Vec::with_capacity(self.models.len());
-        let mut vertex_buffer: Vec<vk::DescriptorBufferInfoBuilder> =
+        let mut vertex_buffers: Vec<vk::DescriptorBufferInfoBuilder> =
             Vec::with_capacity(self.models.len());
-        let mut index_buffer: Vec<vk::DescriptorBufferInfoBuilder> =
+        let mut index_buffers: Vec<vk::DescriptorBufferInfoBuilder> =
             Vec::with_capacity(self.models.len());
 
         for model in self.models.iter() {
@@ -709,39 +857,42 @@ impl RayTracingApplication {
                 .buffer(model.material_buffer.raw)
                 .offset(0)
                 .range(std::mem::size_of::<MaterialData>() as u64);
-            material_buffer.push(buffer_info);
+            material_buffers.push(buffer_info);
 
             let buffer_info = vk::DescriptorBufferInfoBuilder::new()
                 .buffer(model.vertex_buffer.raw)
                 .offset(0)
                 .range(model.vertex_count as u64 * std::mem::size_of::<Vertex>() as u64);
-            vertex_buffer.push(buffer_info);
+            vertex_buffers.push(buffer_info);
 
             let buffer_info = vk::DescriptorBufferInfoBuilder::new()
                 .buffer(model.index_buffer.raw)
                 .offset(0)
                 .range(model.index_count as u64 * std::mem::size_of::<u32>() as u64);
-            index_buffer.push(buffer_info);
+            index_buffers.push(buffer_info);
         }
 
         let material_write = vk::WriteDescriptorSetBuilder::new()
             .dst_set(self.raytracing_descriptor_set.raw)
             .dst_binding(4)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&material_buffer);
+            .buffer_info(&material_buffers);
+
         let vertex_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
-            .dst_binding(5)
+            .dst_set(self.vertex_descriptor_set.raw)
+            .dst_binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&vertex_buffer);
+            .buffer_info(&vertex_buffers);
+
         let index_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
-            .dst_binding(6)
+            .dst_set(self.index_descriptor_set.raw)
+            .dst_binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&index_buffer);
+            .buffer_info(&index_buffers);
 
         self.device.update_descriptor_sets(
             &[
+                postprocess_write,
                 tlas_write,
                 camera_write,
                 offscreen_write,
@@ -765,19 +916,22 @@ impl RayTracingApplication {
                 roughness: material.roughness,
             };
 
-            let vertex_buffer = self.create_buffer_with_data(
+            let vertex_buffer = self.uploader.create_buffer_with_data(
+                &self.device,
                 &format!("Model {} Vertex Buffer", id),
                 cast_slice(mesh.vertices.as_slice()),
-                vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
-            let index_buffer = self.create_buffer_with_data(
+            let index_buffer = self.uploader.create_buffer_with_data(
+                &self.device,
                 &format!("Model {} Index Buffer", id),
                 cast_slice(mesh.indices.as_slice()),
-                vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
-            let material_buffer = self.create_buffer_with_data(
+            let material_buffer = self.uploader.create_buffer_with_data(
+                &self.device,
                 &format!("Model {} Material Buffer", id),
                 cast_slice(&[material_data]),
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -786,7 +940,7 @@ impl RayTracingApplication {
 
             self.models.push(Model {
                 vertex_count: mesh.vertices.len() as u32,
-                index_count: (mesh.indices.len() / 3) as u32,
+                index_count: mesh.indices.len() as u32,
                 tlas_index: id as u32,
                 blas_index: id as u32,
                 material_buffer,
@@ -799,65 +953,6 @@ impl RayTracingApplication {
         self.init_tlas()?;
 
         Ok(())
-    }
-
-    fn create_buffer_with_data(
-        &mut self,
-        name: &str,
-        buffer_data: &[u8],
-        buffer_type: vk::BufferUsageFlags,
-        queues: vk::QueueFlags,
-    ) -> Result<asche::Buffer> {
-        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor {
-            name: "Staging Buffer",
-            usage: vk::BufferUsageFlags::TRANSFER_SRC,
-            memory_location: vk_alloc::MemoryLocation::CpuToGpu,
-            sharing_mode: vk::SharingMode::CONCURRENT,
-            queues: vk::QueueFlags::TRANSFER | queues,
-            size: buffer_data.len() as u64,
-            flags: None,
-        })?;
-
-        let stagging_slice = stagging_buffer
-            .allocation
-            .mapped_slice_mut()
-            .expect("staging buffer allocation was not mapped");
-        stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
-
-        let dst_buffer = self.device.create_buffer(&asche::BufferDescriptor {
-            name,
-            usage: buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
-            memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            sharing_mode: vk::SharingMode::CONCURRENT,
-            queues: vk::QueueFlags::TRANSFER | queues,
-            size: stagging_buffer.allocation.size,
-            flags: None,
-        })?;
-
-        let transfer_buffer = self.transfer_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
-        )?;
-
-        {
-            let encoder = transfer_buffer.record()?;
-            encoder.copy_buffer(
-                stagging_buffer.raw,
-                dst_buffer.raw,
-                0,
-                0,
-                buffer_data.len() as u64,
-            );
-        }
-
-        self.timeline_value += 1;
-        self.transfer_queue.submit(&transfer_buffer)?;
-        self.timeline.wait_for_value(self.timeline_value)?;
-
-        self.transfer_pool.reset()?;
-
-        Ok(dst_buffer)
     }
 
     fn init_blas(&mut self) -> Result<()> {
@@ -914,7 +1009,7 @@ impl RayTracingApplication {
             let size_info = self.device.acceleration_structure_build_sizes(
                 vk::AccelerationStructureBuildTypeKHR::DEVICE_KHR,
                 &query_info,
-                &[model.index_count],
+                &[model.index_count / 3],
             );
 
             max_sizes.push(size_info.acceleration_structure_size);
@@ -956,7 +1051,7 @@ impl RayTracingApplication {
                 .dst_acceleration_structure(blas.structure.raw);
 
             let range = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
-                .primitive_count(model.index_count)
+                .primitive_count(model.index_count / 3)
                 .primitive_offset(0)
                 .transform_offset(0)
                 .first_vertex(0);
@@ -1130,7 +1225,8 @@ impl RayTracingApplication {
 
         let instance_count = instance_data.len() as u32;
 
-        let buffer = self.create_buffer_with_data(
+        let buffer = self.uploader.create_buffer_with_data(
+            &self.device,
             "Model TLAS Instances",
             &cast_slice(instance_data.as_slice()),
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
@@ -1267,7 +1363,9 @@ impl Texture {
     fn create_offscreen_attachment(device: &asche::Device, extent: vk::Extent2D) -> Result<Self> {
         let image = device.create_image(&asche::ImageDescriptor {
             name: "Offscreen Texture",
-            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | vk::ImageUsageFlags::SAMPLED
+                | vk::ImageUsageFlags::STORAGE,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::GRAPHICS,

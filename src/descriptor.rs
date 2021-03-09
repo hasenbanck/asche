@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use erupt::vk;
+use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
 use tracing::error;
 
@@ -33,11 +33,28 @@ impl DescriptorPool {
         &self,
         name: &str,
         layout: &DescriptorSetLayout,
+        descriptor_count: Option<u32>,
     ) -> Result<DescriptorSet> {
+        let counts = if let Some(count) = descriptor_count {
+            vec![count]
+        } else {
+            vec![]
+        };
+
         let layouts = [layout.raw];
         let info = vk::DescriptorSetAllocateInfoBuilder::new()
             .descriptor_pool(self.raw)
             .set_layouts(&layouts);
+
+        let mut variable_info = vk::DescriptorSetVariableDescriptorCountAllocateInfoBuilder::new()
+            .descriptor_counts(&counts);
+
+        let info = if descriptor_count.is_some() {
+            info.extend_from(&mut variable_info)
+        } else {
+            info
+        };
+
         let sets =
             unsafe { self.context.device.allocate_descriptor_sets(&info) }.map_err(|err| {
                 #[cfg(feature = "tracing")]

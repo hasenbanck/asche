@@ -1,33 +1,33 @@
 use bytemuck::{Pod, Zeroable};
 use ultraviolet::{Mat4, Vec3, Vec4};
 
-pub(crate) struct Mesh {
+pub struct Mesh {
     /// Vulkan expects a 3x4 Row Major transform matrix.
-    pub(crate) model_matrix: [f32; 12],
-    pub(crate) material: usize,
-    pub(crate) vertices: Vec<Vertex>,
-    pub(crate) indices: Vec<u32>,
+    pub model_matrix: [f32; 12],
+    pub material: usize,
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
 }
 
-pub(crate) struct Material {
-    pub(crate) albedo: Vec4,
-    pub(crate) metallic: f32,
-    pub(crate) roughness: f32,
+pub struct Material {
+    pub albedo: Vec4,
+    pub metallic: f32,
+    pub roughness: f32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct Vertex {
-    pub(crate) position: Vec3,
-    pub(crate) normal: Vec3,
-    pub(crate) tangent: Vec4,
+pub struct Vertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub tangent: Vec4,
 }
 
 unsafe impl Pod for Vertex {}
 
 unsafe impl Zeroable for Vertex {}
 
-pub(crate) fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
+pub fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
     let gltf = gltf::Gltf::from_slice(data).unwrap();
     let data = import_buffer_data(&gltf.document, gltf.blob);
     let document = gltf.document;
