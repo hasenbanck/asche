@@ -29,8 +29,8 @@ void main()
     vec4 direction = camera.inv_view * vec4(normalize(target.xyz), 0.0);
 
     uint ray_flags = gl_RayFlagsOpaqueEXT;
-    float min_t = 0.1;
-    float max_t = 1000.0;
+    float min_t = 0.001;
+    float max_t = 10000.0;
 
     traceRayEXT(tlas,
     ray_flags,

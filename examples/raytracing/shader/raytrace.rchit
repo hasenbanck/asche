@@ -24,6 +24,9 @@ layout(set = 2, binding = 0, scalar) buffer IndexBuffer { uint i[]; } indices[];
 
 void main()
 {
+    // TODO This will panic the device.
+    // TODO The shader currently produces noise! So maybe the tracer jumps somehere, where it shouldn't?
+    /*
     // The ID of the mesh we hit (the index could also hit to an actual instance index, we are
     // currently expecting exactly one instance for each index to make things easier).
     uint mesh_id = gl_InstanceCustomIndexEXT;
@@ -54,6 +57,7 @@ void main()
     // Light calculation.
     vec3  L = normalize(light.light_position.xyz);
     float dot_normal_L = max(dot(normal, L), 0.2);
+    */
 
-    payload.hit_value = material.albedo * dot_normal_L;
+    payload.hit_value = vec4(1.0);
 }

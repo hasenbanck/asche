@@ -1378,6 +1378,8 @@ impl RayTracingApplication {
                 1,
             );
 
+            // TODO do we need some form of synchronization here?
+
             let pass = encoder.begin_render_pass(
                 &self.renderpass,
                 &[asche::RenderPassColorAttachmentDescriptor {
