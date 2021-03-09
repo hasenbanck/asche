@@ -154,9 +154,11 @@ impl Application {
             self.timeline_value + 1,
         )?;
 
-        let set = self
-            .descriptor_pool
-            .create_descriptor_set("Compute Descriptor Set", &self.descriptor_set_layout)?;
+        let set = self.descriptor_pool.create_descriptor_set(
+            "Compute Descriptor Set",
+            &self.descriptor_set_layout,
+            None,
+        )?;
 
         let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
             .buffer(buffer.raw)

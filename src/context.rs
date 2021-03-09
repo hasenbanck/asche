@@ -59,7 +59,7 @@ impl Context {
         &self,
         render_pass: &RenderPass,
         color_attachments: &[RenderPassColorAttachmentDescriptor],
-        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
+        depth_attachment: &Option<RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {
         // Calculate the hash for the renderpass / attachment combination.
@@ -92,7 +92,7 @@ impl Context {
         &self,
         render_pass: &RenderPass,
         color_attachments: &[RenderPassColorAttachmentDescriptor],
-        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
+        depth_attachment: &Option<RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {
         let attachments: Vec<vk::ImageView> = color_attachments

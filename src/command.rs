@@ -585,7 +585,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
         &self,
         render_pass: &RenderPass,
         color_attachments: &[RenderPassColorAttachmentDescriptor],
-        depth_attachment: Option<&RenderPassDepthAttachmentDescriptor>,
+        depth_attachment: Option<RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<RenderPassEncoder> {
         let encoder = RenderPassEncoder {
@@ -596,15 +596,21 @@ impl<'a> GraphicsCommandEncoder<'a> {
         let framebuffer = self.context.get_framebuffer(
             render_pass,
             color_attachments,
-            depth_attachment,
+            &depth_attachment,
             extent,
         )?;
 
-        let clear_values: Vec<ClearValue> = color_attachments
-            .iter()
-            .map(|x| x.clear_value)
-            .chain(depth_attachment.iter().map(|x| x.clear_value))
-            .collect();
+        let mut clear_values: Vec<ClearValue> = Vec::with_capacity(2);
+        color_attachments.iter().for_each(|x| {
+            if let Some(clear_value) = x.clear_value {
+                clear_values.push(clear_value)
+            }
+        });
+        depth_attachment.iter().for_each(|x| {
+            if let Some(clear_value) = x.clear_value {
+                clear_values.push(clear_value)
+            }
+        });
 
         encoder.begin(render_pass.raw, framebuffer, &clear_values, extent);
 

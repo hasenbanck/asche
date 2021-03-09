@@ -209,11 +209,11 @@ impl Application {
                     &self.render_pass,
                     &[asche::RenderPassColorAttachmentDescriptor {
                         attachment: frame.view,
-                        clear_value: vk::ClearValue {
+                        clear_value: Some(vk::ClearValue {
                             color: vk::ClearColorValue {
                                 float32: [1.0, 0.0, 1.0, 1.0],
                             },
-                        },
+                        }),
                     }],
                     None,
                     self.extent,

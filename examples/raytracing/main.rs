@@ -107,6 +107,8 @@ fn main() -> Result<()> {
                 _ => {}
             }
         }
+
+        app.render()?;
     }
 
     Ok(())
@@ -114,7 +116,7 @@ fn main() -> Result<()> {
 
 struct RayTracingApplication {
     uniforms: Vec<asche::Buffer>,
-    sbt: asche::Buffer,
+    _sbt: asche::Buffer,
     tlas: Vec<TLAS>,
     blas: Vec<BLAS>,
     models: Vec<Model>,
@@ -204,7 +206,7 @@ impl RayTracingApplication {
 
         Ok(Self {
             uniforms: vec![],
-            sbt,
+            _sbt: sbt,
             tlas: vec![],
             blas: vec![],
             models: vec![],
@@ -591,53 +593,25 @@ impl RayTracingApplication {
             .name(&mainfunctionname);
 
         // Postprocess renderpass
-        let attachments = [
-            // Offscreen Attachment
-            vk::AttachmentDescription2Builder::new()
-                .format(OFFSCREEN_FORMAT)
-                .load_op(vk::AttachmentLoadOp::LOAD)
-                .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .final_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .samples(vk::SampleCountFlagBits::_1),
-            // Output Attachment
-            vk::AttachmentDescription2Builder::new()
-                .format(SURFACE_FORMAT)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .samples(vk::SampleCountFlagBits::_1),
-        ];
-
-        let input_attachments = [vk::AttachmentReference2Builder::new()
-            .attachment(0)
-            .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .aspect_mask(vk::ImageAspectFlags::COLOR)];
+        let attachments = [vk::AttachmentDescription2Builder::new()
+            .format(SURFACE_FORMAT)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .samples(vk::SampleCountFlagBits::_1)];
 
         let color_attachments = [vk::AttachmentReference2Builder::new()
-            .attachment(1)
+            .attachment(0)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
 
         let subpasses = [vk::SubpassDescription2Builder::new()
-            .input_attachments(&input_attachments)
             .color_attachments(&color_attachments)
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
 
-        let dependencies = [vk::SubpassDependency2KHRBuilder::new()
-            .dst_subpass(vk::SUBPASS_EXTERNAL)
-            .dependency_flags(vk::DependencyFlags::BY_REGION)
-            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-            .dst_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)];
-
         let renderpass_info = vk::RenderPassCreateInfo2Builder::new()
-            .dependencies(&dependencies)
             .attachments(&attachments)
             .subpasses(&subpasses);
 
@@ -943,8 +917,6 @@ impl RayTracingApplication {
             self.models.push(Model {
                 vertex_count: mesh.vertices.len() as u32,
                 index_count: mesh.indices.len() as u32,
-                tlas_index: id as u32,
-                blas_index: id as u32,
                 material_buffer,
                 vertex_buffer,
                 index_buffer,
@@ -1135,7 +1107,10 @@ impl RayTracingApplication {
             .device
             .create_acceleration_structure("Model {} BLAS", &creation_info)?;
 
-        Ok(BLAS { structure, buffer })
+        Ok(BLAS {
+            structure,
+            _buffer: buffer,
+        })
     }
 
     // Returns a query pool with the compacted sized.
@@ -1326,9 +1301,68 @@ impl RayTracingApplication {
         self.compute_queue.submit(&compute_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
-        self.tlas.push(TLAS { structure, buffer });
+        self.tlas.push(TLAS {
+            structure,
+            _buffer: buffer,
+        });
 
         self.compute_pool.reset()?;
+
+        Ok(())
+    }
+
+    pub fn render(&mut self) -> Result<()> {
+        let frame = self.device.get_next_frame()?;
+
+        let graphics_buffer = self.graphics_pool.create_command_buffer(
+            &self.timeline,
+            Timeline::RenderStart.with_offset(self.timeline_value),
+            Timeline::RenderEnd.with_offset(self.timeline_value),
+        )?;
+
+        {
+            let encoder = graphics_buffer.record()?;
+            encoder.set_viewport_and_scissor(
+                vk::Rect2DBuilder::new()
+                    .offset(vk::Offset2D { x: 0, y: 0 })
+                    .extent(self.extent),
+            );
+
+            // TODO RT render pass
+
+            let pass = encoder.begin_render_pass(
+                &self.postprocess_renderpass,
+                &[asche::RenderPassColorAttachmentDescriptor {
+                    attachment: frame.view,
+                    clear_value: Some(vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [1.0, 0.0, 1.0, 1.0],
+                        },
+                    }),
+                }],
+                None,
+                self.extent,
+            )?;
+
+            pass.bind_pipeline(&self.postprocess_pipeline);
+            pass.bind_descriptor_set(
+                self.postprocess_pipeline_layout.raw,
+                0,
+                self.postprocess_descriptor_set.raw,
+                &[],
+            );
+
+            pass.draw(6, 1, 0, 0);
+        }
+
+        self.graphics_queue.submit(&graphics_buffer)?;
+        self.timeline
+            .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
+
+        self.graphics_pool.reset()?;
+
+        self.device.queue_frame(&self.graphics_queue, frame)?;
+        self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())
     }
@@ -1349,12 +1383,12 @@ unsafe impl Zeroable for AccelerationStructureInstance {}
 
 struct TLAS {
     structure: asche::AccelerationStructure,
-    buffer: asche::Buffer,
+    _buffer: asche::Buffer,
 }
 
 struct BLAS {
     structure: asche::AccelerationStructure,
-    buffer: asche::Buffer,
+    _buffer: asche::Buffer,
 }
 
 struct Texture {
@@ -1368,7 +1402,8 @@ impl Texture {
             name: "Offscreen Texture",
             usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                 | vk::ImageUsageFlags::SAMPLED
-                | vk::ImageUsageFlags::STORAGE,
+                | vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::GRAPHICS,
@@ -1419,8 +1454,6 @@ impl Texture {
 struct Model {
     index_count: u32,
     vertex_count: u32,
-    tlas_index: u32,
-    blas_index: u32,
     material_buffer: asche::Buffer,
     vertex_buffer: asche::Buffer,
     index_buffer: asche::Buffer,
@@ -1463,3 +1496,15 @@ struct MaterialData {
 unsafe impl Pod for MaterialData {}
 
 unsafe impl Zeroable for MaterialData {}
+
+#[derive(Copy, Clone)]
+enum Timeline {
+    RenderStart = 0,
+    RenderEnd,
+}
+
+impl Timeline {
+    fn with_offset(&self, offset: u64) -> u64 {
+        *self as u64 + offset
+    }
+}

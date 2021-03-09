@@ -322,7 +322,7 @@ pub struct RenderPassColorAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
     pub attachment: vk::ImageView,
     /// Value used to clear the attachment.
-    pub clear_value: vk::ClearValue,
+    pub clear_value: Option<vk::ClearValue>,
 }
 
 /// Describes a render pass depth attachment. Used to create the framebuffer.
@@ -330,5 +330,5 @@ pub struct RenderPassDepthAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
     pub attachment: vk::ImageView,
     /// Value used to clear the attachment.
-    pub clear_value: vk::ClearValue,
+    pub clear_value: Option<vk::ClearValue>,
 }

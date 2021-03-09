@@ -617,9 +617,11 @@ impl Application {
             Mat4::from_rotation_y((std::f32::consts::PI) * self.timeline_value as f32 / 500.0);
         let mvp_matrix = self.vp_matrix * m_matrix;
 
-        let set = self
-            .descriptor_pool
-            .create_descriptor_set("Cube Descriptor Set", &self.descriptor_set_layout)?;
+        let set = self.descriptor_pool.create_descriptor_set(
+            "Cube Descriptor Set",
+            &self.descriptor_set_layout,
+            None,
+        )?;
 
         let image_info = [vk::DescriptorImageInfoBuilder::new()
             .sampler(self.sampler.raw)
@@ -644,19 +646,19 @@ impl Application {
                 &self.render_pass,
                 &[asche::RenderPassColorAttachmentDescriptor {
                     attachment: frame.view,
-                    clear_value: vk::ClearValue {
+                    clear_value: Some(vk::ClearValue {
                         color: vk::ClearColorValue {
                             float32: [1.0, 0.0, 1.0, 1.0],
                         },
-                    },
+                    }),
                 }],
-                Some(&asche::RenderPassDepthAttachmentDescriptor {
+                Some(asche::RenderPassDepthAttachmentDescriptor {
                     attachment: self.depth_texture.view.raw,
-                    clear_value: vk::ClearValue {
+                    clear_value: Some(vk::ClearValue {
                         color: vk::ClearColorValue {
                             float32: [1.0, 0.0, 1.0, 1.0],
                         },
-                    },
+                    }),
                 }),
                 self.extent,
             )?;
