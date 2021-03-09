@@ -53,10 +53,11 @@ fn main() -> Result<(), asche::AscheError> {
 
 struct Application {
     device: asche::Device,
-    graphics_queue: asche::GraphicsQueue,
-    graphics_command_pool: asche::GraphicsCommandPool,
+    queue: asche::GraphicsQueue,
+    command_pool: asche::GraphicsCommandPool,
     extent: vk::Extent2D,
-    graphics_pipeline: asche::GraphicsPipeline,
+    _pipeline_layout: asche::PipelineLayout,
+    pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
@@ -177,10 +178,11 @@ impl Application {
 
         Ok(Self {
             device,
-            graphics_queue,
-            graphics_command_pool,
+            queue: graphics_queue,
+            command_pool: graphics_command_pool,
             extent,
-            graphics_pipeline: pipeline,
+            _pipeline_layout: pipeline_layout,
+            pipeline,
             render_pass,
             timeline,
             timeline_value,
@@ -190,7 +192,7 @@ impl Application {
     fn render(&mut self) -> Result<(), asche::AscheError> {
         let frame = self.device.get_next_frame()?;
 
-        let graphics_buffer = self.graphics_command_pool.create_command_buffer(
+        let graphics_buffer = self.command_pool.create_command_buffer(
             &self.timeline,
             Timeline::RenderStart.with_offset(self.timeline_value),
             Timeline::RenderEnd.with_offset(self.timeline_value),
@@ -219,18 +221,18 @@ impl Application {
                     self.extent,
                 )?;
 
-                pass.bind_pipeline(&self.graphics_pipeline);
+                pass.bind_pipeline(&self.pipeline);
                 pass.draw(3, 1, 0, 0);
             }
         }
 
-        self.graphics_queue.submit(&graphics_buffer)?;
+        self.queue.submit(&graphics_buffer)?;
         self.timeline
             .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
 
-        self.graphics_command_pool.reset()?;
+        self.command_pool.reset()?;
 
-        self.device.queue_frame(&self.graphics_queue, frame)?;
+        self.device.queue_frame(&self.queue, frame)?;
         self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())

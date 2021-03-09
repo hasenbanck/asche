@@ -664,6 +664,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
     pub fn bind_descriptor_set(
         &self,
+        pipeline_bind_point: vk::PipelineBindPoint,
         layout: vk::PipelineLayout,
         set: u32,
         descriptor_sets: &[vk::DescriptorSet],
@@ -672,7 +673,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
         bind_descriptor_sets(
             self.context,
             self.buffer,
-            vk::PipelineBindPoint::GRAPHICS,
+            pipeline_bind_point,
             layout,
             set,
             descriptor_sets,

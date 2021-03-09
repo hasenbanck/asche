@@ -116,6 +116,7 @@ fn main() -> Result<()> {
 
 struct RayTracingApplication {
     uniforms: Vec<asche::Buffer>,
+    sbt_stride_addresses: Vec<vk::StridedDeviceAddressRegionKHR>,
     _sbt: asche::Buffer,
     tlas: Vec<TLAS>,
     blas: Vec<BLAS>,
@@ -186,7 +187,7 @@ impl RayTracingApplication {
             postprocess_descriptor_set,
             postprocess_pipeline_layout,
             postprocess_pipeline,
-        ) = RayTracingApplication::create_postprocess_renderpass(&mut device)?;
+        ) = RayTracingApplication::create_postprocess_pipeline(&mut device)?;
 
         let (
             raytracing_descriptor_pool,
@@ -200,10 +201,12 @@ impl RayTracingApplication {
             raytracing_pipeline_layout,
             raytracing_pipeline,
             sbt,
-        ) = RayTracingApplication::create_rt_renderpass(&mut device, &mut uploader)?;
+            sbt_stride_addresses,
+        ) = RayTracingApplication::create_rt_pipeline(&mut device, &mut uploader)?;
 
         Ok(Self {
             uniforms: vec![],
+            sbt_stride_addresses,
             _sbt: sbt,
             tlas: vec![],
             blas: vec![],
@@ -239,7 +242,7 @@ impl RayTracingApplication {
     }
 
     #[allow(clippy::type_complexity)]
-    fn create_rt_renderpass(
+    fn create_rt_pipeline(
         device: &mut asche::Device,
         uploader: &mut Uploader,
     ) -> Result<(
@@ -254,6 +257,7 @@ impl RayTracingApplication {
         asche::PipelineLayout,
         asche::RayTracingPipeline,
         asche::Buffer,
+        Vec<vk::StridedDeviceAddressRegionKHR>,
     )> {
         // Query for RT capabilities
         let mut raytrace_properties =
@@ -268,26 +272,26 @@ impl RayTracingApplication {
             "Raytrace Raygen Shader Module",
             include_bytes!("shader/raytrace.rgen.spv"),
         )?;
-        let close_hit_module = device.create_shader_module(
-            "Raytrace Close Hit Shader Module",
-            include_bytes!("shader/raytrace.rchit.spv"),
-        )?;
         let miss_module = device.create_shader_module(
             "Raytrace Miss Shader Module",
             include_bytes!("shader/raytrace.rmiss.spv"),
+        )?;
+        let close_hit_module = device.create_shader_module(
+            "Raytrace Close Hit Shader Module",
+            include_bytes!("shader/raytrace.rchit.spv"),
         )?;
 
         let raygen_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::RAYGEN_KHR)
             .module(raygen_module.raw)
             .name(&mainfunctionname);
-        let close_hit_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
-            .stage(vk::ShaderStageFlagBits::CLOSEST_HIT_KHR)
-            .module(close_hit_module.raw)
-            .name(&mainfunctionname);
         let miss_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::MISS_KHR)
             .module(miss_module.raw)
+            .name(&mainfunctionname);
+        let close_hit_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::CLOSEST_HIT_KHR)
+            .module(close_hit_module.raw)
             .name(&mainfunctionname);
 
         // RT descriptor set layouts
@@ -444,25 +448,28 @@ impl RayTracingApplication {
 
         // RT Pipeline
         let shader_stages = vec![raygen_stage, miss_stage, close_hit_stage];
-        let max_bounce = raytrace_properties.max_ray_recursion_depth.min(2);
+        let max_bounce = raytrace_properties.max_ray_recursion_depth.min(1);
 
         let groups = [
+            // Raygen
             vk::RayTracingShaderGroupCreateInfoKHRBuilder::new()
                 ._type(vk::RayTracingShaderGroupTypeKHR::GENERAL_KHR)
                 .general_shader(0)
                 .closest_hit_shader(vk::SHADER_UNUSED_KHR)
                 .intersection_shader(vk::SHADER_UNUSED_KHR)
                 .any_hit_shader(vk::SHADER_UNUSED_KHR),
+            // Miss
             vk::RayTracingShaderGroupCreateInfoKHRBuilder::new()
                 ._type(vk::RayTracingShaderGroupTypeKHR::GENERAL_KHR)
                 .general_shader(1)
                 .closest_hit_shader(vk::SHADER_UNUSED_KHR)
                 .intersection_shader(vk::SHADER_UNUSED_KHR)
                 .any_hit_shader(vk::SHADER_UNUSED_KHR),
+            // Hit
             vk::RayTracingShaderGroupCreateInfoKHRBuilder::new()
                 ._type(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP_KHR)
-                .general_shader(vk::SHADER_UNUSED_KHR)
-                .closest_hit_shader(2)
+                .general_shader(2)
+                .closest_hit_shader(vk::SHADER_UNUSED_KHR)
                 .intersection_shader(vk::SHADER_UNUSED_KHR)
                 .any_hit_shader(vk::SHADER_UNUSED_KHR),
         ];
@@ -476,23 +483,12 @@ impl RayTracingApplication {
         let raytracing_pipeline =
             device.create_raytracing_pipeline("RT Pipeline", None, rt_pipeline_info)?;
 
-        // SBT
-        let group_count = groups.len() as u32;
-        let sbt_size = RayTracingApplication::calculate_sbt_size(raytrace_properties, group_count);
-        let mut sbt_data: Vec<u8> = vec![0; sbt_size as usize];
-        device.ray_tracing_shader_group_handles(
-            raytracing_pipeline.raw,
-            0,
-            group_count,
-            sbt_data.as_mut_slice(),
-        )?;
-
-        let sbt = uploader.create_buffer_with_data(
+        let (sbt, sbt_stride_addresses) = RayTracingApplication::create_sbt(
             device,
-            "SBT Buffer",
-            cast_slice(sbt_data.as_slice()),
-            vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-            vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
+            uploader,
+            &raytrace_properties,
+            &groups,
+            &raytracing_pipeline,
         )?;
 
         Ok((
@@ -507,22 +503,85 @@ impl RayTracingApplication {
             raytracing_pipeline_layout,
             raytracing_pipeline,
             sbt,
+            sbt_stride_addresses,
         ))
     }
 
-    fn calculate_sbt_size(
-        raytrace_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
-        group_count: u32,
+    fn create_sbt(
+        device: &mut asche::Device,
+        uploader: &mut Uploader,
+        raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
+        groups: &[vk::RayTracingShaderGroupCreateInfoKHRBuilder],
+        raytracing_pipeline: &asche::RayTracingPipeline,
+    ) -> Result<(asche::Buffer, Vec<vk::StridedDeviceAddressRegionKHR>)> {
+        let group_count = groups.len() as u32;
+        let sbt_size = Self::calculate_sbt_size(&raytrace_properties, group_count);
+        let mut sbt_data: Vec<u8> = vec![0; sbt_size as usize];
+        device.ray_tracing_shader_group_handles(
+            raytracing_pipeline.raw,
+            0,
+            group_count,
+            sbt_data.as_mut_slice(),
+        )?;
+
+        let sbt = uploader.create_buffer_with_data(
+            device,
+            "SBT Buffer",
+            cast_slice(sbt_data.as_slice()),
+            vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
+        )?;
+
+        let group_size = Self::calculate_sbt_group_size(&raytrace_properties) as u64;
+        let group_stride = group_size;
+        let sbt_address = sbt.device_address();
+
+        let sbt_stride_addresses = vec![
+            // Raygen
+            vk::StridedDeviceAddressRegionKHR {
+                device_address: sbt_address,
+                stride: group_stride,
+                size: group_size,
+            },
+            // Miss
+            vk::StridedDeviceAddressRegionKHR {
+                device_address: sbt_address + group_size,
+                stride: group_stride,
+                size: group_size,
+            },
+            // Hit
+            vk::StridedDeviceAddressRegionKHR {
+                device_address: sbt_address + group_size * 2,
+                stride: group_stride,
+                size: group_size,
+            },
+            // Callable
+            vk::StridedDeviceAddressRegionKHR::default(),
+        ];
+
+        Ok((sbt, sbt_stride_addresses))
+    }
+
+    fn calculate_sbt_group_size(
+        raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
     ) -> u32 {
         let group_handle_size = raytrace_properties.shader_group_handle_size;
-        let group_size_aligned = align_up(
+        align_up(
             group_handle_size,
             raytrace_properties.shader_group_base_alignment,
-        );
+        )
+    }
+
+    fn calculate_sbt_size(
+        raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
+        group_count: u32,
+    ) -> u32 {
+        let group_size_aligned = Self::calculate_sbt_group_size(raytrace_properties);
         group_count * group_size_aligned
     }
 
-    fn create_postprocess_renderpass(
+    fn create_postprocess_pipeline(
         device: &mut asche::Device,
     ) -> Result<(
         asche::RenderPass,
@@ -1029,7 +1088,6 @@ impl RayTracingApplication {
         self.compute_queue.submit(&command_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
-        // Replace the old BLAS with the compacted ones.
         self.blas = compacted_blas;
 
         #[cfg(feature = "tracing")]
@@ -1290,16 +1348,35 @@ impl RayTracingApplication {
 
             encoder.bind_raytrace_pipeline(&self.raytracing_pipeline);
             encoder.bind_descriptor_set(
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
                 self.raytracing_pipeline_layout.raw,
                 0,
-                &[
-                    self.raytracing_descriptor_set.raw,
-                    self.vertex_descriptor_set.raw,
-                    self.index_descriptor_set.raw,
-                ],
+                &[self.raytracing_descriptor_set.raw],
                 &[],
             );
-            // TODO call encoder.trace_rays_khr()
+            encoder.bind_descriptor_set(
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
+                self.raytracing_pipeline_layout.raw,
+                1,
+                &[self.vertex_descriptor_set.raw],
+                &[],
+            );
+            encoder.bind_descriptor_set(
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
+                self.raytracing_pipeline_layout.raw,
+                2,
+                &[self.index_descriptor_set.raw],
+                &[],
+            );
+            encoder.trace_rays_khr(
+                &self.sbt_stride_addresses[0],
+                &self.sbt_stride_addresses[1],
+                &self.sbt_stride_addresses[2],
+                &self.sbt_stride_addresses[3],
+                self.extent.width,
+                self.extent.height,
+                1,
+            );
 
             let pass = encoder.begin_render_pass(
                 &self.renderpass,
