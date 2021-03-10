@@ -50,12 +50,14 @@ fn main() -> Result<()> {
         instance.request_device(asche::DeviceConfiguration {
             swapchain_format: SURFACE_FORMAT,
             extensions: vec![
+                // For RT support
                 vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                 vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                 vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
                 vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+                // For GLSL_EXT_debug_printf support
+                vk::KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
             ],
-            //  shaderStorageBufferArrayNonUniformIndexing
             features_v1_2: Some(
                 vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
                     .timeline_semaphore(true)
@@ -749,10 +751,7 @@ impl RayTracingApplication {
     ) -> Result<Texture> {
         let image = device.create_image(&asche::ImageDescriptor {
             name: "Offscreen Image",
-            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | vk::ImageUsageFlags::SAMPLED
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+            usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::GRAPHICS,
@@ -1292,6 +1291,7 @@ impl RayTracingApplication {
 
                 let address: vk::DeviceAddress = blas.structure.device_address();
 
+                // TODO 1. Problem: We are using the hit shader for the misses ....???? (tested by setting mask to 0)
                 let mask = u32::MAX;
                 let hit_group_id: u32 = 0;
                 let flags: u32 =
@@ -1468,6 +1468,7 @@ impl RayTracingApplication {
                 1,
             );
 
+            // TODO maybe not needed. Maybe leaving it at GENERAL is faster?
             let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
                 .src_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
                 .src_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
@@ -1514,6 +1515,7 @@ impl RayTracingApplication {
                 pass.draw(3, 1, 0, 0);
             }
 
+            // TODO maybe not needed. Maybe leaving it at GENERAL is faster?
             let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
                 .src_stage_mask(vk::PipelineStageFlags2KHR::FRAGMENT_SHADER_KHR)
                 .src_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)
