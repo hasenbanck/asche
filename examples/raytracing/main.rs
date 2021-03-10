@@ -852,7 +852,7 @@ impl RayTracingApplication {
             "Camera Uniforms Buffer",
             cast_slice(&[camera_uniforms]),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
+            vk::QueueFlags::GRAPHICS,
         )?;
 
         let light_uniforms_buffer = self.uploader.create_buffer_with_data(
@@ -860,7 +860,7 @@ impl RayTracingApplication {
             "Lights Uniforms Buffer",
             cast_slice(&[light_uniforms]),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
+            vk::QueueFlags::GRAPHICS,
         )?;
 
         self.uniforms.push(camera_uniforms_buffer);
@@ -1200,8 +1200,8 @@ impl RayTracingApplication {
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            sharing_mode: Default::default(),
-            queues: Default::default(),
+            sharing_mode: vk::SharingMode::CONCURRENT,
+            queues: vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             size: compacted,
             flags: None,
         })?;
