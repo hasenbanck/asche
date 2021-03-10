@@ -516,6 +516,27 @@ impl<'a> ComputeCommandEncoder<'a> {
             )
         };
     }
+
+    /// Clear regions of a color image.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html
+    pub fn clear_color_image(
+        &self,
+        image: vk::Image,
+        image_layout: vk::ImageLayout,
+        color: &vk::ClearColorValue,
+        ranges: &[vk::ImageSubresourceRangeBuilder],
+    ) {
+        unsafe {
+            self.context.device.cmd_clear_color_image(
+                self.buffer,
+                image,
+                image_layout,
+                color,
+                ranges,
+            )
+        };
+    }
 }
 
 impl<'a> Drop for ComputeCommandEncoder<'a> {
@@ -780,6 +801,27 @@ impl<'a> GraphicsCommandEncoder<'a> {
                 query_pool,
                 first_query,
                 query_count,
+            )
+        };
+    }
+
+    /// Clear regions of a color image.
+    ///
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html
+    pub fn clear_color_image(
+        &self,
+        image: vk::Image,
+        image_layout: vk::ImageLayout,
+        color: &vk::ClearColorValue,
+        ranges: &[vk::ImageSubresourceRangeBuilder],
+    ) {
+        unsafe {
+            self.context.device.cmd_clear_color_image(
+                self.buffer,
+                image,
+                image_layout,
+                color,
+                ranges,
             )
         };
     }

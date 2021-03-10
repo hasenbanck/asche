@@ -17,5 +17,6 @@ lights;
 
 void main()
 {
-    payload.hit_value = lights.clear_color;
+    // BLUE
+    payload.hit_value = vec4(0.0,0.0,1.0,1.0);
 }

@@ -48,6 +48,7 @@ fn main() -> Result<()> {
 
     let (device, (compute_queue, graphics_queue, transfer_queue)) =
         instance.request_device(asche::DeviceConfiguration {
+            swapchain_format: SURFACE_FORMAT,
             extensions: vec![
                 vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                 vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
@@ -827,7 +828,7 @@ impl RayTracingApplication {
             0.1,
         );
         let inv_projection_matrix = projection_matrix.inversed();
-        let view_matrix = Mat4::look_at(Vec3::new(0.0, 2.0, 5.0), Vec3::zero(), Vec3::unit_y());
+        let view_matrix = Mat4::look_at(Vec3::new(0.0, 2.0, 5.0), Vec3::zero(), Vec3::unit_y()); // TODO the coordinate system works, since "y" is affecting the "gradient" position in the "y" dimension!
         let inv_view_matrix = view_matrix.inversed();
         let clear_color = Vec4::new(1.0, 1.0, 0.0, 1.0);
         let light_position = Vec4::new(-1.0, 1.0, 1.0, 1.0).normalized();

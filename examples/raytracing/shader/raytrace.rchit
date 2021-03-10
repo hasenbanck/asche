@@ -58,6 +58,6 @@ void main()
     vec3  L = normalize(light.light_position.xyz);
     float dot_normal_L = max(dot(normal, L), 0.2);
     */
-
-    payload.hit_value = vec4(1.0);
+    // RED
+    payload.hit_value = vec4(1.0, 0.0, 0.0, 1.0);
 }

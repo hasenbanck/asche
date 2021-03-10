@@ -29,7 +29,7 @@ void main()
     vec4 direction = camera.inv_view * vec4(normalize(target.xyz), 0.0);
 
     uint ray_flags = gl_RayFlagsOpaqueEXT;
-    float min_t = 0.001;
+    float min_t = 0.01;
     float max_t = 10000.0;
 
     traceRayEXT(tlas,
@@ -45,5 +45,14 @@ void main()
     0// payload (location = 0)
     );
 
-    imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
+    if (payload.hit_value == vec4(1.0, 0.0, 0.0, 1.0)) {
+        // HIT
+        imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
+    } else if (payload.hit_value == vec4(0.0, 0.0, 1.0, 1.0)) {
+        // MISS
+        imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
+    } else {
+        // FILTER OUT RANDOM NOISE
+        imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), vec4(1.0, 1.0, 1.0, 1.0));
+    }
 }
