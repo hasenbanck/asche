@@ -161,9 +161,6 @@ impl RayTracingApplication {
     ) -> Result<Self> {
         let extent = vk::Extent2D { width, height };
 
-        // Offscreen Attachment
-        let offscreen_attachment = Texture::create_offscreen_attachment(&device, extent)?;
-
         // Sampler
         let sampler = device.create_sampler(&asche::SamplerDescriptor {
             name: "Offscreen Texture Sampler",
@@ -171,11 +168,11 @@ impl RayTracingApplication {
         })?;
 
         // Utility
-        let timeline_value = 0;
+        let mut timeline_value = 0;
         let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
 
         let compute_pool = compute_queue.create_command_pool()?;
-        let graphics_pool = graphics_queue.create_command_pool()?;
+        let mut graphics_pool = graphics_queue.create_command_pool()?;
 
         let mut uploader = Uploader::new(&device, transfer_queue)?;
 
@@ -187,7 +184,7 @@ impl RayTracingApplication {
             postprocess_descriptor_set,
             postprocess_pipeline_layout,
             postprocess_pipeline,
-        ) = RayTracingApplication::create_postprocess_pipeline(&mut device)?;
+        ) = Self::create_postprocess_pipeline(&mut device)?;
 
         let (
             raytracing_descriptor_pool,
@@ -202,7 +199,17 @@ impl RayTracingApplication {
             raytracing_pipeline,
             sbt,
             sbt_stride_addresses,
-        ) = RayTracingApplication::create_rt_pipeline(&mut device, &mut uploader)?;
+        ) = Self::create_rt_pipeline(&mut device, &mut uploader)?;
+
+        // Offscreen Image
+        let offscreen_attachment = Self::create_offscreen_image(
+            &device,
+            extent,
+            &mut graphics_pool,
+            &graphics_queue,
+            &timeline,
+            &mut timeline_value,
+        )?;
 
         Ok(Self {
             uniforms: vec![],
@@ -729,6 +736,88 @@ impl RayTracingApplication {
             postprocess_pipeline_layout,
             postprocess_pipeline,
         ))
+    }
+
+    fn create_offscreen_image(
+        device: &asche::Device,
+        extent: vk::Extent2D,
+        pool: &mut asche::GraphicsCommandPool,
+        queue: &asche::GraphicsQueue,
+        timeline: &asche::TimelineSemaphore,
+        timeline_value: &mut u64,
+    ) -> Result<Texture> {
+        let image = device.create_image(&asche::ImageDescriptor {
+            name: "Offscreen Image",
+            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | vk::ImageUsageFlags::SAMPLED
+                | vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+            memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queues: vk::QueueFlags::GRAPHICS,
+            image_type: vk::ImageType::_2D,
+            format: OFFSCREEN_FORMAT,
+            extent: vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            },
+            mip_levels: 1,
+            array_layers: 1,
+            samples: vk::SampleCountFlagBits::_1,
+            tiling: vk::ImageTiling::OPTIMAL,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            flags: None,
+        })?;
+
+        let view = device.create_image_view(&asche::ImageViewDescriptor {
+            name: "Offscreen Image View",
+            image: &image,
+            view_type: vk::ImageViewType::_2D,
+            format: OFFSCREEN_FORMAT,
+            components: vk::ComponentMapping {
+                r: vk::ComponentSwizzle::R,
+                g: vk::ComponentSwizzle::G,
+                b: vk::ComponentSwizzle::B,
+                a: vk::ComponentSwizzle::A,
+            },
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
+            flags: None,
+        })?;
+
+        let cmd = pool.create_command_buffer(timeline, *timeline_value, *timeline_value + 1)?;
+        *timeline_value += 1;
+        {
+            let encoder = cmd.record()?;
+            let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
+                .src_stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
+                .src_access_mask(vk::AccessFlags2KHR::NONE_KHR)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .dst_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
+                .dst_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
+                .new_layout(vk::ImageLayout::GENERAL)
+                .image(image.raw)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            encoder.pipeline_barrier2(
+                &vk::DependencyInfoKHRBuilder::new().image_memory_barriers(&[image_barrier]),
+            );
+        }
+        queue.submit(&cmd)?;
+        timeline.wait_for_value(*timeline_value)?;
+
+        Ok(Texture { view, image })
     }
 
     pub fn upload_uniforms(&mut self) -> Result<()> {
@@ -1378,32 +1467,70 @@ impl RayTracingApplication {
                 1,
             );
 
-            // TODO do we need some form of synchronization here?
-
-            let pass = encoder.begin_render_pass(
-                &self.renderpass,
-                &[asche::RenderPassColorAttachmentDescriptor {
-                    attachment: frame.view,
-                    clear_value: Some(vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [1.0, 0.0, 1.0, 1.0],
-                        },
-                    }),
-                }],
-                None,
-                self.extent,
-            )?;
-
-            pass.bind_pipeline(&self.postprocess_pipeline);
-            pass.bind_descriptor_sets(
-                self.postprocess_pipeline_layout.raw,
-                0,
-                &[self.postprocess_descriptor_set.raw],
-                &[],
+            let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
+                .src_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
+                .src_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
+                .old_layout(vk::ImageLayout::GENERAL)
+                .dst_stage_mask(vk::PipelineStageFlags2KHR::FRAGMENT_SHADER_KHR)
+                .dst_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image(self.offscreen_attachment.image.raw)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            encoder.pipeline_barrier2(
+                &vk::DependencyInfoKHRBuilder::new().image_memory_barriers(&[image_barrier]),
             );
 
-            // Draw the fullscreen triangle.
-            pass.draw(3, 1, 0, 0);
+            {
+                let pass = encoder.begin_render_pass(
+                    &self.renderpass,
+                    &[asche::RenderPassColorAttachmentDescriptor {
+                        attachment: frame.view,
+                        clear_value: Some(vk::ClearValue {
+                            color: vk::ClearColorValue {
+                                float32: [1.0, 0.0, 1.0, 1.0],
+                            },
+                        }),
+                    }],
+                    None,
+                    self.extent,
+                )?;
+
+                pass.bind_pipeline(&self.postprocess_pipeline);
+                pass.bind_descriptor_sets(
+                    self.postprocess_pipeline_layout.raw,
+                    0,
+                    &[self.postprocess_descriptor_set.raw],
+                    &[],
+                );
+
+                // Draw the fullscreen triangle.
+                pass.draw(3, 1, 0, 0);
+            }
+
+            let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
+                .src_stage_mask(vk::PipelineStageFlags2KHR::FRAGMENT_SHADER_KHR)
+                .src_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)
+                .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .dst_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
+                .dst_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
+                .new_layout(vk::ImageLayout::GENERAL)
+                .image(self.offscreen_attachment.image.raw)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            encoder.pipeline_barrier2(
+                &vk::DependencyInfoKHRBuilder::new().image_memory_barriers(&[image_barrier]),
+            );
         }
 
         self.graphics_queue.submit(&command_buffer)?;
@@ -1444,61 +1571,7 @@ struct BLAS {
 
 struct Texture {
     view: asche::ImageView,
-    _image: asche::Image,
-}
-
-impl Texture {
-    fn create_offscreen_attachment(device: &asche::Device, extent: vk::Extent2D) -> Result<Self> {
-        let image = device.create_image(&asche::ImageDescriptor {
-            name: "Offscreen Texture",
-            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | vk::ImageUsageFlags::SAMPLED
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
-            memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            queues: vk::QueueFlags::GRAPHICS,
-            image_type: vk::ImageType::_2D,
-            format: OFFSCREEN_FORMAT,
-            extent: vk::Extent3D {
-                width: extent.width,
-                height: extent.height,
-                depth: 1,
-            },
-            mip_levels: 1,
-            array_layers: 1,
-            samples: vk::SampleCountFlagBits::_1,
-            tiling: vk::ImageTiling::OPTIMAL,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            flags: None,
-        })?;
-
-        let view = device.create_image_view(&asche::ImageViewDescriptor {
-            name: "Offscreen Texture View",
-            image: &image,
-            view_type: vk::ImageViewType::_2D,
-            format: OFFSCREEN_FORMAT,
-            components: vk::ComponentMapping {
-                r: vk::ComponentSwizzle::R,
-                g: vk::ComponentSwizzle::G,
-                b: vk::ComponentSwizzle::B,
-                a: vk::ComponentSwizzle::A,
-            },
-            subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            },
-            flags: None,
-        })?;
-
-        Ok(Texture {
-            view,
-            _image: image,
-        })
-    }
+    image: asche::Image,
 }
 
 /// Each model has exactly one instance for this simple example.
