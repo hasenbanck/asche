@@ -476,8 +476,8 @@ impl RayTracingApplication {
             // Hit
             vk::RayTracingShaderGroupCreateInfoKHRBuilder::new()
                 ._type(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP_KHR)
-                .general_shader(2)
-                .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                .general_shader(vk::SHADER_UNUSED_KHR)
+                .closest_hit_shader(2)
                 .intersection_shader(vk::SHADER_UNUSED_KHR)
                 .any_hit_shader(vk::SHADER_UNUSED_KHR),
         ];
