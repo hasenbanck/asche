@@ -25,13 +25,12 @@ layout(set = 2, binding = 0, scalar) buffer IndexBuffer { uint i[]; } indices[];
 
 void main()
 {
-    // TODO This will panic the device.
-    // TODO The shader currently produces noise! So maybe the tracer jumps somehere, where it shouldn't?
     /*
     // The ID of the mesh we hit (the index could also hit to an actual instance index, we are
     // currently expecting exactly one instance for each index to make things easier).
     uint mesh_id = gl_InstanceCustomIndexEXT;
     Material material = materials[mesh_id].m;
+
 
     ivec3 idx = ivec3(indices[nonuniformEXT(mesh_id)].i[3 * gl_PrimitiveID],
     indices[nonuniformEXT(mesh_id)].i[3 * gl_PrimitiveID + 1],
@@ -55,9 +54,10 @@ void main()
     // Transforming the position to world space.
     vec3 world_pos = vec3(material.model_matrix * vec4(pos, 1.0));
 
-    // Light calculation.
     vec3  L = normalize(light.light_position.xyz);
     float dot_normal_L = max(dot(normal, L), 0.2);
+
+    payload.hit_value = vec4(1.0, 0.0, 0.0, 1.0) * dot_normal_L;
     */
     // RED
     payload.hit_value = vec4(1.0, 0.0, 0.0, 1.0);

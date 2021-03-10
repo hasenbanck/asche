@@ -304,6 +304,8 @@ impl RayTracingApplication {
             .module(close_hit_module.raw)
             .name(&mainfunctionname);
 
+        let shader_stages = vec![raygen_stage, miss_stage, close_hit_stage];
+
         // RT descriptor set layouts
         let bindings = [
             // TLAS
@@ -457,9 +459,7 @@ impl RayTracingApplication {
             device.create_pipeline_layout("RT Pipeline Layout", layout_info)?;
 
         // RT Pipeline
-        let shader_stages = vec![raygen_stage, miss_stage, close_hit_stage];
         let max_bounce = raytrace_properties.max_ray_recursion_depth.min(1);
-
         let groups = [
             // Raygen
             vk::RayTracingShaderGroupCreateInfoKHRBuilder::new()
@@ -485,9 +485,9 @@ impl RayTracingApplication {
         ];
 
         let rt_pipeline_info = vk::RayTracingPipelineCreateInfoKHRBuilder::new()
+            .stages(&shader_stages)
             .groups(&groups)
             .max_pipeline_ray_recursion_depth(max_bounce)
-            .stages(&shader_stages)
             .layout(raytracing_pipeline_layout.raw);
 
         let raytracing_pipeline =
@@ -526,6 +526,7 @@ impl RayTracingApplication {
     ) -> Result<(asche::Buffer, Vec<vk::StridedDeviceAddressRegionKHR>)> {
         let group_count = groups.len() as u32;
         let sbt_size = Self::calculate_sbt_size(&raytrace_properties, group_count);
+
         let mut sbt_data: Vec<u8> = vec![0; sbt_size as usize];
         device.ray_tracing_shader_group_handles(
             raytracing_pipeline.raw,
@@ -548,26 +549,30 @@ impl RayTracingApplication {
         let sbt_address = sbt.device_address();
 
         let sbt_stride_addresses = vec![
-            // Raygen
+            // RG
             vk::StridedDeviceAddressRegionKHR {
                 device_address: sbt_address,
                 stride: group_stride,
                 size: group_size,
             },
-            // Miss
+            // MISS
             vk::StridedDeviceAddressRegionKHR {
                 device_address: sbt_address + group_size,
                 stride: group_stride,
                 size: group_size,
             },
-            // Hit
+            // HG
             vk::StridedDeviceAddressRegionKHR {
                 device_address: sbt_address + group_size * 2,
                 stride: group_stride,
                 size: group_size,
             },
-            // Callable
-            vk::StridedDeviceAddressRegionKHR::default(),
+            // CALL
+            vk::StridedDeviceAddressRegionKHR {
+                device_address: vk::DeviceAddress::default(),
+                stride: 0,
+                size: 0,
+            },
         ];
 
         Ok((sbt, sbt_stride_addresses))
@@ -1458,6 +1463,9 @@ impl RayTracingApplication {
                 &[self.index_descriptor_set.raw],
                 &[],
             );
+
+            // TODO build the binding table on the fly here?1
+
             encoder.trace_rays_khr(
                 &self.sbt_stride_addresses[0],
                 &self.sbt_stride_addresses[1],

@@ -46,14 +46,6 @@ void main()
     0// payload (location = 0)
     );
 
-    if (payload.hit_value == vec4(1.0, 0.0, 0.0, 1.0)) {
-        // HIT
-        imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
-    } else if (payload.hit_value == vec4(0.0, 0.0, 1.0, 1.0)) {
-        // MISS
-        imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
-    } else {
-        // FILTER OUT RANDOM NOISE
-        imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), vec4(1.0, 1.0, 1.0, 1.0));
-    }
+
+    imageStore(offscreen_image, ivec2(gl_LaunchIDEXT.xy), payload.hit_value);
 }
