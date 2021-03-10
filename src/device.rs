@@ -958,7 +958,7 @@ impl Device {
 
     /// Query ray tracing pipeline shader group handles.
     ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html
+    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html
     pub fn ray_tracing_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,

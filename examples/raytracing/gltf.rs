@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use ultraviolet::{Mat4, Vec3, Vec4};
 
+#[derive(Debug)]
 pub struct Mesh {
     /// Vulkan expects a 3x4 Row Major transform matrix.
     pub model_matrix: [f32; 12],
@@ -9,6 +10,7 @@ pub struct Mesh {
     pub indices: Vec<u32>,
 }
 
+#[derive(Debug)]
 pub struct Material {
     pub albedo: Vec4,
     pub metallic: f32,
@@ -16,7 +18,7 @@ pub struct Material {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub position: Vec3,
     pub normal: Vec3,

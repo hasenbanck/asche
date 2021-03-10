@@ -16,8 +16,8 @@ const SURFACE_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
 const OFFSCREEN_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 
 #[inline]
-fn align_up(offset: u32, alignment: u32) -> u32 {
-    (offset + (alignment - 1u32)) & !(alignment - 1u32)
+fn align_up(offset: usize, alignment: usize) -> usize {
+    (offset + (alignment - 1)) & !(alignment - 1)
 }
 
 fn main() -> Result<()> {
@@ -524,16 +524,67 @@ impl RayTracingApplication {
         groups: &[vk::RayTracingShaderGroupCreateInfoKHRBuilder],
         raytracing_pipeline: &asche::RayTracingPipeline,
     ) -> Result<(asche::Buffer, Vec<vk::StridedDeviceAddressRegionKHR>)> {
-        let group_count = groups.len() as u32;
-        let sbt_size = Self::calculate_sbt_size(&raytrace_properties, group_count);
+        // A SBT orders the shaders in 4 groups:
+        // 1. RG
+        // 2. Miss
+        // 3. HG
+        // 4. Callable
+        //
+        // Each group must be aligned by "shader_group_base_alignment".
+        // Each group can contain multiple entries which were defined
+        // in the pipeline layout.
+        //
+        // Those entries are rightly packed in the handle_data and need
+        // to be copied at the right location inside the SBT.
+        //
+        // Example for a "shader_group_base_alignment" of 64 with a
+        // shader_group_handle_size of 32:
+        //
+        // ----     ----     ----     ----
+        //| RG |   | MS |   | HG |   | CL |
+        // ----     ----     ----     ----
+        // 0       64        128     192
+        //
+        let shader_group_handle_size = raytrace_properties.shader_group_handle_size;
+        let shader_group_base_alignment = raytrace_properties.shader_group_base_alignment as usize;
 
-        let mut sbt_data: Vec<u8> = vec![0; sbt_size as usize];
+        let group_count = groups.len() as u32;
+        let handle_data_size = shader_group_handle_size * group_count;
+
+        let mut handle_data: Vec<u8> = vec![0; handle_data_size as usize];
         device.ray_tracing_shader_group_handles(
             raytracing_pipeline.raw,
             0,
             group_count,
-            sbt_data.as_mut_slice(),
+            handle_data.as_mut_slice(),
         )?;
+
+        // We only have one shader in the first three groups.
+        let rg_group_size = shader_group_handle_size as usize;
+        let miss_group_size = shader_group_handle_size as usize;
+        let hg_group_size = shader_group_handle_size as usize;
+
+        let rg_group_offfset = 0;
+        let miss_group_offfset = align_up(
+            rg_group_offfset + rg_group_size,
+            shader_group_base_alignment,
+        );
+        let hg_group_offfset = align_up(
+            miss_group_offfset + miss_group_size,
+            shader_group_base_alignment,
+        );
+
+        let sbt_size = hg_group_offfset + hg_group_size;
+        let mut sbt_data: Vec<u8> = vec![0; sbt_size];
+
+        sbt_data[rg_group_offfset..rg_group_offfset + rg_group_size]
+            .clone_from_slice(&handle_data[0..rg_group_size]);
+        sbt_data[miss_group_offfset..miss_group_offfset + miss_group_size]
+            .clone_from_slice(&handle_data[rg_group_size..(rg_group_size + miss_group_size)]);
+        sbt_data[hg_group_offfset..hg_group_offfset + hg_group_size].clone_from_slice(
+            &handle_data[(rg_group_size + miss_group_size)
+                ..(rg_group_size + miss_group_size + hg_group_size)],
+        );
 
         let sbt = uploader.create_buffer_with_data(
             device,
@@ -544,28 +595,25 @@ impl RayTracingApplication {
             vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
         )?;
 
-        let group_size = Self::calculate_sbt_group_size(&raytrace_properties) as u64;
-        let group_stride = group_size;
         let sbt_address = sbt.device_address();
-
         let sbt_stride_addresses = vec![
             // RG
             vk::StridedDeviceAddressRegionKHR {
-                device_address: sbt_address,
-                stride: group_stride,
-                size: group_size,
+                device_address: sbt_address + rg_group_offfset as u64,
+                stride: shader_group_handle_size as u64,
+                size: rg_group_size as u64,
             },
             // MISS
             vk::StridedDeviceAddressRegionKHR {
-                device_address: sbt_address + group_size,
-                stride: group_stride,
-                size: group_size,
+                device_address: sbt_address + miss_group_offfset as u64,
+                stride: shader_group_handle_size as u64,
+                size: miss_group_size as u64,
             },
             // HG
             vk::StridedDeviceAddressRegionKHR {
-                device_address: sbt_address + group_size * 2,
-                stride: group_stride,
-                size: group_size,
+                device_address: sbt_address + hg_group_offfset as u64,
+                stride: shader_group_handle_size as u64,
+                size: hg_group_size as u64,
             },
             // CALL
             vk::StridedDeviceAddressRegionKHR {
@@ -576,24 +624,6 @@ impl RayTracingApplication {
         ];
 
         Ok((sbt, sbt_stride_addresses))
-    }
-
-    fn calculate_sbt_group_size(
-        raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
-    ) -> u32 {
-        let group_handle_size = raytrace_properties.shader_group_handle_size;
-        align_up(
-            group_handle_size,
-            raytrace_properties.shader_group_base_alignment,
-        )
-    }
-
-    fn calculate_sbt_size(
-        raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
-        group_count: u32,
-    ) -> u32 {
-        let group_size_aligned = Self::calculate_sbt_group_size(raytrace_properties);
-        group_count * group_size_aligned
     }
 
     fn create_postprocess_pipeline(
@@ -827,14 +857,14 @@ impl RayTracingApplication {
 
     pub fn upload_uniforms(&mut self) -> Result<()> {
         let projection_matrix = ultraviolet::projection::rh_yup::perspective_reversed_infinite_z_vk(
-            (70.0f32).to_radians(),
+            (90.0f32).to_radians(),
             self.extent.width as f32 / self.extent.height as f32,
             0.1,
         );
         let inv_projection_matrix = projection_matrix.inversed();
-        let view_matrix = Mat4::look_at(Vec3::new(0.0, 2.0, 5.0), Vec3::zero(), Vec3::unit_y()); // TODO the coordinate system works, since "y" is affecting the "gradient" position in the "y" dimension!
+        let view_matrix = Mat4::look_at(Vec3::new(0.0, 1.0, 3.0), Vec3::zero(), Vec3::unit_y());
         let inv_view_matrix = view_matrix.inversed();
-        let clear_color = Vec4::new(1.0, 1.0, 0.0, 1.0);
+        let clear_color = Vec4::new(0.0, 0.0, 0.0, 1.0);
         let light_position = Vec4::new(-1.0, 1.0, 1.0, 1.0).normalized();
         let light_color = Vec4::new(1.0, 1.0, 1.0, 1.0);
 
@@ -996,10 +1026,16 @@ impl RayTracingApplication {
     /// Upload vertex data and prepares the TLAS and BLAS structures.
     pub fn upload_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Result<()> {
         for (id, mesh) in meshes.iter().enumerate() {
+            // TODO remove me.
+            if (id == 1) {
+                continue;
+            }
+
             let material = &materials[mesh.material];
 
+            // TODO model matrix is not applied properly. Does the model has a scale property?! The model transformation should be happening inside the BLAS (I think).
             let material_data = MaterialData {
-                model_matrix: mesh.model_matrix,
+                model_matrix: Mat4::identity(),
                 albedo: material.albedo.into(),
                 metallic: material.metallic,
                 roughness: material.roughness,
@@ -1296,7 +1332,6 @@ impl RayTracingApplication {
 
                 let address: vk::DeviceAddress = blas.structure.device_address();
 
-                // TODO 1. Problem: We are using the hit shader for the misses ....???? (tested by setting mask to 0)
                 let mask = u32::MAX;
                 let hit_group_id: u32 = 0;
                 let flags: u32 =
@@ -1464,8 +1499,6 @@ impl RayTracingApplication {
                 &[],
             );
 
-            // TODO build the binding table on the fly here?1
-
             encoder.trace_rays_khr(
                 &self.sbt_stride_addresses[0],
                 &self.sbt_stride_addresses[1],
@@ -1476,7 +1509,6 @@ impl RayTracingApplication {
                 1,
             );
 
-            // TODO maybe not needed. Maybe leaving it at GENERAL is faster?
             let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
                 .src_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
                 .src_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
@@ -1523,7 +1555,6 @@ impl RayTracingApplication {
                 pass.draw(3, 1, 0, 0);
             }
 
-            // TODO maybe not needed. Maybe leaving it at GENERAL is faster?
             let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
                 .src_stage_mask(vk::PipelineStageFlags2KHR::FRAGMENT_SHADER_KHR)
                 .src_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)
@@ -1595,7 +1626,7 @@ struct Model {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct CameraUniforms {
     view_matrix: Mat4,
     projection_matrix: Mat4,
@@ -1608,7 +1639,7 @@ unsafe impl Pod for CameraUniforms {}
 unsafe impl Zeroable for CameraUniforms {}
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct LightUniforms {
     clear_color: Vec4,
     light_position: Vec4,
@@ -1620,10 +1651,10 @@ unsafe impl Pod for LightUniforms {}
 unsafe impl Zeroable for LightUniforms {}
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct MaterialData {
-    model_matrix: [f32; 12],
-    albedo: [f32; 4],
+    model_matrix: Mat4,
+    albedo: Vec4,
     metallic: f32,
     roughness: f32,
 }
