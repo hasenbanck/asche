@@ -1026,17 +1026,11 @@ impl RayTracingApplication {
     /// Upload vertex data and prepares the TLAS and BLAS structures.
     pub fn upload_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Result<()> {
         for (id, mesh) in meshes.iter().enumerate() {
-            // TODO remove me.
-            if (id == 1) {
-                continue;
-            }
-
             let material = &materials[mesh.material];
 
-            // TODO model matrix is not applied properly. Does the model has a scale property?! The model transformation should be happening inside the BLAS (I think).
             let material_data = MaterialData {
-                model_matrix: Mat4::identity(),
-                albedo: material.albedo.into(),
+                model_matrix: mesh.model_matrix,
+                albedo: material.albedo,
                 metallic: material.metallic,
                 roughness: material.roughness,
             };
@@ -1653,7 +1647,7 @@ unsafe impl Zeroable for LightUniforms {}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct MaterialData {
-    model_matrix: Mat4,
+    model_matrix: [f32; 12],
     albedo: Vec4,
     metallic: f32,
     roughness: f32,

@@ -30,6 +30,8 @@ void main()
     uint mesh_id = gl_InstanceCustomIndexEXT;
     Material material = materials[mesh_id].m;
 
+    mat4 model_matrix = mat4(material.model_matrix);
+
     ivec3 idx = ivec3(indices[nonuniformEXT(mesh_id)].i[3 * gl_PrimitiveID],
     indices[nonuniformEXT(mesh_id)].i[3 * gl_PrimitiveID + 1],
     indices[nonuniformEXT(mesh_id)].i[3 * gl_PrimitiveID + 2]);
@@ -44,15 +46,15 @@ void main()
     vec3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
 
     // Transforming the normal to world space.
-    normal = normalize(vec3(material.model_matrix * vec4(normal, 0.0)));
+    normal = normalize(vec3(model_matrix * vec4(normal, 0.0)));
 
     // Computing the coordinates of the hit position.
     vec3 pos = v0.position * barycentrics.x + v1.position * barycentrics.y + v2.position * barycentrics.z;
 
     // Transforming the position to world space.
-    vec3 world_pos = vec3(material.model_matrix * vec4(pos, 1.0));
+    vec3 world_pos = vec3(model_matrix * vec4(pos, 1.0));
     vec3  L = normalize(light.light_position.xyz);
     float dot_normal_L = max(dot(normal, L), 0.2);
 
-    payload.hit_value = material.albedo * dot_normal_L;
+    payload.hit_value = vec4(material.albedo.rgb * dot_normal_L, 1.0);
 }
