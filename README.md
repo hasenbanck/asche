@@ -3,8 +3,9 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Provides an abstraction layer above erupt to easier use Vulkan in Rust. Mainly handles the Vulkan
-busywork (device initialization, memory handling etc.) and the lifetimes of objects.
+Provides an abstraction layer above [erupt](https://crates.io/crates/erupt)
+to easier use Vulkan in Rust. Mainly handles the Vulkan busywork (device initialization, memory
+handling etc.) and the lifetimes of objects.
 
 No validation and a lot of pain.
 
