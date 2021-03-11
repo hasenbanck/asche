@@ -34,16 +34,16 @@ Most simple example that shows how to draw a triangle in Vulkan.
 
 ### Cube
 
-Shows how to use push constants, vertex and index buffers and compressed textures.
+Shows how to use push constants, vertex and index buffers and also compressed textures.
 
 ![Cube example](assets/cube.jpg)
 
 ### Raytracing
 
 Uses the `VK_raytracing_KHR` extension to fully ray trace a simple scene. Shows how to initialize
-and sue acceleration structures (triangle based), create and use the shader binding table (SBT), use
+and use acceleration structures (triangle based), create and use the shader binding table (SBT), use
 descriptor indexing with non uniform indexes and partial binds, write raytracing shader and do very
-simple lightning.
+basic lightning.
 
 ![Raytracing example](assets/raytracing.jpg)
 
