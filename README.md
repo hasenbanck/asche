@@ -3,7 +3,10 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Provides an abstraction layer above erupt to easier use Vulkan in Rust.
+Provides an abstraction layer above erupt to easier use Vulkan in Rust. Mainly handles the Vulkan
+busywork (device initialization, memory handling etc.) and the lifetimes of objects.
+
+No validation and a lot of pain.
 
 ## Requirements
 
@@ -16,12 +19,36 @@ Used features:
 
 ## Status
 
-Under heavy development.
+General API is finished. Not stability
 
-## Should you use this crate?
+## Examples
 
-No. I don't have a clear vision for this crate yet. Right now it's a building block for my own
-Vulkan based engine, which will replace an older WGPU renderer.
+Examples are provided. They use SDL2 for windowing.
+
+### Triangle
+
+Most simple example that shows how to draw a triangle in Vulkan.
+
+![Triangle example](assets/triangle.jpg)
+
+### Cube
+
+Shows how to use push constants, vertex and index buffers and compressed textures.
+
+![Cube example](assets/cube.jpg)
+
+### Raytracing
+
+Uses the `VK_raytracing_KHR` extension to fully ray trace a simple scene. Shows how to initialize
+and sue acceleration structures (triangle based), create and use the shader binding table (SBT), use
+descriptor indexing with non uniform indexes and partial binds, write raytracing shader and do very
+simple lightning.
+
+![Raytracing example](assets/raytracing.jpg)
+
+### Compute
+
+Simple compute example.
 
 ## License
 
