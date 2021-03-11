@@ -21,8 +21,8 @@ layout(set = 0, binding = 2, rgba16f) uniform image2D offscreen_image;
 
 void main()
 {
-    const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-    const vec2 in_uv = pixel_center / vec2(gl_LaunchSizeEXT.xy);
+    vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+    vec2 in_uv = pixel_center / vec2(gl_LaunchSizeEXT.xy);
     vec2 d = in_uv * 2.0 - 1.0;
 
     vec4 origin = camera.inv_view * vec4(0.0, 0.0, 0.0, 1.0);
@@ -30,7 +30,7 @@ void main()
     vec4 direction = camera.inv_view * vec4(normalize(target.xyz), 0.0);
 
     uint ray_flags = gl_RayFlagsOpaqueEXT;
-    float min_t = 0.01;
+    float min_t = 0.001;
     float max_t = 10000.0;
 
     traceRayEXT(tlas,

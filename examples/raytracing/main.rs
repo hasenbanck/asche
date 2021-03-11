@@ -862,7 +862,11 @@ impl RayTracingApplication {
             0.1,
         );
         let inv_projection_matrix = projection_matrix.inversed();
-        let view_matrix = Mat4::look_at(Vec3::new(0.0, 1.0, 3.0), Vec3::zero(), Vec3::unit_y());
+        let view_matrix = Mat4::look_at(
+            Vec3::new(0.0, 3.0, 3.0),
+            Vec3::new(0.0, 2.0, 0.0),
+            Vec3::unit_y(),
+        );
         let inv_view_matrix = view_matrix.inversed();
         let clear_color = Vec4::new(0.0, 0.0, 0.0, 1.0);
         let light_position = Vec4::new(-1.0, 1.0, 1.0, 1.0).normalized();
@@ -1029,12 +1033,25 @@ impl RayTracingApplication {
             let material = &materials[mesh.material];
 
             let material_data = MaterialData {
-                model_matrix: mesh.model_matrix,
                 albedo: material.albedo,
                 metallic: material.metallic,
                 roughness: material.roughness,
             };
 
+            // Vulkan expects a row major 3x4 transform matrix.
+            let row_major_matrix = mesh.model_matrix.transposed();
+            let rows = row_major_matrix.as_component_array();
+            let transform = vk::TransformMatrixKHR {
+                matrix: [rows[0].into(), rows[1].into(), rows[2].into()],
+            };
+
+            let material_buffer = self.uploader.create_buffer_with_data(
+                &self.device,
+                &format!("Model {} Material Buffer", id),
+                cast_slice(&[material_data]),
+                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
+            )?;
             let vertex_buffer = self.uploader.create_buffer_with_data(
                 &self.device,
                 &format!("Model {} Vertex Buffer", id),
@@ -1049,10 +1066,10 @@ impl RayTracingApplication {
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
-            let material_buffer = self.uploader.create_buffer_with_data(
+            let transform_buffer = self.uploader.create_buffer_with_data(
                 &self.device,
-                &format!("Model {} Material Buffer", id),
-                cast_slice(&[material_data]),
+                &format!("Model {} Transform Buffer", id),
+                cast_slice(&transform.matrix),
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
@@ -1063,6 +1080,7 @@ impl RayTracingApplication {
                 material_buffer,
                 vertex_buffer,
                 index_buffer,
+                transform_buffer,
             })
         }
 
@@ -1098,7 +1116,7 @@ impl RayTracingApplication {
                     .max_vertex(model.vertex_count)
                     .vertex_stride(std::mem::size_of::<Vertex>() as u64)
                     .transform_data(vk::DeviceOrHostAddressConstKHR {
-                        device_address: model.material_buffer.device_address(),
+                        device_address: model.transform_buffer.device_address(),
                     });
 
                 let geometry_data = vk::AccelerationStructureGeometryDataKHR {
@@ -1317,12 +1335,12 @@ impl RayTracingApplication {
             .iter()
             .enumerate()
             .map(|(id, blas)| {
-                #[rustfmt::skip]
-                let matrix: [[f32; 4]; 3] = [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                ];
+                // Vulkan expects a row major 3x4 transform matrix.
+                let row_major_matrix = Mat4::identity().transposed();
+                let rows = row_major_matrix.as_component_array();
+                let transform = vk::TransformMatrixKHR {
+                    matrix: [rows[0].into(), rows[1].into(), rows[2].into()],
+                };
 
                 let address: vk::DeviceAddress = blas.structure.device_address();
 
@@ -1335,7 +1353,7 @@ impl RayTracingApplication {
                 let ici = (id as u32 & 0x00FFFFFF) | mask << 24;
                 let isb = (hit_group_id & 0x00FFFFFF) | flags << 24;
                 AccelerationStructureInstance {
-                    transform: vk::TransformMatrixKHR { matrix },
+                    transform,
                     instance_custom_index_and_mask: ici,
                     instance_shader_binding_table_record_offset_and_flags: isb,
                     acceleration_structure_reference: address,
@@ -1617,6 +1635,7 @@ struct Model {
     material_buffer: asche::Buffer,
     vertex_buffer: asche::Buffer,
     index_buffer: asche::Buffer,
+    transform_buffer: asche::Buffer,
 }
 
 #[repr(C)]
@@ -1647,7 +1666,6 @@ unsafe impl Zeroable for LightUniforms {}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct MaterialData {
-    model_matrix: [f32; 12],
     albedo: Vec4,
     metallic: f32,
     roughness: f32,

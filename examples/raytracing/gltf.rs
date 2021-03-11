@@ -3,8 +3,7 @@ use ultraviolet::{Mat4, Vec3, Vec4};
 
 #[derive(Debug)]
 pub struct Mesh {
-    /// Vulkan expects a 3x4 Row Major transform matrix.
-    pub model_matrix: [f32; 12],
+    pub model_matrix: Mat4,
     pub material: usize,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
@@ -95,18 +94,8 @@ pub fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
                 })
                 .collect();
 
-            let cols = Mat4::from(node.transform().matrix()).cols;
-
-            // Ultraviolet is column major, vulkan expects row major
-            #[rustfmt::skip]
-            let model_matrix: [f32; 12] = [
-                cols[0].x, cols[0].y, cols[0].z, cols[0].w,
-                cols[1].x, cols[1].y, cols[1].z, cols[1].w,
-                cols[2].x, cols[2].y, cols[2].z, cols[2].w
-            ];
-
             Mesh {
-                model_matrix,
+                model_matrix: node.transform().matrix().into(),
                 material: primitive.material().index().unwrap(),
                 vertices,
                 indices,

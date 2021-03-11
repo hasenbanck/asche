@@ -12,7 +12,6 @@ struct Vertex
 
 struct Material
 {
-    mat3x4 model_matrix;
     vec4 albedo;
     float metallic;
     float roughness;
