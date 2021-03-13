@@ -22,7 +22,6 @@ pub struct InstanceConfiguration<'a> {
 
 /// Initializes the all Vulkan resources needed to create a device.
 pub struct Instance {
-    layers: Vec<*const c_char>,
     pub(crate) surface: vk::SurfaceKHR,
     #[cfg(debug_assertions)]
     debug_messenger: vk::DebugUtilsMessengerEXT,
@@ -87,7 +86,6 @@ impl Instance {
         Ok(Self {
             _entry: entry,
             raw: instance,
-            layers,
             surface,
             #[cfg(debug_assertions)]
             debug_messenger,
@@ -605,7 +603,6 @@ impl Instance {
         let device_create_info = vk::DeviceCreateInfoBuilder::new()
             .queue_create_infos(queue_infos)
             .enabled_extension_names(&device_extensions)
-            .enabled_layer_names(&self.layers)
             .enabled_features(&features)
             .extend_from(&mut features11)
             .extend_from(&mut features12)
