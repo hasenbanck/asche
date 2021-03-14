@@ -253,9 +253,9 @@ impl<'a> ComputeCommandEncoder<'a> {
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
-        src_offset: u64,
-        dst_offset: u64,
-        size: u64,
+        src_offset: vk::DeviceSize,
+        dst_offset: vk::DeviceSize,
+        size: vk::DeviceSize,
     ) {
         copy_buffer(
             self.context,
@@ -388,7 +388,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     /// Dispatch compute work items using indirect parameters.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchIndirect.html
-    pub fn dispatch_indirect(&self, buffer: vk::Buffer, offset: u64) {
+    pub fn dispatch_indirect(&self, buffer: vk::Buffer, offset: vk::DeviceSize) {
         unsafe {
             self.context
                 .device
@@ -568,9 +568,9 @@ impl<'a> GraphicsCommandEncoder<'a> {
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
-        src_offset: u64,
-        dst_offset: u64,
-        size: u64,
+        src_offset: vk::DeviceSize,
+        dst_offset: vk::DeviceSize,
+        size: vk::DeviceSize,
     ) {
         copy_buffer(
             self.context,
@@ -856,9 +856,9 @@ impl<'a> TransferCommandEncoder<'a> {
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
-        src_offset: u64,
-        dst_offset: u64,
-        size: u64,
+        src_offset: vk::DeviceSize,
+        dst_offset: vk::DeviceSize,
+        size: vk::DeviceSize,
     ) {
         copy_buffer(
             self.context,
@@ -978,7 +978,12 @@ impl<'a> RenderPassEncoder<'a> {
     /// Bind an index buffer to a command buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
-    pub fn bind_index_buffer(&self, buffer: vk::Buffer, offset: u64, index_type: vk::IndexType) {
+    pub fn bind_index_buffer(
+        &self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        index_type: vk::IndexType,
+    ) {
         unsafe {
             self.context
                 .device
@@ -1077,7 +1082,7 @@ impl<'a> RenderPassEncoder<'a> {
     pub fn draw_indexed_indirect(
         &self,
         buffer: vk::Buffer,
-        offset: u64,
+        offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
     ) {
@@ -1098,9 +1103,9 @@ impl<'a> RenderPassEncoder<'a> {
     pub fn draw_indexed_indirect_count(
         &self,
         buffer: vk::Buffer,
-        offset: u64,
+        offset: vk::DeviceSize,
         count_buffer: vk::Buffer,
-        count_buffer_offset: u64,
+        count_buffer_offset: vk::DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) {
@@ -1120,7 +1125,13 @@ impl<'a> RenderPassEncoder<'a> {
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     ///
     /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
-    pub fn draw_indirect(&self, buffer: vk::Buffer, offset: u64, draw_count: u32, stride: u32) {
+    pub fn draw_indirect(
+        &self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) {
         unsafe {
             self.context
                 .device
@@ -1134,9 +1145,9 @@ impl<'a> RenderPassEncoder<'a> {
     pub fn draw_indirect_count(
         &self,
         buffer: vk::Buffer,
-        offset: u64,
+        offset: vk::DeviceSize,
         count_buffer: vk::Buffer,
-        count_buffer_offset: u64,
+        count_buffer_offset: vk::DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) {
@@ -1220,9 +1231,9 @@ fn copy_buffer(
     buffer: vk::CommandBuffer,
     src_buffer: vk::Buffer,
     dst_buffer: vk::Buffer,
-    src_offset: u64,
-    dst_offset: u64,
-    size: u64,
+    src_offset: vk::DeviceSize,
+    dst_offset: vk::DeviceSize,
+    size: vk::DeviceSize,
 ) {
     let region = vk::BufferCopyBuilder::new()
         .dst_offset(dst_offset)

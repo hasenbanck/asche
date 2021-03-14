@@ -175,7 +175,7 @@ pub struct BufferDescriptor<'a> {
     /// Which queues should have access to it.
     pub queues: vk::QueueFlags,
     /// The size of the buffer.
-    pub size: u64,
+    pub size: vk::DeviceSize,
     /// Additional flags.
     pub flags: Option<vk::BufferCreateFlags>,
 }
@@ -189,7 +189,7 @@ pub struct BufferViewDescriptor<'a> {
     /// The format of the buffer view.
     pub format: vk::Format,
     /// Offset.
-    pub offset: u64,
+    pub offset: vk::DeviceSize,
     /// Range.
     pub range: u64,
     /// Additional flags.
