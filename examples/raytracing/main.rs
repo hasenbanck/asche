@@ -1,8 +1,8 @@
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
+use glam::{Mat4, Vec3, Vec4};
 #[cfg(feature = "tracing")]
 use tracing::info;
-use ultraviolet::{Mat4, Vec3, Vec4};
 
 use crate::gltf::{Material, Mesh, Vertex};
 use crate::uploader::Uploader;
@@ -21,13 +21,11 @@ fn align_up(offset: usize, alignment: usize) -> usize {
 }
 
 fn main() -> Result<()> {
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem
-        .window("asche - raytracing example", 1920, 1080)
-        .vulkan()
-        .allow_highdpi()
-        .build()
+    let event_loop = winit::event_loop::EventLoop::new();
+    let window = winit::window::WindowBuilder::new()
+        .with_title("asche - raytracing example")
+        .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
+        .build(&event_loop)
         .unwrap();
 
     // Log level is based on RUST_LOG env var.
@@ -81,15 +79,13 @@ fn main() -> Result<()> {
             ..Default::default()
         })?;
 
-    let (width, height) = window.size();
-
     let mut app = RayTracingApplication::new(
         device,
         compute_queue,
         graphics_queue,
         transfer_queue,
-        width,
-        height,
+        window.inner_size().width,
+        window.inner_size().height,
     )
     .unwrap();
 
@@ -98,23 +94,33 @@ fn main() -> Result<()> {
     app.upload_model(&materials, &meshes)?;
     app.update_descriptor_sets();
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                sdl2::event::Event::Quit { .. }
-                | sdl2::event::Event::KeyDown {
-                    keycode: Some(sdl2::keyboard::Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = winit::event_loop::ControlFlow::Poll;
+
+        match event {
+            winit::event::Event::WindowEvent {
+                event:
+                    winit::event::WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                state: winit::event::ElementState::Pressed,
+                                virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => *control_flow = winit::event_loop::ControlFlow::Exit,
+            winit::event::Event::WindowEvent {
+                event: winit::event::WindowEvent::CloseRequested,
+                window_id,
+            } if window_id == window.id() => *control_flow = winit::event_loop::ControlFlow::Exit,
+            winit::event::Event::MainEventsCleared => {
+                app.render().unwrap();
             }
+            _ => (),
         }
-
-        app.render()?;
-    }
-
-    Ok(())
+    });
 }
 
 struct RayTracingApplication {
@@ -856,20 +862,17 @@ impl RayTracingApplication {
     }
 
     pub fn upload_uniforms(&mut self) -> Result<()> {
-        let projection_matrix = ultraviolet::projection::rh_yup::perspective_reversed_infinite_z_vk(
+        let projection_matrix = perspective_infinite_reverse_rh_yup(
             (90.0f32).to_radians(),
             self.extent.width as f32 / self.extent.height as f32,
             0.1,
         );
-        let inv_projection_matrix = projection_matrix.inversed();
-        let view_matrix = Mat4::look_at(
-            Vec3::new(0.0, 3.0, 3.0),
-            Vec3::new(0.0, 2.0, 0.0),
-            Vec3::unit_y(),
-        );
-        let inv_view_matrix = view_matrix.inversed();
+        let inv_projection_matrix = projection_matrix.inverse();
+        let view_matrix =
+            Mat4::look_at_rh(Vec3::new(0.0, 3.0, 3.0), Vec3::new(0.0, 2.0, 0.0), Vec3::Y);
+        let inv_view_matrix = view_matrix.inverse();
         let clear_color = Vec4::new(0.0, 0.0, 0.0, 1.0);
-        let light_position = Vec4::new(-1.0, 1.0, 1.0, 1.0).normalized();
+        let light_position = Vec4::new(-1.0, 1.0, 1.0, 1.0).normalize();
         let light_color = Vec4::new(1.0, 1.0, 1.0, 1.0);
 
         let camera_uniforms = CameraUniforms {
@@ -1039,10 +1042,13 @@ impl RayTracingApplication {
             };
 
             // Vulkan expects a row major 3x4 transform matrix.
-            let row_major_matrix = mesh.model_matrix.transposed();
-            let rows = row_major_matrix.as_component_array();
+            let row_major_matrix = mesh.model_matrix.transpose();
             let transform = vk::TransformMatrixKHR {
-                matrix: [rows[0].into(), rows[1].into(), rows[2].into()],
+                matrix: [
+                    row_major_matrix.x_axis.into(),
+                    row_major_matrix.y_axis.into(),
+                    row_major_matrix.z_axis.into(),
+                ],
             };
 
             let material_buffer = self.uploader.create_buffer_with_data(
@@ -1336,10 +1342,13 @@ impl RayTracingApplication {
             .enumerate()
             .map(|(id, blas)| {
                 // Vulkan expects a row major 3x4 transform matrix.
-                let row_major_matrix = Mat4::identity().transposed();
-                let rows = row_major_matrix.as_component_array();
+                let row_major_matrix = Mat4::IDENTITY.transpose();
                 let transform = vk::TransformMatrixKHR {
-                    matrix: [rows[0].into(), rows[1].into(), rows[2].into()],
+                    matrix: [
+                        row_major_matrix.x_axis.into(),
+                        row_major_matrix.y_axis.into(),
+                        row_major_matrix.z_axis.into(),
+                    ],
                 };
 
                 let address: vk::DeviceAddress = blas.structure.device_address();
@@ -1685,4 +1694,16 @@ impl Timeline {
     fn with_offset(&self, offset: u64) -> u64 {
         *self as u64 + offset
     }
+}
+
+/// Right-handed with the the x-axis pointing right, y-axis pointing up, and z-axis pointing out of the screen for Vulkan NDC.
+#[inline]
+fn perspective_infinite_reverse_rh_yup(fov_y_radians: f32, aspect_ratio: f32, z_near: f32) -> Mat4 {
+    let f = 1.0 / (0.5 * fov_y_radians).tan();
+    Mat4::from_cols(
+        Vec4::new(f / aspect_ratio, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, -f, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 0.0, -1.0),
+        Vec4::new(0.0, 0.0, z_near, 0.0),
+    )
 }

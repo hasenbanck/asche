@@ -1,6 +1,6 @@
-use bytemuck::{Pod, Zeroable};
+use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::vk;
-use ultraviolet::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -14,13 +14,11 @@ unsafe impl Pod for Vertex {}
 unsafe impl Zeroable for Vertex {}
 
 fn main() -> Result<(), asche::AscheError> {
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem
-        .window("asche - cube example", 1920, 1080)
-        .vulkan()
-        .allow_highdpi()
-        .build()
+    let event_loop = winit::event_loop::EventLoop::new();
+    let window = winit::window::WindowBuilder::new()
+        .with_title("asche - cube example")
+        .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
+        .build(&event_loop)
         .unwrap();
 
     // Log level is based on RUST_LOG env var.
@@ -46,23 +44,33 @@ fn main() -> Result<(), asche::AscheError> {
 
     let mut app = Application::new(device, graphics_queue, transfer_queue, &window)?;
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                sdl2::event::Event::Quit { .. }
-                | sdl2::event::Event::KeyDown {
-                    keycode: Some(sdl2::keyboard::Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = winit::event_loop::ControlFlow::Poll;
+
+        match event {
+            winit::event::Event::WindowEvent {
+                event:
+                    winit::event::WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                state: winit::event::ElementState::Pressed,
+                                virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => *control_flow = winit::event_loop::ControlFlow::Exit,
+            winit::event::Event::WindowEvent {
+                event: winit::event::WindowEvent::CloseRequested,
+                window_id,
+            } if window_id == window.id() => *control_flow = winit::event_loop::ControlFlow::Exit,
+            winit::event::Event::MainEventsCleared => {
+                app.render().unwrap();
             }
+            _ => (),
         }
-
-        app.render()?;
-    }
-
-    Ok(())
+    });
 }
 
 struct Application {
@@ -91,10 +99,12 @@ impl Application {
         mut device: asche::Device,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
-        window: &sdl2::video::Window,
+        window: &winit::window::Window,
     ) -> Result<Self, asche::AscheError> {
-        let (width, height) = window.size();
-        let extent = vk::Extent2D { width, height };
+        let extent = vk::Extent2D {
+            width: window.inner_size().width,
+            height: window.inner_size().height,
+        };
 
         // Shader
         let vert_module = device.create_shader_module(
@@ -331,12 +341,12 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
-        let p_matrix = ultraviolet::projection::rh_yup::perspective_reversed_infinite_z_vk(
+        let p_matrix = perspective_infinite_reverse_rh_yup(
             (70.0f32).to_radians(),
             extent.width as f32 / extent.height as f32,
             0.1,
         );
-        let v_matrix = Mat4::look_at(Vec3::new(0.0, 2.0, 3.0), Vec3::zero(), Vec3::unit_y());
+        let v_matrix = Mat4::look_at_rh(Vec3::new(0.0, 2.0, 3.0), Vec3::ZERO, Vec3::Y);
         let vp_matrix = p_matrix * v_matrix;
 
         let timeline_value = 0;
@@ -673,7 +683,7 @@ impl Application {
                 self.pipeline_layout.raw,
                 vk::ShaderStageFlags::VERTEX,
                 0,
-                bytemuck::cast_slice(mvp_matrix.as_slice()),
+                cast_slice(mvp_matrix.as_ref()),
             );
 
             pass.draw_indexed(36, 1, 0, 0, 0);
@@ -816,4 +826,16 @@ fn create_cube_data() -> (Vec<Vertex>, Vec<u32>) {
 struct Texture {
     view: asche::ImageView,
     _image: asche::Image,
+}
+
+/// Right-handed with the the x-axis pointing right, y-axis pointing up, and z-axis pointing out of the screen for Vulkan NDC.
+#[inline]
+fn perspective_infinite_reverse_rh_yup(fov_y_radians: f32, aspect_ratio: f32, z_near: f32) -> Mat4 {
+    let f = 1.0 / (0.5 * fov_y_radians).tan();
+    Mat4::from_cols(
+        Vec4::new(f / aspect_ratio, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, -f, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 0.0, -1.0),
+        Vec4::new(0.0, 0.0, z_near, 0.0),
+    )
 }

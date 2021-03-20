@@ -1,13 +1,11 @@
 use erupt::vk;
 
 fn main() -> Result<(), asche::AscheError> {
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem
-        .window("asche - triangle example", 1920, 1080)
-        .vulkan()
-        .allow_highdpi()
-        .build()
+    let event_loop = winit::event_loop::EventLoop::new();
+    let window = winit::window::WindowBuilder::new()
+        .with_title("asche - triangle example")
+        .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
+        .build(&event_loop)
         .unwrap();
 
     // Log level is based on RUST_LOG env var.
@@ -32,23 +30,33 @@ fn main() -> Result<(), asche::AscheError> {
 
     let mut app = Application::new(device, graphics_queue, &window)?;
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                sdl2::event::Event::Quit { .. }
-                | sdl2::event::Event::KeyDown {
-                    keycode: Some(sdl2::keyboard::Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = winit::event_loop::ControlFlow::Poll;
+
+        match event {
+            winit::event::Event::WindowEvent {
+                event:
+                    winit::event::WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                state: winit::event::ElementState::Pressed,
+                                virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => *control_flow = winit::event_loop::ControlFlow::Exit,
+            winit::event::Event::WindowEvent {
+                event: winit::event::WindowEvent::CloseRequested,
+                window_id,
+            } if window_id == window.id() => *control_flow = winit::event_loop::ControlFlow::Exit,
+            winit::event::Event::MainEventsCleared => {
+                app.render().unwrap();
             }
+            _ => (),
         }
-
-        app.render()?;
-    }
-
-    Ok(())
+    });
 }
 
 struct Application {
@@ -67,10 +75,12 @@ impl Application {
     fn new(
         mut device: asche::Device,
         mut graphics_queue: asche::GraphicsQueue,
-        window: &sdl2::video::Window,
+        window: &winit::window::Window,
     ) -> Result<Self, asche::AscheError> {
-        let (width, height) = window.size();
-        let extent = vk::Extent2D { width, height };
+        let extent = vk::Extent2D {
+            width: window.inner_size().width,
+            height: window.inner_size().height,
+        };
 
         // Shader
         let vert_module = device.create_shader_module(

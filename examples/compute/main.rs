@@ -2,13 +2,11 @@ use erupt::vk;
 
 fn main() -> Result<(), asche::AscheError> {
     // Asche doesn't support headless compute only setups!
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem
-        .window("asche - cube example", 800, 600)
-        .vulkan()
-        .allow_highdpi()
-        .build()
+    let event_loop = winit::event_loop::EventLoop::new();
+    let window = winit::window::WindowBuilder::new()
+        .with_title("asche - compute example")
+        .with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080))
+        .build(&event_loop)
         .unwrap();
 
     // Log level is based on RUST_LOG env var.

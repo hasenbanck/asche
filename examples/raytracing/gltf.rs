@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use ultraviolet::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 
 #[derive(Debug)]
 pub struct Mesh {
@@ -95,7 +95,7 @@ pub fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
                 .collect();
 
             Mesh {
-                model_matrix: node.transform().matrix().into(),
+                model_matrix: Mat4::from_cols_array_2d(&node.transform().matrix()),
                 material: primitive.material().index().unwrap(),
                 vertices,
                 indices,
