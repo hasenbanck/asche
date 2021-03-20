@@ -876,16 +876,16 @@ impl RayTracingApplication {
         let light_color = Vec4::new(1.0, 1.0, 1.0, 1.0);
 
         let camera_uniforms = CameraUniforms {
-            view_matrix,
-            projection_matrix,
-            inv_view_matrix,
-            inv_projection_matrix,
+            view_matrix: view_matrix.to_cols_array(),
+            projection_matrix: projection_matrix.to_cols_array(),
+            inv_view_matrix: inv_view_matrix.to_cols_array(),
+            inv_projection_matrix: inv_projection_matrix.to_cols_array(),
         };
 
         let light_uniforms = LightUniforms {
-            clear_color,
-            light_position,
-            light_color,
+            clear_color: clear_color.into(),
+            light_position: light_position.into(),
+            light_color: light_color.into(),
         };
 
         let camera_uniforms_buffer = self.uploader.create_buffer_with_data(
@@ -1650,10 +1650,10 @@ struct Model {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct CameraUniforms {
-    view_matrix: Mat4,
-    projection_matrix: Mat4,
-    inv_view_matrix: Mat4,
-    inv_projection_matrix: Mat4,
+    view_matrix: [f32; 16],
+    projection_matrix: [f32; 16],
+    inv_view_matrix: [f32; 16],
+    inv_projection_matrix: [f32; 16],
 }
 
 unsafe impl Pod for CameraUniforms {}
@@ -1663,9 +1663,9 @@ unsafe impl Zeroable for CameraUniforms {}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct LightUniforms {
-    clear_color: Vec4,
-    light_position: Vec4,
-    light_color: Vec4,
+    clear_color: [f32; 4],
+    light_position: [f32; 4],
+    light_color: [f32; 4],
 }
 
 unsafe impl Pod for LightUniforms {}
@@ -1675,7 +1675,7 @@ unsafe impl Zeroable for LightUniforms {}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct MaterialData {
-    albedo: Vec4,
+    albedo: [f32; 4],
     metallic: f32,
     roughness: f32,
 }

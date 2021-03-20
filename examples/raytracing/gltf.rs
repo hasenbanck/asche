@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3, Vec4};
+use glam::Mat4;
 
 #[derive(Debug)]
 pub struct Mesh {
@@ -11,7 +11,7 @@ pub struct Mesh {
 
 #[derive(Debug)]
 pub struct Material {
-    pub albedo: Vec4,
+    pub albedo: [f32; 4],
     pub metallic: f32,
     pub roughness: f32,
 }
@@ -19,9 +19,9 @@ pub struct Material {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
-    pub position: Vec3,
-    pub normal: Vec3,
-    pub tangent: Vec4,
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub tangent: [f32; 4],
 }
 
 unsafe impl Pod for Vertex {}
@@ -41,7 +41,7 @@ pub fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
             let rough = material.pbr_metallic_roughness().roughness_factor();
 
             Material {
-                albedo: Vec4::from(albedo),
+                albedo,
                 metallic,
                 roughness: rough,
             }
@@ -55,25 +55,22 @@ pub fn load_models(data: &[u8]) -> (Vec<Material>, Vec<Mesh>) {
             let mesh = node.mesh().unwrap();
             let primitive = mesh.primitives().next().unwrap();
             let reader = primitive.reader(|buffer| Some(&data[buffer.index()]));
-            let positions: Vec<Vec3> = reader
+            let positions: Vec<[f32; 3]> = reader
                 .read_positions()
                 .ok_or_else(|| panic!("can't read positions"))
                 .unwrap()
-                .map(Vec3::from)
                 .collect();
 
-            let normals: Vec<Vec3> = reader
+            let normals: Vec<[f32; 3]> = reader
                 .read_normals()
                 .ok_or_else(|| panic!("can't read normals"))
                 .unwrap()
-                .map(Vec3::from)
                 .collect();
 
-            let tangents: Vec<Vec4> = reader
+            let tangents: Vec<[f32; 4]> = reader
                 .read_tangents()
                 .ok_or_else(|| panic!("can't read tangents"))
                 .unwrap()
-                .map(Vec4::from)
                 .collect();
 
             let indices: Vec<u32> = reader

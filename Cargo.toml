@@ -24,7 +24,7 @@ vk-alloc = { version = "0.4", features = ["tracing", "vk-buffer-device-address"]
 bytemuck = "1.5"
 ddsfile = "0.4"
 gltf = "0.15"
-glam = { version = "0.13", features = ["bytemuck"] }
+glam = "0.13"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 winit = "0.24"
 
