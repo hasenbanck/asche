@@ -24,6 +24,7 @@ pub use {
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     semaphore::TimelineSemaphore,
     swapchain::SwapchainFrame,
+    vk_alloc::MemoryLocation,
 };
 
 pub(crate) mod acceleration_structure;
