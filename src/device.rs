@@ -79,6 +79,7 @@ impl<'a> Default for DeviceConfiguration<'a> {
 }
 
 /// Shows if the device support access to the device memory using the base address register.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BARSupport {
     /// Device doesn't support BAR.
     NotSupported,
