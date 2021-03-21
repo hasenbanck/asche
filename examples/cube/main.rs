@@ -488,12 +488,12 @@ impl Application {
                 .dst_stage_mask(vk::PipelineStageFlags2KHR::TRANSFER_KHR)
                 .dst_access_mask(vk::AccessFlags2KHR::TRANSFER_WRITE_KHR)];
 
-            let depenency_info = vk::DependencyInfoKHRBuilder::new()
+            let dependency_info = vk::DependencyInfoKHRBuilder::new()
                 .memory_barriers(&[])
                 .image_memory_barriers(&barrier)
                 .buffer_memory_barriers(&[]);
 
-            encoder.pipeline_barrier2(&depenency_info);
+            encoder.pipeline_barrier2(&dependency_info);
 
             encoder.copy_buffer_to_image(
                 stagging_buffer.raw,
@@ -512,18 +512,7 @@ impl Application {
                     .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
                     .image_extent(extent),
             );
-        }
-        self.timeline_value += 1;
-        self.transfer_queue.submit(&transfer_buffer)?;
 
-        let graphics_buffer = self.graphics_command_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
-        )?;
-
-        {
-            let encoder = graphics_buffer.record()?;
             let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -533,19 +522,18 @@ impl Application {
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .src_stage_mask(vk::PipelineStageFlags2KHR::TRANSFER_KHR)
                 .src_access_mask(vk::AccessFlags2KHR::TRANSFER_WRITE_KHR)
-                .dst_stage_mask(vk::PipelineStageFlags2KHR::VERTEX_SHADER_KHR)
-                .dst_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)];
+                .dst_stage_mask(vk::PipelineStageFlags2KHR::ALL_TRANSFER_KHR)
+                .dst_access_mask(vk::AccessFlags2KHR::NONE_KHR)];
 
-            let depenency_info = vk::DependencyInfoKHRBuilder::new()
+            let dependency_info = vk::DependencyInfoKHRBuilder::new()
                 .memory_barriers(&[])
                 .image_memory_barriers(&barrier)
                 .buffer_memory_barriers(&[]);
 
-            encoder.pipeline_barrier2(&depenency_info);
+            encoder.pipeline_barrier2(&dependency_info);
         }
-
         self.timeline_value += 1;
-        self.graphics_queue.submit(&graphics_buffer)?;
+        self.transfer_queue.submit(&transfer_buffer)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
         Ok(Texture {
