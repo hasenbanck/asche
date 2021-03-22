@@ -1336,7 +1336,7 @@ impl RayTracingApplication {
     }
 
     fn init_tlas(&mut self) -> Result<()> {
-        let instance_data: Vec<AccelerationStructureInstance> = self
+        let instance_data: Vec<vk::AccelerationStructureInstanceKHR> = self
             .blas
             .iter()
             .enumerate()
@@ -1351,22 +1351,14 @@ impl RayTracingApplication {
                     ],
                 };
 
-                let address: vk::DeviceAddress = blas.structure.device_address();
-
-                let mask = u32::MAX;
-                let hit_group_id: u32 = 0;
-                let flags: u32 =
-                    vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR.bits();
-
-                // The ID is used to get the material later on (instance = model).
-                let ici = (id as u32 & 0x00FFFFFF) | mask << 24;
-                let isb = (hit_group_id & 0x00FFFFFF) | flags << 24;
-                AccelerationStructureInstance {
-                    transform,
-                    instance_custom_index_and_mask: ici,
-                    instance_shader_binding_table_record_offset_and_flags: isb,
-                    acceleration_structure_reference: address,
-                }
+                vk::AccelerationStructureInstanceKHRBuilder::new()
+                    .transform(transform)
+                    .instance_custom_index(id as u32)
+                    .mask(u32::MAX)
+                    .instance_shader_binding_table_record_offset(0)
+                    .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
+                    .acceleration_structure_reference(blas.structure.device_address())
+                    .build()
             })
             .collect();
 
@@ -1608,19 +1600,6 @@ impl RayTracingApplication {
         Ok(())
     }
 }
-
-// Hard copy with a workaround for following issue: https://gitlab.com/Friz64/erupt/-/issues/10
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct AccelerationStructureInstance {
-    pub transform: vk::TransformMatrixKHR,
-    pub instance_custom_index_and_mask: u32,
-    pub instance_shader_binding_table_record_offset_and_flags: u32,
-    pub acceleration_structure_reference: u64,
-}
-
-unsafe impl Pod for AccelerationStructureInstance {}
-unsafe impl Zeroable for AccelerationStructureInstance {}
 
 struct TLAS {
     structure: asche::AccelerationStructure,
