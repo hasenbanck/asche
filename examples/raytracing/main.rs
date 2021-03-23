@@ -94,6 +94,9 @@ fn main() -> Result<()> {
     app.upload_model(&materials, &meshes)?;
     app.update_descriptor_sets();
 
+    // Since we created the BLAS, we can now drop the model data.
+    app.models.clear();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
@@ -1364,7 +1367,8 @@ impl RayTracingApplication {
 
         let instance_count = instance_data.len() as u32;
 
-        let buffer = self.uploader.create_buffer_with_data(
+        // This buffer is only needed for creating the TLAS. Once it is crated, we can safely drop this.
+        let instance_buffer = self.uploader.create_buffer_with_data(
             &self.device,
             "Model TLAS Instances",
             &cast_slice(instance_data.as_slice()),
@@ -1376,7 +1380,7 @@ impl RayTracingApplication {
         let geometry_instance_data =
             vk::AccelerationStructureGeometryInstancesDataKHRBuilder::new()
                 .data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: buffer.device_address(),
+                    device_address: instance_buffer.device_address(),
                 })
                 .array_of_pointers(false);
 
