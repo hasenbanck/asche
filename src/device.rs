@@ -1,9 +1,8 @@
 use std::ffi::c_void;
 use std::os::raw::c_char;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use erupt::{vk, ExtendableFrom};
-use parking_lot::Mutex;
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
@@ -330,7 +329,7 @@ impl Device {
             .find(|m| **m == self.presentation_mode)
             .ok_or(AscheError::PresentationModeUnsupported)?;
 
-        let old_swapchain = self.swapchain.lock().take();
+        let old_swapchain = self.swapchain.lock().unwrap().take();
 
         let swapchain = Swapchain::new(
             self.context.clone(),
@@ -349,7 +348,7 @@ impl Device {
         #[cfg(feature = "tracing")]
         info!("Swapchain has {} image(s)", image_count);
 
-        self.swapchain.lock().replace(swapchain);
+        self.swapchain.lock().unwrap().replace(swapchain);
 
         Ok(())
     }
@@ -358,6 +357,7 @@ impl Device {
     pub fn get_next_frame(&self) -> Result<SwapchainFrame> {
         self.swapchain
             .lock()
+            .unwrap()
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
             .get_next_frame()
@@ -367,6 +367,7 @@ impl Device {
     pub fn queue_frame(&self, graphics_queue: &GraphicsQueue, frame: SwapchainFrame) -> Result<()> {
         self.swapchain
             .lock()
+            .unwrap()
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
             .queue_frame(frame, graphics_queue.raw)
@@ -642,11 +643,12 @@ impl Device {
         self.context
             .set_object_name(&descriptor.name, vk::ObjectType::BUFFER, raw.0)?;
 
-        let allocation = self.context.allocator.lock().allocate_memory_for_buffer(
-            &self.context.device,
-            raw,
-            descriptor.memory_location,
-        )?;
+        let allocation = self
+            .context
+            .allocator
+            .lock()
+            .unwrap()
+            .allocate_memory_for_buffer(&self.context.device, raw, descriptor.memory_location)?;
 
         let bind_infos = vk::BindBufferMemoryInfoBuilder::new()
             .buffer(raw)
@@ -743,11 +745,12 @@ impl Device {
         self.context
             .set_object_name(&descriptor.name, vk::ObjectType::IMAGE, raw.0)?;
 
-        let allocation = self.context.allocator.lock().allocate_memory_for_image(
-            &self.context.device,
-            raw,
-            descriptor.memory_location,
-        )?;
+        let allocation = self
+            .context
+            .allocator
+            .lock()
+            .unwrap()
+            .allocate_memory_for_image(&self.context.device, raw, descriptor.memory_location)?;
 
         let bind_infos = vk::BindImageMemoryInfoBuilder::new()
             .image(raw)
