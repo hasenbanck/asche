@@ -73,7 +73,7 @@ struct Application {
 
 impl Application {
     fn new(
-        mut device: asche::Device,
+        device: asche::Device,
         mut graphics_queue: asche::GraphicsQueue,
         window: &winit::window::Window,
     ) -> Result<Self, asche::AscheError> {

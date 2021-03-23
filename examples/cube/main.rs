@@ -1,6 +1,6 @@
 use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::vk;
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -96,7 +96,7 @@ struct Application {
 
 impl Application {
     fn new(
-        mut device: asche::Device,
+        device: asche::Device,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
         window: &winit::window::Window,

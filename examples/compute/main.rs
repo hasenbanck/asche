@@ -49,7 +49,7 @@ struct Application {
 
 impl Application {
     fn new(
-        mut device: asche::Device,
+        device: asche::Device,
         mut compute_queue: asche::ComputeQueue,
     ) -> Result<Self, asche::AscheError> {
         // Shader

@@ -161,7 +161,7 @@ struct RayTracingApplication {
 
 impl RayTracingApplication {
     fn new(
-        mut device: asche::Device,
+        device: asche::Device,
         mut compute_queue: asche::ComputeQueue,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
@@ -193,7 +193,7 @@ impl RayTracingApplication {
             postprocess_descriptor_set,
             postprocess_pipeline_layout,
             postprocess_pipeline,
-        ) = Self::create_postprocess_pipeline(&mut device)?;
+        ) = Self::create_postprocess_pipeline(&device)?;
 
         let (
             raytracing_descriptor_pool,
@@ -208,7 +208,7 @@ impl RayTracingApplication {
             raytracing_pipeline,
             sbt,
             sbt_stride_addresses,
-        ) = Self::create_rt_pipeline(&mut device, &mut uploader)?;
+        ) = Self::create_rt_pipeline(&device, &mut uploader)?;
 
         // Offscreen Image
         let offscreen_attachment = Self::create_offscreen_image(
@@ -259,7 +259,7 @@ impl RayTracingApplication {
 
     #[allow(clippy::type_complexity)]
     fn create_rt_pipeline(
-        device: &mut asche::Device,
+        device: &asche::Device,
         uploader: &mut Uploader,
     ) -> Result<(
         asche::DescriptorPool,
@@ -524,7 +524,7 @@ impl RayTracingApplication {
     }
 
     fn create_sbt(
-        device: &mut asche::Device,
+        device: &asche::Device,
         uploader: &mut Uploader,
         raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
         groups: &[vk::RayTracingShaderGroupCreateInfoKHRBuilder],
@@ -633,7 +633,7 @@ impl RayTracingApplication {
     }
 
     fn create_postprocess_pipeline(
-        device: &mut asche::Device,
+        device: &asche::Device,
     ) -> Result<(
         asche::RenderPass,
         asche::DescriptorPool,
