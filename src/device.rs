@@ -3,6 +3,7 @@ use std::os::raw::c_char;
 use std::sync::Arc;
 
 use erupt::{vk, ExtendableFrom};
+use parking_lot::Mutex;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
 
@@ -106,7 +107,7 @@ pub struct Device {
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
     transfer_queue_family_index: u32,
-    swapchain: Option<Swapchain>,
+    swapchain: Mutex<Option<Swapchain>>,
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
     presentation_mode: vk::PresentModeKHR,
@@ -213,7 +214,7 @@ impl Device {
             transfer_queue.raw.0 as u64,
         )?;
 
-        let mut device = Device {
+        let device = Device {
             device_type: physical_device_properties.device_type,
             resizable_bar_support,
             context,
@@ -223,7 +224,7 @@ impl Device {
             presentation_mode,
             swapchain_format,
             swapchain_color_space,
-            swapchain: None,
+            swapchain: Mutex::new(None),
         };
 
         device.recreate_swapchain(None)?;
@@ -237,7 +238,7 @@ impl Device {
     }
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
-    pub fn recreate_swapchain(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
+    pub fn recreate_swapchain(&self, window_extend: Option<vk::Extent2D>) -> Result<()> {
         self.context.destroy_framebuffer();
 
         #[cfg(feature = "tracing")]
@@ -328,7 +329,7 @@ impl Device {
             .find(|m| **m == self.presentation_mode)
             .ok_or(AscheError::PresentationModeUnsupported)?;
 
-        let old_swapchain = self.swapchain.take();
+        let old_swapchain = self.swapchain.lock().take();
 
         let swapchain = Swapchain::new(
             self.context.clone(),
@@ -347,32 +348,32 @@ impl Device {
         #[cfg(feature = "tracing")]
         info!("Swapchain has {} image(s)", image_count);
 
-        self.swapchain = Some(swapchain);
+        self.swapchain.lock().replace(swapchain);
 
         Ok(())
     }
 
     /// Gets the next frame the program can render into.
     pub fn get_next_frame(&self) -> Result<SwapchainFrame> {
-        let swapchain = self
-            .swapchain
+        self.swapchain
+            .lock()
             .as_ref()
-            .ok_or(AscheError::SwapchainNotInitialized)?;
-        swapchain.get_next_frame()
+            .ok_or(AscheError::SwapchainNotInitialized)?
+            .get_next_frame()
     }
 
     /// Queues the frame in the presentation queue.
     pub fn queue_frame(&self, graphics_queue: &GraphicsQueue, frame: SwapchainFrame) -> Result<()> {
-        let swapchain = &self
-            .swapchain
+        self.swapchain
+            .lock()
             .as_ref()
-            .ok_or(AscheError::SwapchainNotInitialized)?;
-        swapchain.queue_frame(frame, graphics_queue.raw)
+            .ok_or(AscheError::SwapchainNotInitialized)?
+            .queue_frame(frame, graphics_queue.raw)
     }
 
     /// Creates a new render pass.
     pub fn create_render_pass(
-        &mut self,
+        &self,
         name: &str,
         renderpass_info: vk::RenderPassCreateInfo2Builder,
     ) -> Result<RenderPass> {
@@ -403,7 +404,7 @@ impl Device {
 
     /// Creates a new pipeline layout.
     pub fn create_pipeline_layout(
-        &mut self,
+        &self,
         name: &str,
         pipeline_layout_info: vk::PipelineLayoutCreateInfoBuilder,
     ) -> Result<PipelineLayout> {
@@ -429,7 +430,7 @@ impl Device {
 
     /// Creates a new graphics pipeline.
     pub fn create_graphics_pipeline(
-        &mut self,
+        &self,
         name: &str,
         pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
     ) -> Result<GraphicsPipeline> {
@@ -457,7 +458,7 @@ impl Device {
 
     /// Creates a new raytracing pipeline.
     pub fn create_raytracing_pipeline(
-        &mut self,
+        &self,
         name: &str,
         deferred_operation: Option<vk::DeferredOperationKHR>,
         pipeline_info: vk::RayTracingPipelineCreateInfoKHRBuilder,
@@ -489,7 +490,7 @@ impl Device {
 
     /// Creates a new compute pipeline.
     pub fn create_compute_pipeline(
-        &mut self,
+        &self,
         name: &str,
         pipeline_info: vk::ComputePipelineCreateInfoBuilder,
     ) -> Result<ComputePipeline> {
@@ -517,7 +518,7 @@ impl Device {
 
     /// Creates a descriptor pool.
     pub fn create_descriptor_pool(
-        &mut self,
+        &self,
         descriptor: &DescriptorPoolDescriptor,
     ) -> Result<DescriptorPool> {
         let pool_info = vk::DescriptorPoolCreateInfoBuilder::new()
@@ -549,7 +550,7 @@ impl Device {
 
     /// Creates a descriptor set layout.
     pub fn create_descriptor_set_layout(
-        &mut self,
+        &self,
         name: &str,
         layout_info: vk::DescriptorSetLayoutCreateInfoBuilder,
     ) -> Result<DescriptorSetLayout> {
@@ -872,7 +873,7 @@ impl Device {
 
     /// Creates a new query pool.
     pub fn create_query_pool(
-        &mut self,
+        &self,
         name: &str,
         query_pool_info: vk::QueryPoolCreateInfoBuilder,
     ) -> Result<QueryPool> {
