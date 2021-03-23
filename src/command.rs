@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use erupt::vk;
 use erupt::vk::ClearValue;
+use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
@@ -404,7 +405,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
-        let build_range_infos: Vec<*const vk::AccelerationStructureBuildRangeInfoKHR> =
+        let build_range_infos: SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]> =
             build_range_infos
                 .iter()
                 .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
@@ -621,7 +622,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
             extent,
         )?;
 
-        let mut clear_values: Vec<ClearValue> = Vec::with_capacity(2);
+        let mut clear_values: SmallVec<[ClearValue; 4]> = SmallVec::new();
         color_attachments.iter().for_each(|x| {
             if let Some(clear_value) = x.clear_value {
                 clear_values.push(clear_value)

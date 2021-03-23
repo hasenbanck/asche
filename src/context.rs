@@ -5,6 +5,7 @@ use std::hash::Hasher;
 
 use erupt::vk;
 use parking_lot::Mutex;
+use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
@@ -95,7 +96,7 @@ impl Context {
         depth_attachment: &Option<RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {
-        let attachments: Vec<vk::ImageView> = color_attachments
+        let attachments: SmallVec<[vk::ImageView; 4]> = color_attachments
             .iter()
             .map(|x| x.attachment)
             .chain(depth_attachment.iter().map(|x| x.attachment))

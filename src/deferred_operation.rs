@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use erupt::vk;
+use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
@@ -77,7 +78,7 @@ impl DeferredOperation {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
-        let build_range_infos: Vec<*const vk::AccelerationStructureBuildRangeInfoKHR> =
+        let build_range_infos: SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]> =
             build_range_infos
                 .iter()
                 .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)

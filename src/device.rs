@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use erupt::{vk, ExtendableFrom};
 use parking_lot::Mutex;
+use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
 
@@ -601,7 +602,7 @@ impl Device {
             return Err(AscheError::BufferZeroSize);
         }
 
-        let mut families = Vec::with_capacity(3);
+        let mut families: SmallVec<[u32; 3]> = SmallVec::new();
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
             families.push(self.compute_queue_family_index)
@@ -695,7 +696,7 @@ impl Device {
 
     /// Creates a new image.
     pub fn create_image(&self, descriptor: &ImageDescriptor) -> Result<Image> {
-        let mut families = Vec::with_capacity(3);
+        let mut families: SmallVec<[u32; 3]> = SmallVec::new();
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
             families.push(self.compute_queue_family_index)
@@ -1051,7 +1052,7 @@ impl Device {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
-        let build_range_infos: Vec<*const vk::AccelerationStructureBuildRangeInfoKHR> =
+        let build_range_infos: SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]> =
             build_range_infos
                 .iter()
                 .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)

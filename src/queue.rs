@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use erupt::vk;
+use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
@@ -98,7 +99,7 @@ macro_rules! impl_queue {
             ///
             /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
             pub fn submit_all(&self, command_buffer: &[$buffer_name]) -> Result<()> {
-                let command_buffer_infos: Vec<vk::CommandBufferSubmitInfoKHRBuilder> = command_buffer
+                let command_buffer_infos: SmallVec::<[vk::CommandBufferSubmitInfoKHRBuilder; 4]> = command_buffer
                     .iter()
                     .map(|cb| {
                         vk::CommandBufferSubmitInfoKHRBuilder::new()
@@ -107,7 +108,7 @@ macro_rules! impl_queue {
                     })
                     .collect();
 
-                let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer
+                let wait_semaphore_infos: SmallVec::<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = command_buffer
                     .iter()
                     .map(|cb| {
                         vk::SemaphoreSubmitInfoKHRBuilder::new()
@@ -118,7 +119,7 @@ macro_rules! impl_queue {
                     })
                     .collect();
 
-                let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer
+                let signal_semaphore_infos: SmallVec::<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = command_buffer
                     .iter()
                     .map(|cb| {
                         vk::SemaphoreSubmitInfoKHRBuilder::new()
@@ -129,7 +130,7 @@ macro_rules! impl_queue {
                     })
                     .collect();
 
-                let submit_infos: Vec<vk::SubmitInfo2KHRBuilder> = command_buffer
+                let submit_infos: SmallVec::<[vk::SubmitInfo2KHRBuilder; 4]> = command_buffer
                     .iter()
                     .enumerate()
                     .map(|(id, _)| {
