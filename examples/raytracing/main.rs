@@ -94,9 +94,6 @@ fn main() -> Result<()> {
     app.upload_model(&materials, &meshes)?;
     app.update_descriptor_sets();
 
-    // Since we created the BLAS, we can now drop the model data.
-    app.models.clear();
-
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
