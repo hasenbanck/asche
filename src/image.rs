@@ -9,8 +9,7 @@ use crate::Context;
 pub struct Image {
     /// The raw Vulkan image.
     pub raw: vk::Image,
-    /// The raw allocation.
-    pub allocation: vk_alloc::Allocation,
+    allocation: vk_alloc::Allocation,
     context: Arc<Context>,
 }
 
