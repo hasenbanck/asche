@@ -2,9 +2,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::Hasher;
-use std::sync::Mutex;
 
 use erupt::vk;
+use parking_lot::Mutex;
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
@@ -34,7 +34,7 @@ impl Drop for Context {
         unsafe {
             self.device.device_wait_idle().unwrap();
             self.destroy_framebuffer();
-            self.allocator.lock().unwrap().cleanup(&self.device);
+            self.allocator.lock().cleanup(&self.device);
             self.device.destroy_device(None);
         };
     }
@@ -76,7 +76,7 @@ impl Context {
         let hash = hasher.finish();
 
         let mut created = false;
-        let framebuffer = if let Some(framebuffer) = self.framebuffers.lock().unwrap().get(&hash) {
+        let framebuffer = if let Some(framebuffer) = self.framebuffers.lock().get(&hash) {
             *framebuffer
         } else {
             created = true;
@@ -84,7 +84,7 @@ impl Context {
         };
 
         if created {
-            self.framebuffers.lock().unwrap().insert(hash, framebuffer);
+            self.framebuffers.lock().insert(hash, framebuffer);
         }
 
         Ok(framebuffer)
@@ -124,7 +124,7 @@ impl Context {
     }
 
     pub(crate) fn destroy_framebuffer(&self) {
-        for (_, framebuffer) in self.framebuffers.lock().unwrap().drain() {
+        for (_, framebuffer) in self.framebuffers.lock().drain() {
             unsafe {
                 self.device.destroy_framebuffer(Some(framebuffer), None);
             }
