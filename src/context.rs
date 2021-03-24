@@ -15,6 +15,7 @@ use crate::{
 };
 
 /// The internal context.
+#[derive(Debug)]
 pub struct Context {
     /// The framebuffer.
     framebuffers: Mutex<HashMap<u64, vk::Framebuffer>>,

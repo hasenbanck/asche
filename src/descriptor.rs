@@ -7,6 +7,7 @@ use tracing::error;
 use crate::{AscheError, Context, Result};
 
 /// Wraps a descriptor pool.
+#[derive(Debug)]
 pub struct DescriptorPool {
     /// The raw Vulkan descriptor pool.
     pub raw: vk::DescriptorPool,
@@ -87,6 +88,7 @@ impl DescriptorPool {
 }
 
 /// Wraps a descriptor set layout.
+#[derive(Debug)]
 pub struct DescriptorSetLayout {
     /// The raw Vulkan descriptor set layout.
     pub raw: vk::DescriptorSetLayout,
@@ -113,6 +115,7 @@ impl DescriptorSetLayout {
 }
 
 /// Wraps a descriptor set.
+#[derive(Debug)]
 pub struct DescriptorSet {
     /// The raw Vulkan descriptor pool.
     pub raw: vk::DescriptorSet,

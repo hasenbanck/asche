@@ -8,6 +8,7 @@ use crate::context::Context;
 use crate::{AscheError, ImageView, Result};
 
 /// Swapchain frame.
+#[derive(Debug)]
 pub struct SwapchainFrame {
     pub(crate) index: u32,
     /// The Vulkan image view.
@@ -15,6 +16,7 @@ pub struct SwapchainFrame {
 }
 
 /// Abstracts a Vulkan swapchain.
+#[derive(Debug)]
 pub struct Swapchain {
     present_complete_semaphore: vk::Semaphore,
     image_views: Vec<ImageView>,
@@ -23,6 +25,7 @@ pub struct Swapchain {
 }
 
 /// Configures a swapchain
+#[derive(Clone, Debug)]
 pub(crate) struct SwapchainDescriptor {
     pub(crate) graphic_queue_family_index: u32,
     pub(crate) extent: vk::Extent2D,

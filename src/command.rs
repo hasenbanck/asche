@@ -22,6 +22,7 @@ macro_rules! impl_command_pool {
         $pool_name:ident => $buffer_name:ident, $queue_type:expr
     ) => {
         #[doc = $doc]
+        #[derive(Debug)]
         pub struct $pool_name {
             /// The raw Vulkan command pool.
             pub raw: vk::CommandPool,
@@ -153,6 +154,7 @@ macro_rules! impl_command_buffer {
     ) => {
 
         #[doc = $doc]
+        #[derive(Debug)]
         pub struct $buffer_name {
             /// The raw Vulkan command buffer.
             pub raw: vk::CommandBuffer,
@@ -233,6 +235,7 @@ impl_command_buffer!(
 );
 
 /// Used to encode command for a compute command buffer.
+#[derive(Debug)]
 pub struct ComputeCommandEncoder<'a> {
     context: &'a Context,
     buffer: vk::CommandBuffer,
@@ -548,6 +551,7 @@ impl<'a> Drop for ComputeCommandEncoder<'a> {
 }
 
 /// Used to encode command for a graphics command buffer.
+#[derive(Debug)]
 pub struct GraphicsCommandEncoder<'a> {
     context: &'a Context,
     buffer: vk::CommandBuffer,
@@ -836,6 +840,7 @@ impl<'a> Drop for GraphicsCommandEncoder<'a> {
 }
 
 /// Used to encode command for a transfer command buffer.
+#[derive(Debug)]
 pub struct TransferCommandEncoder<'a> {
     context: &'a Context,
     buffer: vk::CommandBuffer,
@@ -906,6 +911,7 @@ impl<'a> Drop for TransferCommandEncoder<'a> {
 }
 
 /// Used to encode render pass commands of a command buffer.
+#[derive(Debug)]
 pub struct RenderPassEncoder<'a> {
     context: &'a Context,
     buffer: vk::CommandBuffer,

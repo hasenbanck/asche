@@ -47,7 +47,7 @@ pub(crate) mod vk_debug;
 pub(crate) type Result<T> = std::result::Result<T, AscheError>;
 
 /// Type of a queue.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) enum QueueType {
     /// Compute queue.
     Compute = 0,
@@ -68,6 +68,7 @@ impl std::fmt::Display for QueueType {
 }
 
 /// Wraps a render pass.
+#[derive(Debug)]
 pub struct RenderPass {
     /// The raw vk::RenderPass
     pub raw: vk::RenderPass,
@@ -85,6 +86,7 @@ impl Drop for RenderPass {
 }
 
 /// Wraps a pipeline layout.
+#[derive(Debug)]
 pub struct PipelineLayout {
     /// The raw vk::PipelineLayout
     pub raw: vk::PipelineLayout,
@@ -102,6 +104,7 @@ impl Drop for PipelineLayout {
 }
 
 /// Wraps a graphics pipeline.
+#[derive(Debug)]
 pub struct GraphicsPipeline {
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
@@ -117,6 +120,7 @@ impl Drop for GraphicsPipeline {
 }
 
 /// Wraps a compute pipeline.
+#[derive(Debug)]
 pub struct ComputePipeline {
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
@@ -132,6 +136,7 @@ impl Drop for ComputePipeline {
 }
 
 /// Wraps a raytracing pipeline.
+#[derive(Debug)]
 pub struct RayTracingPipeline {
     /// The raw vk::Pipeline.
     pub raw: vk::Pipeline,
@@ -147,6 +152,7 @@ impl Drop for RayTracingPipeline {
 }
 
 /// Wraps a shader module.
+#[derive(Debug)]
 pub struct ShaderModule {
     /// The raw vk::ShaderModule.
     pub raw: vk::ShaderModule,
@@ -164,6 +170,7 @@ impl Drop for ShaderModule {
 }
 
 /// Describes how an image should be configured.
+#[derive(Clone, Debug)]
 pub struct BufferDescriptor<'a> {
     /// Name used for debugging.
     pub name: &'a str,
@@ -182,6 +189,7 @@ pub struct BufferDescriptor<'a> {
 }
 
 /// Describes how an buffer view should be configured.
+#[derive(Clone, Debug)]
 pub struct BufferViewDescriptor<'a> {
     /// Name used for debugging.
     pub name: &'a str,
@@ -198,6 +206,7 @@ pub struct BufferViewDescriptor<'a> {
 }
 
 /// Describes how an image should be configured.
+#[derive(Clone, Debug)]
 pub struct ImageDescriptor<'a> {
     /// Name used for debugging.
     pub name: &'a str,
@@ -230,6 +239,7 @@ pub struct ImageDescriptor<'a> {
 }
 
 /// Describes how an image view should be configured.
+#[derive(Clone, Debug)]
 pub struct ImageViewDescriptor<'a> {
     /// Name used for debugging.
     pub name: &'a str,
@@ -248,6 +258,7 @@ pub struct ImageViewDescriptor<'a> {
 }
 
 /// Describes how a sampler should be configured.
+#[derive(Clone, Debug)]
 pub struct SamplerDescriptor<'a> {
     /// Name used for debugging.
     pub name: &'a str,
@@ -307,6 +318,7 @@ impl<'a> Default for SamplerDescriptor<'a> {
 }
 
 /// Describes how an image view should be configured.
+#[derive(Clone, Debug)]
 pub struct DescriptorPoolDescriptor<'a> {
     /// Name used for debugging.
     pub name: &'a str,
@@ -319,6 +331,7 @@ pub struct DescriptorPoolDescriptor<'a> {
 }
 
 /// Describes a render pass color attachment. Used to create the framebuffer.
+#[derive(Clone, Debug)]
 pub struct RenderPassColorAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
     pub attachment: vk::ImageView,
@@ -327,6 +340,7 @@ pub struct RenderPassColorAttachmentDescriptor {
 }
 
 /// Describes a render pass depth attachment. Used to create the framebuffer.
+#[derive(Clone, Debug)]
 pub struct RenderPassDepthAttachmentDescriptor {
     /// The Vulkan image view of the attachment.
     pub attachment: vk::ImageView,

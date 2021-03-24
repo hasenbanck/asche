@@ -21,6 +21,7 @@ use crate::{
 };
 
 /// Defines the priorities of the queues.
+#[derive(Clone, Debug)]
 pub struct QueuePriorityDescriptor {
     /// Priority of the graphics queue.
     pub graphics: f32,
@@ -31,6 +32,7 @@ pub struct QueuePriorityDescriptor {
 }
 
 /// Describes how the device should be configured.
+#[derive(Clone, Debug)]
 pub struct DeviceConfiguration<'a> {
     /// The device type that is requested.
     pub device_type: vk::PhysicalDeviceType,
@@ -103,6 +105,7 @@ impl std::fmt::Display for BARSupport {
 /// A Vulkan device.
 ///
 /// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
+#[derive(Debug)]
 pub struct Device {
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,

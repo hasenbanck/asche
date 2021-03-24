@@ -8,6 +8,7 @@ use tracing::error;
 use crate::{AscheError, Context, Result};
 
 /// Wraps an acceleration structure.
+#[derive(Debug)]
 pub struct AccelerationStructure {
     /// The raw Vulkan acceleration structure.
     pub raw: vk::AccelerationStructureKHR,

@@ -16,6 +16,7 @@ macro_rules! impl_queue {
         $queue_name:ident => $pool_name:ident, $buffer_name:ident
     ) => {
         #[doc = $doc]
+        #[derive(Debug)]
         pub struct $queue_name {
             /// The queue family index of this queue.
             pub family_index: u32,

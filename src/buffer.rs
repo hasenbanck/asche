@@ -5,6 +5,7 @@ use erupt::vk;
 use crate::Context;
 
 /// Wraps a buffer.
+#[derive(Debug)]
 pub struct Buffer {
     /// The raw Vulkan buffer.
     pub raw: vk::Buffer,
@@ -50,6 +51,7 @@ impl Buffer {
 }
 
 /// Wraps a buffer view.
+#[derive(Debug)]
 pub struct BufferView {
     /// The raw Vulkan buffer view.
     pub raw: vk::BufferView,

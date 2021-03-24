@@ -7,6 +7,7 @@ use tracing::error;
 use crate::{AscheError, Context, Result};
 
 /// A semaphore that uses the timeline feature.
+#[derive(Debug)]
 pub struct TimelineSemaphore {
     pub(crate) raw: vk::Semaphore,
     context: Arc<Context>,

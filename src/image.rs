@@ -5,6 +5,7 @@ use erupt::vk;
 use crate::Context;
 
 /// Wraps an image.
+#[derive(Debug)]
 pub struct Image {
     /// The raw Vulkan image.
     pub raw: vk::Image,
@@ -42,6 +43,7 @@ impl Image {
 }
 
 /// Wraps an image view.
+#[derive(Debug)]
 pub struct ImageView {
     /// The raw Vulkan image view.
     pub raw: vk::ImageView,
@@ -63,6 +65,7 @@ impl ImageView {
 }
 
 /// Wraps a sampler.
+#[derive(Debug)]
 pub struct Sampler {
     /// The raw Vulkan sampler.
     pub raw: vk::Sampler,

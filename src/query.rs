@@ -8,6 +8,7 @@ use tracing::error;
 use crate::{AscheError, Context, Result};
 
 /// Wraps a Query Pool.
+#[derive(Debug)]
 pub struct QueryPool {
     /// The raw Vulkan query pool.
     pub raw: vk::QueryPool,

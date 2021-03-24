@@ -8,6 +8,7 @@ use tracing::error;
 use crate::{AscheError, Context, Result};
 
 /// Wraps a deferred operation.
+#[derive(Debug)]
 pub struct DeferredOperation {
     /// The raw Vulkan deferred operation.
     pub raw: vk::DeferredOperationKHR,

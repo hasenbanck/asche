@@ -11,6 +11,7 @@ use crate::{
 };
 
 /// Describes how the instance should be configured.
+#[derive(Clone, Debug)]
 pub struct InstanceConfiguration<'a> {
     /// Name of the application.
     pub app_name: &'a str,
@@ -21,6 +22,7 @@ pub struct InstanceConfiguration<'a> {
 }
 
 /// Initializes the all Vulkan resources needed to create a device.
+#[derive(Debug)]
 pub struct Instance {
     pub(crate) surface: vk::SurfaceKHR,
     #[cfg(debug_assertions)]
