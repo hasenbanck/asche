@@ -197,7 +197,7 @@ macro_rules! impl_command_buffer {
             /// Sets the timeline semaphore of a command buffer.
             pub fn set_timeline_semaphore(
                 &mut self,
-                timeline_semaphore: TimelineSemaphore,
+                timeline_semaphore: &TimelineSemaphore,
                 wait_value: u64,
                 signal_value: u64,
             ) {
