@@ -111,6 +111,7 @@ pub struct Device {
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
     transfer_queue_family_index: u32,
+    swapchain_size: Option<u32>,
     swapchain: Mutex<Option<Swapchain>>,
     swapchain_format: vk::Format,
     swapchain_color_space: vk::ColorSpaceKHR,
@@ -229,6 +230,7 @@ impl Device {
             swapchain_format,
             swapchain_color_space,
             swapchain: Mutex::new(None),
+            swapchain_size: None,
         };
 
         device.recreate_swapchain(None)?;
@@ -251,56 +253,10 @@ impl Device {
             self.swapchain_format, self.swapchain_color_space
         );
 
-        let formats = unsafe {
-            self.context
-                .instance
-                .raw
-                .get_physical_device_surface_formats_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get the physical device surface formats: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let formats = self.get_formats()?;
 
-        let capabilities = unsafe {
-            self.context
-                .instance
-                .raw
-                .get_physical_device_surface_capabilities_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to get the physical device surface capabilities: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })?;
-
-        let presentation_mode = unsafe {
-            self.context
-                .instance
-                .raw
-                .get_physical_device_surface_present_modes_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get the physical device surface modes: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let capabilities = self.get_surface_capabilities()?;
+        let presentation_mode = self.get_presentation_mode()?;
 
         let mut image_count = capabilities.min_image_count + 1;
         if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
@@ -355,6 +311,75 @@ impl Device {
         self.swapchain.lock().replace(swapchain);
 
         Ok(())
+    }
+
+    /// Returns the frame count of the swapchain.
+    pub fn get_frame_count(&self) -> Result<u32> {
+        let capabilities = self.get_surface_capabilities()?;
+
+        let mut image_count = capabilities.min_image_count + 1;
+        if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
+            image_count = capabilities.max_image_count;
+        }
+
+        Ok(image_count)
+    }
+
+    fn get_formats(&self) -> Result<Vec<vk::SurfaceFormatKHR>> {
+        unsafe {
+            self.context
+                .instance
+                .raw
+                .get_physical_device_surface_formats_khr(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                    None,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get the physical device surface formats: {}", err);
+            AscheError::VkResult(err)
+        })
+    }
+
+    fn get_surface_capabilities(&self) -> Result<vk::SurfaceCapabilitiesKHR> {
+        unsafe {
+            self.context
+                .instance
+                .raw
+                .get_physical_device_surface_capabilities_khr(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                    None,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to get the physical device surface capabilities: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
+    }
+
+    fn get_presentation_mode(&self) -> Result<Vec<vk::PresentModeKHR>> {
+        unsafe {
+            self.context
+                .instance
+                .raw
+                .get_physical_device_surface_present_modes_khr(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                    None,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get the physical device surface modes: {}", err);
+            AscheError::VkResult(err)
+        })
     }
 
     /// Gets the next frame the program can render into.

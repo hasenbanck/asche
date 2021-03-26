@@ -10,7 +10,8 @@ use crate::{AscheError, ImageView, Result};
 /// Swapchain frame.
 #[derive(Debug)]
 pub struct SwapchainFrame {
-    pub(crate) index: u32,
+    /// The index of the swapchain.
+    pub index: u32,
     /// The Vulkan image view.
     pub view: vk::ImageView,
 }
