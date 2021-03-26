@@ -215,7 +215,7 @@ impl RayTracingApplication {
             &device,
             extent,
             &mut graphics_pool,
-            &graphics_queue,
+            &mut graphics_queue,
             &timeline,
             &mut timeline_value,
         )?;
@@ -786,7 +786,7 @@ impl RayTracingApplication {
         device: &asche::Device,
         extent: vk::Extent2D,
         pool: &mut asche::GraphicsCommandPool,
-        queue: &asche::GraphicsQueue,
+        queue: &mut asche::GraphicsQueue,
         timeline: &asche::TimelineSemaphore,
         timeline_value: &mut u64,
     ) -> Result<Texture> {

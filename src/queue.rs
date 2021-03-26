@@ -60,7 +60,7 @@ macro_rules! impl_queue {
             /// Submits a command buffer to a queue.
             ///
             /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
-            pub fn submit(&self, command_buffer: &$buffer_name) -> Result<()> {
+            pub fn submit(&mut self, command_buffer: &$buffer_name) -> Result<()> {
                 let command_buffer_infos = [vk::CommandBufferSubmitInfoKHRBuilder::new()
                     .command_buffer(command_buffer.raw)
                     .device_mask(1)];
@@ -99,7 +99,7 @@ macro_rules! impl_queue {
             /// Submit command buffers to a queue.
             ///
             /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
-            pub fn submit_all(&self, command_buffer: &[$buffer_name]) -> Result<()> {
+            pub fn submit_all(&mut self, command_buffer: &[$buffer_name]) -> Result<()> {
                 let command_buffer_infos: SmallVec::<[vk::CommandBufferSubmitInfoKHRBuilder; 4]> = command_buffer
                     .iter()
                     .map(|cb| {
