@@ -3,7 +3,6 @@ use std::os::raw::c_char;
 use std::sync::Arc;
 
 use erupt::{vk, ExtendableFrom};
-use parking_lot::Mutex;
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
@@ -12,13 +11,12 @@ use crate::context::Context;
 use crate::instance::Instance;
 use crate::query::QueryPool;
 use crate::semaphore::TimelineSemaphore;
-use crate::swapchain::{Swapchain, SwapchainDescriptor, SwapchainFrame};
 use crate::{
     AccelerationStructure, AscheError, Buffer, BufferDescriptor, BufferView, BufferViewDescriptor,
     ComputePipeline, ComputeQueue, DeferredOperation, DescriptorPool, DescriptorPoolDescriptor,
     DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView,
     ImageViewDescriptor, PipelineLayout, RayTracingPipeline, RenderPass, Result, Sampler,
-    SamplerDescriptor, ShaderModule, TransferQueue,
+    SamplerDescriptor, ShaderModule, Swapchain, TransferQueue,
 };
 
 /// Defines the configuration of the queues. Each vector entry defines the priority of a queue.
@@ -122,11 +120,6 @@ pub struct Device {
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
     transfer_queue_family_index: u32,
-    swapchain_size: Option<u32>,
-    swapchain: Mutex<Option<Swapchain>>,
-    swapchain_format: vk::Format,
-    swapchain_color_space: vk::ColorSpaceKHR,
-    presentation_mode: vk::PresentModeKHR,
     /// The type of the physical device.
     pub device_type: vk::PhysicalDeviceType,
     /// Shows if the device support access to the device memory using the base address register.
@@ -135,7 +128,7 @@ pub struct Device {
 }
 
 impl Device {
-    /// Creates a new device and multiple queues:
+    /// Creates a new device, a swapchain and multiple queues:
     ///  * Compute queues
     ///  * Graphics queues
     ///  * Transfer queues
@@ -146,7 +139,7 @@ impl Device {
     pub(crate) fn new(
         instance: Instance,
         configuration: DeviceConfiguration,
-    ) -> Result<(Self, Queues)> {
+    ) -> Result<(Self, Swapchain, Queues)> {
         let (physical_device, physical_device_properties, physical_device_driver_properties) =
             instance.find_physical_device(configuration.device_type)?;
 
@@ -189,15 +182,11 @@ impl Device {
             info!("BAR support: {}", resizable_bar_support);
         }
 
-        let presentation_mode = configuration.presentation_mode;
-        let swapchain_format = configuration.swapchain_format;
-        let swapchain_color_space = configuration.swapchain_color_space;
-
         #[cfg(feature = "tracing")]
         info!("Creating logical device and queues");
 
         let (device, family_ids, queues) =
-            instance.create_device(physical_device, configuration)?;
+            instance.create_device(physical_device, configuration.clone())?;
 
         #[cfg(feature = "tracing")]
         info!("Creating Vulkan memory allocator");
@@ -208,7 +197,19 @@ impl Device {
             &vk_alloc::AllocatorDescriptor::default(),
         );
 
+        let compute_queue_family_index = family_ids[0];
+        let graphic_queue_family_index = family_ids[1];
+        let transfer_queue_family_index = family_ids[2];
+
         let context = Arc::new(Context::new(instance, device, physical_device, allocator));
+
+        let swapchain = Swapchain::new(
+            context.clone(),
+            graphic_queue_family_index,
+            configuration.presentation_mode,
+            configuration.swapchain_format,
+            configuration.swapchain_color_space,
+        )?;
 
         let compute_queues = queues[0]
             .iter()
@@ -268,20 +269,14 @@ impl Device {
             device_type: physical_device_properties.device_type,
             resizable_bar_support,
             context,
-            compute_queue_family_index: family_ids[0],
-            graphic_queue_family_index: family_ids[1],
-            transfer_queue_family_index: family_ids[2],
-            presentation_mode,
-            swapchain_format,
-            swapchain_color_space,
-            swapchain: Mutex::new(None),
-            swapchain_size: None,
+            compute_queue_family_index,
+            graphic_queue_family_index,
+            transfer_queue_family_index,
         };
-
-        device.recreate_swapchain(None)?;
 
         Ok((
             device,
+            swapchain,
             Queues {
                 compute_queues,
                 graphics_queues,
@@ -293,163 +288,6 @@ impl Device {
     /// Returns a reference to the context.
     pub fn context(&self) -> &Context {
         &self.context
-    }
-
-    /// Recreates the swapchain. Needs to be called if the surface has changed.
-    pub fn recreate_swapchain(&self, window_extend: Option<vk::Extent2D>) -> Result<()> {
-        self.context.destroy_framebuffer();
-
-        #[cfg(feature = "tracing")]
-        info!(
-            "Creating swapchain with format {:?} and color space {:?}",
-            self.swapchain_format, self.swapchain_color_space
-        );
-
-        let formats = self.get_formats()?;
-
-        let capabilities = self.get_surface_capabilities()?;
-        let presentation_mode = self.get_presentation_mode()?;
-
-        let mut image_count = capabilities.min_image_count + 1;
-        if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
-            image_count = capabilities.max_image_count;
-        }
-
-        let extent = match capabilities.current_extent.width {
-            u32::MAX => window_extend.unwrap_or_default(),
-            _ => capabilities.current_extent,
-        };
-
-        let pre_transform = if capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY_KHR)
-        {
-            vk::SurfaceTransformFlagBitsKHR::IDENTITY_KHR
-        } else {
-            capabilities.current_transform
-        };
-
-        let format = formats
-            .iter()
-            .find(|f| {
-                f.format == self.swapchain_format && f.color_space == self.swapchain_color_space
-            })
-            .ok_or(AscheError::SwapchainFormatIncompatible)?;
-
-        let presentation_mode = *presentation_mode
-            .iter()
-            .find(|m| **m == self.presentation_mode)
-            .ok_or(AscheError::PresentationModeUnsupported)?;
-
-        let old_swapchain = self.swapchain.lock().take();
-
-        let swapchain = Swapchain::new(
-            self.context.clone(),
-            SwapchainDescriptor {
-                graphic_queue_family_index: self.graphic_queue_family_index,
-                extent,
-                pre_transform,
-                format: format.format,
-                color_space: format.color_space,
-                presentation_mode,
-                image_count,
-            },
-            old_swapchain,
-        )?;
-
-        #[cfg(feature = "tracing")]
-        info!("Swapchain has {} image(s)", image_count);
-
-        self.swapchain.lock().replace(swapchain);
-
-        Ok(())
-    }
-
-    /// Returns the frame count of the swapchain.
-    pub fn get_frame_count(&self) -> Result<u32> {
-        let capabilities = self.get_surface_capabilities()?;
-
-        let mut image_count = capabilities.min_image_count + 1;
-        if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
-            image_count = capabilities.max_image_count;
-        }
-
-        Ok(image_count)
-    }
-
-    fn get_formats(&self) -> Result<Vec<vk::SurfaceFormatKHR>> {
-        unsafe {
-            self.context
-                .instance
-                .raw
-                .get_physical_device_surface_formats_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get the physical device surface formats: {}", err);
-            AscheError::VkResult(err)
-        })
-    }
-
-    fn get_surface_capabilities(&self) -> Result<vk::SurfaceCapabilitiesKHR> {
-        unsafe {
-            self.context
-                .instance
-                .raw
-                .get_physical_device_surface_capabilities_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to get the physical device surface capabilities: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
-    }
-
-    fn get_presentation_mode(&self) -> Result<Vec<vk::PresentModeKHR>> {
-        unsafe {
-            self.context
-                .instance
-                .raw
-                .get_physical_device_surface_present_modes_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get the physical device surface modes: {}", err);
-            AscheError::VkResult(err)
-        })
-    }
-
-    /// Gets the next frame the program can render into.
-    pub fn get_next_frame(&self) -> Result<SwapchainFrame> {
-        self.swapchain
-            .lock()
-            .as_ref()
-            .ok_or(AscheError::SwapchainNotInitialized)?
-            .get_next_frame()
-    }
-
-    /// Queues the frame in the presentation queue.
-    pub fn queue_frame(&self, graphics_queue: &GraphicsQueue, frame: SwapchainFrame) -> Result<()> {
-        self.swapchain
-            .lock()
-            .as_ref()
-            .ok_or(AscheError::SwapchainNotInitialized)?
-            .queue_frame(frame, graphics_queue.raw)
     }
 
     /// Creates a new render pass.

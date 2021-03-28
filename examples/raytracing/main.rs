@@ -46,7 +46,7 @@ fn main() -> Result<()> {
         },
     )?;
 
-    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+    let (device, swapchain, queues) = instance.request_device(asche::DeviceConfiguration {
         swapchain_format: SURFACE_FORMAT,
         extensions: vec![
             // For RT support
@@ -88,6 +88,7 @@ fn main() -> Result<()> {
 
     let mut app = RayTracingApplication::new(
         device,
+        swapchain,
         compute_queues.pop().unwrap(),
         graphics_queues.pop().unwrap(),
         transfer_queues.pop().unwrap(),
@@ -163,12 +164,14 @@ struct RayTracingApplication {
     compute_pool: asche::ComputeCommandPool,
     graphics_queue: asche::GraphicsQueue,
     compute_queue: asche::ComputeQueue,
+    swapchain: asche::Swapchain,
     device: asche::Device,
 }
 
 impl RayTracingApplication {
     fn new(
         device: asche::Device,
+        swapchain: asche::Swapchain,
         mut compute_queue: asche::ComputeQueue,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
@@ -261,6 +264,7 @@ impl RayTracingApplication {
             compute_queue,
             graphics_queue,
             device,
+            swapchain,
         })
     }
 
@@ -1481,7 +1485,7 @@ impl RayTracingApplication {
     }
 
     pub fn render(&mut self) -> Result<()> {
-        let frame = self.device.get_next_frame()?;
+        let frame = self.swapchain.next_frame()?;
 
         let command_buffer = self.graphics_pool.create_command_buffer(
             &self.timeline,
@@ -1602,7 +1606,7 @@ impl RayTracingApplication {
 
         self.graphics_pool.reset()?;
 
-        self.device.queue_frame(&self.graphics_queue, frame)?;
+        self.swapchain.queue_frame(&self.graphics_queue, frame)?;
         self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())

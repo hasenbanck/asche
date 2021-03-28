@@ -23,7 +23,7 @@ pub use {
     query::QueryPool,
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     semaphore::TimelineSemaphore,
-    swapchain::SwapchainFrame,
+    swapchain::{Swapchain, SwapchainFrame},
     vk_alloc::MemoryLocation,
 };
 

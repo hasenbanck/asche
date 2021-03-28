@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use erupt::vk;
 #[cfg(feature = "tracing")]
-use tracing::error;
+use tracing::{error, info};
 
 use crate::context::Context;
-use crate::{AscheError, ImageView, Result};
+use crate::{AscheError, GraphicsQueue, ImageView, Result};
 
 /// Swapchain frame.
 #[derive(Debug)]
@@ -19,6 +19,195 @@ pub struct SwapchainFrame {
 /// Abstracts a Vulkan swapchain.
 #[derive(Debug)]
 pub struct Swapchain {
+    graphic_queue_family_index: u32,
+    presentation_mode: vk::PresentModeKHR,
+    size: Option<u32>,
+    swapchain: Option<SwapchainInner>,
+    format: vk::Format,
+    color_space: vk::ColorSpaceKHR,
+    context: Arc<Context>,
+}
+
+impl Swapchain {
+    pub(crate) fn new(
+        context: Arc<Context>,
+        graphic_queue_family_index: u32,
+        presentation_mode: vk::PresentModeKHR,
+        format: vk::Format,
+        color_space: vk::ColorSpaceKHR,
+    ) -> Result<Self> {
+        let mut swapchain = Self {
+            graphic_queue_family_index,
+            presentation_mode,
+            size: None,
+            swapchain: None,
+            format,
+            color_space,
+            context,
+        };
+
+        swapchain.recreate(None)?;
+
+        Ok(swapchain)
+    }
+
+    /// Recreates the swapchain. Needs to be called if the surface has changed.
+    pub fn recreate(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
+        self.context.destroy_framebuffer();
+
+        #[cfg(feature = "tracing")]
+        info!(
+            "Creating swapchain with format {:?} and color space {:?}",
+            self.format, self.color_space
+        );
+
+        let formats = self.query_formats()?;
+
+        let capabilities = self.query_surface_capabilities()?;
+        let presentation_mode = self.query_presentation_mode()?;
+
+        let mut image_count = capabilities.min_image_count + 1;
+        if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
+            image_count = capabilities.max_image_count;
+        }
+
+        let extent = match capabilities.current_extent.width {
+            u32::MAX => window_extend.unwrap_or_default(),
+            _ => capabilities.current_extent,
+        };
+
+        let pre_transform = if capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY_KHR)
+        {
+            vk::SurfaceTransformFlagBitsKHR::IDENTITY_KHR
+        } else {
+            capabilities.current_transform
+        };
+
+        let format = formats
+            .iter()
+            .find(|f| f.format == self.format && f.color_space == self.color_space)
+            .ok_or(AscheError::SwapchainFormatIncompatible)?;
+
+        let presentation_mode = *presentation_mode
+            .iter()
+            .find(|m| **m == self.presentation_mode)
+            .ok_or(AscheError::PresentationModeUnsupported)?;
+
+        let old_swapchain = self.swapchain.take();
+
+        let swapchain = SwapchainInner::new(
+            self.context.clone(),
+            SwapchainDescriptor {
+                graphic_queue_family_index: self.graphic_queue_family_index,
+                extent,
+                pre_transform,
+                format: format.format,
+                color_space: format.color_space,
+                presentation_mode,
+                image_count,
+            },
+            old_swapchain,
+        )?;
+
+        #[cfg(feature = "tracing")]
+        info!("Swapchain has {} image(s)", image_count);
+
+        self.swapchain.replace(swapchain);
+
+        Ok(())
+    }
+
+    fn query_formats(&self) -> Result<Vec<vk::SurfaceFormatKHR>> {
+        unsafe {
+            self.context
+                .instance
+                .raw
+                .get_physical_device_surface_formats_khr(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                    None,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get the physical device surface formats: {}", err);
+            AscheError::VkResult(err)
+        })
+    }
+
+    fn query_surface_capabilities(&self) -> Result<vk::SurfaceCapabilitiesKHR> {
+        unsafe {
+            self.context
+                .instance
+                .raw
+                .get_physical_device_surface_capabilities_khr(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                    None,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!(
+                "Unable to get the physical device surface capabilities: {}",
+                err
+            );
+            AscheError::VkResult(err)
+        })
+    }
+
+    fn query_presentation_mode(&self) -> Result<Vec<vk::PresentModeKHR>> {
+        unsafe {
+            self.context
+                .instance
+                .raw
+                .get_physical_device_surface_present_modes_khr(
+                    self.context.physical_device,
+                    self.context.instance.surface,
+                    None,
+                )
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to get the physical device surface modes: {}", err);
+            AscheError::VkResult(err)
+        })
+    }
+
+    /// Returns the frame count of the swapchain.
+    pub fn frame_count(&self) -> Result<u32> {
+        let capabilities = self.query_surface_capabilities()?;
+
+        let mut image_count = capabilities.min_image_count + 1;
+        if capabilities.max_image_count > 0 && image_count > capabilities.max_image_count {
+            image_count = capabilities.max_image_count;
+        }
+
+        Ok(image_count)
+    }
+
+    /// Gets the next frame the program can render into.
+    pub fn next_frame(&self) -> Result<SwapchainFrame> {
+        self.swapchain
+            .as_ref()
+            .ok_or(AscheError::SwapchainNotInitialized)?
+            .get_next_frame()
+    }
+
+    /// Queues the frame in the presentation queue.
+    pub fn queue_frame(&self, graphics_queue: &GraphicsQueue, frame: SwapchainFrame) -> Result<()> {
+        self.swapchain
+            .as_ref()
+            .ok_or(AscheError::SwapchainNotInitialized)?
+            .queue_frame(frame, graphics_queue.raw)
+    }
+}
+
+/// The inner abstraciton of the swapchain.
+#[derive(Debug)]
+pub struct SwapchainInner {
     present_complete_semaphore: vk::Semaphore,
     image_views: Vec<ImageView>,
     raw: vk::SwapchainKHR,
@@ -27,22 +216,22 @@ pub struct Swapchain {
 
 /// Configures a swapchain
 #[derive(Clone, Debug)]
-pub(crate) struct SwapchainDescriptor {
-    pub(crate) graphic_queue_family_index: u32,
-    pub(crate) extent: vk::Extent2D,
-    pub(crate) pre_transform: vk::SurfaceTransformFlagBitsKHR,
-    pub(crate) format: vk::Format,
-    pub(crate) color_space: vk::ColorSpaceKHR,
-    pub(crate) presentation_mode: vk::PresentModeKHR,
-    pub(crate) image_count: u32,
+struct SwapchainDescriptor {
+    graphic_queue_family_index: u32,
+    extent: vk::Extent2D,
+    pre_transform: vk::SurfaceTransformFlagBitsKHR,
+    format: vk::Format,
+    color_space: vk::ColorSpaceKHR,
+    presentation_mode: vk::PresentModeKHR,
+    image_count: u32,
 }
 
-impl Swapchain {
+impl SwapchainInner {
     /// Creates a new `Swapchain`.
-    pub(crate) fn new(
+    fn new(
         context: Arc<Context>,
         descriptor: SwapchainDescriptor,
-        old_swapchain: Option<Swapchain>,
+        old_swapchain: Option<SwapchainInner>,
     ) -> Result<Self> {
         let old_swapchain = match old_swapchain {
             Some(mut osc) => {
@@ -96,7 +285,7 @@ impl Swapchain {
             })?;
 
         let image_views =
-            Swapchain::create_image_views(&context, &images, descriptor.format, images.len())?;
+            SwapchainInner::create_image_views(&context, &images, descriptor.format, images.len())?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
@@ -120,7 +309,7 @@ impl Swapchain {
     }
 
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
-    pub(crate) fn get_next_frame(&self) -> Result<SwapchainFrame> {
+    fn get_next_frame(&self) -> Result<SwapchainFrame> {
         let info = vk::AcquireNextImageInfoKHRBuilder::new()
             .semaphore(self.present_complete_semaphore)
             .device_mask(1)
@@ -138,11 +327,7 @@ impl Swapchain {
     }
 
     /// Queues the given frame into the graphic queue.
-    pub(crate) fn queue_frame(
-        &self,
-        frame: SwapchainFrame,
-        graphic_queue: vk::Queue,
-    ) -> Result<()> {
+    fn queue_frame(&self, frame: SwapchainFrame, graphic_queue: vk::Queue) -> Result<()> {
         let wait_semaphors = [self.present_complete_semaphore];
         let swapchains = [self.raw];
         let image_indices = [frame.index];
@@ -219,7 +404,7 @@ impl Swapchain {
     }
 }
 
-impl Drop for Swapchain {
+impl Drop for SwapchainInner {
     fn drop(&mut self) {
         Self::destroy_resources(&self.context.device, &mut self.present_complete_semaphore);
         unsafe {

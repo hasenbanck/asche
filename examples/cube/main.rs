@@ -39,7 +39,7 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+    let (device, swapchain, queues) = instance.request_device(asche::DeviceConfiguration {
         queue_configuration: QueueConfiguration {
             compute_queues: vec![],
             graphics_queues: vec![1.0],
@@ -56,6 +56,7 @@ fn main() -> Result<(), asche::AscheError> {
 
     let mut app = Application::new(
         device,
+        swapchain,
         graphics_queues.pop().unwrap(),
         transfer_queues.pop().unwrap(),
         &window,
@@ -108,12 +109,14 @@ struct Application {
     textures: Vec<Texture>,
     graphics_queue: asche::GraphicsQueue,
     transfer_queue: asche::TransferQueue,
+    swapchain: asche::Swapchain,
     device: asche::Device,
 }
 
 impl Application {
     fn new(
         device: asche::Device,
+        swapchain: asche::Swapchain,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
         window: &winit::window::Window,
@@ -371,6 +374,7 @@ impl Application {
 
         let mut app = Self {
             device,
+            swapchain,
             graphics_queue,
             transfer_queue,
             graphics_command_pool,
@@ -620,7 +624,7 @@ impl Application {
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame = self.device.get_next_frame()?;
+        let frame = self.swapchain.next_frame()?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             &self.timeline,
@@ -701,7 +705,7 @@ impl Application {
         self.graphics_command_pool.reset()?;
         self.descriptor_pool.free_sets()?;
 
-        self.device.queue_frame(&self.graphics_queue, frame)?;
+        self.swapchain.queue_frame(&self.graphics_queue, frame)?;
         self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())

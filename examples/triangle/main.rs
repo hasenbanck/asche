@@ -26,7 +26,7 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+    let (device, swapchain, queues) = instance.request_device(asche::DeviceConfiguration {
         queue_configuration: QueueConfiguration {
             compute_queues: vec![],
             graphics_queues: vec![1.0],
@@ -41,7 +41,7 @@ fn main() -> Result<(), asche::AscheError> {
         transfer_queues: _transfer_queues,
     } = queues;
 
-    let mut app = Application::new(device, graphics_queues.pop().unwrap(), &window)?;
+    let mut app = Application::new(device, swapchain, graphics_queues.pop().unwrap(), &window)?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -73,20 +73,22 @@ fn main() -> Result<(), asche::AscheError> {
 }
 
 struct Application {
-    device: asche::Device,
-    queue: asche::GraphicsQueue,
-    command_pool: asche::GraphicsCommandPool,
     extent: vk::Extent2D,
     _pipeline_layout: asche::PipelineLayout,
     pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
+    command_pool: asche::GraphicsCommandPool,
+    queue: asche::GraphicsQueue,
+    swapchain: asche::Swapchain,
+    _device: asche::Device,
 }
 
 impl Application {
     fn new(
         device: asche::Device,
+        swapchain: asche::Swapchain,
         mut graphics_queue: asche::GraphicsQueue,
         window: &winit::window::Window,
     ) -> Result<Self, asche::AscheError> {
@@ -200,7 +202,7 @@ impl Application {
         let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
 
         Ok(Self {
-            device,
+            _device: device,
             queue: graphics_queue,
             command_pool: graphics_command_pool,
             extent,
@@ -209,11 +211,12 @@ impl Application {
             render_pass,
             timeline,
             timeline_value,
+            swapchain,
         })
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame = self.device.get_next_frame()?;
+        let frame = self.swapchain.next_frame()?;
 
         let graphics_buffer = self.command_pool.create_command_buffer(
             &self.timeline,
@@ -255,7 +258,7 @@ impl Application {
 
         self.command_pool.reset()?;
 
-        self.device.queue_frame(&self.queue, frame)?;
+        self.swapchain.queue_frame(&self.queue, frame)?;
         self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())

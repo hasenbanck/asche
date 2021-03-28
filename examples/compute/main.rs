@@ -27,7 +27,7 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+    let (device, _, queues) = instance.request_device(asche::DeviceConfiguration {
         queue_configuration: QueueConfiguration {
             compute_queues: vec![1.0],
             graphics_queues: vec![],
