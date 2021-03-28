@@ -125,7 +125,7 @@ impl Swapchain {
             .semaphore(self.present_complete_semaphore)
             .device_mask(1)
             .swapchain(self.raw)
-            .timeout(std::u64::MAX);
+            .timeout(u64::MAX);
 
         let index =
             unsafe { self.context.device.acquire_next_image2_khr(&info, None) }.map_err(|err| {

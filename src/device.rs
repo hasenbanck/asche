@@ -21,15 +21,15 @@ use crate::{
     SamplerDescriptor, ShaderModule, TransferQueue,
 };
 
-/// Defines the priorities of the queues.
+/// Defines the configuration of the queues. Each vector entry defines the priority of a queue.
 #[derive(Clone, Debug)]
-pub struct QueuePriorityDescriptor {
-    /// Priority of the graphics queue.
-    pub graphics: f32,
-    /// Priority of the transfer queue.
-    pub transfer: f32,
-    /// Priority of the compute queue.
-    pub compute: f32,
+pub struct QueueConfiguration {
+    /// Specifies the priorities and amount of compute queues.
+    pub compute_queues: Vec<f32>,
+    /// Specifies the priorities and amount of graphics queues.
+    pub graphics_queues: Vec<f32>,
+    /// Specifies the priorities and amount of transfer queues.
+    pub transfer_queues: Vec<f32>,
 }
 
 /// Describes how the device should be configured.
@@ -43,8 +43,8 @@ pub struct DeviceConfiguration<'a> {
     pub swapchain_color_space: vk::ColorSpaceKHR,
     /// The presentation mode of the swap chain.
     pub presentation_mode: vk::PresentModeKHR,
-    /// The priorities of the queues.
-    pub queue_priority: QueuePriorityDescriptor,
+    /// The configuration of the queues.
+    pub queue_configuration: QueueConfiguration,
     /// Device extensions to load.
     pub extensions: Vec<*const c_char>,
     /// Vulkan 1.0 features.
@@ -67,10 +67,10 @@ impl<'a> Default for DeviceConfiguration<'a> {
             swapchain_format: vk::Format::B8G8R8A8_SRGB,
             swapchain_color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR_KHR,
             presentation_mode: vk::PresentModeKHR::FIFO_KHR,
-            queue_priority: QueuePriorityDescriptor {
-                graphics: 1.0,
-                transfer: 1.0,
-                compute: 1.0,
+            queue_configuration: QueueConfiguration {
+                graphics_queues: vec![1.0],
+                transfer_queues: vec![1.0],
+                compute_queues: vec![1.0],
             },
             extensions: vec![],
             features_v1_0: None,
@@ -84,23 +84,34 @@ impl<'a> Default for DeviceConfiguration<'a> {
 
 /// Shows if the device support access to the device memory using the base address register.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BARSupport {
+pub enum BarSupport {
     /// Device doesn't support BAR.
     NotSupported,
     /// Device supports BAR.
-    BAR,
+    Bar,
     /// Device supports resizable BAR.
-    ResizableBAR,
+    ResizableBar,
 }
 
-impl std::fmt::Display for BARSupport {
+impl std::fmt::Display for BarSupport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BARSupport::NotSupported => f.write_str("No BAR support"),
-            BARSupport::BAR => f.write_str("BAR supported"),
-            BARSupport::ResizableBAR => f.write_str("Resizable BAR supported"),
+            BarSupport::NotSupported => f.write_str("No BAR support"),
+            BarSupport::Bar => f.write_str("BAR supported"),
+            BarSupport::ResizableBar => f.write_str("Resizable BAR supported"),
         }
     }
+}
+
+/// Contains all queues that were created for the device.
+#[derive(Debug)]
+pub struct Queues {
+    /// Contains the created compute queues.
+    pub compute_queues: Vec<ComputeQueue>,
+    /// Contains the created graphics queues.
+    pub graphics_queues: Vec<GraphicsQueue>,
+    /// Contains the created transfer queues.
+    pub transfer_queues: Vec<TransferQueue>,
 }
 
 /// A Vulkan device.
@@ -119,23 +130,23 @@ pub struct Device {
     /// The type of the physical device.
     pub device_type: vk::PhysicalDeviceType,
     /// Shows if the device support access to the device memory using the base address register.
-    pub resizable_bar_support: BARSupport,
+    pub resizable_bar_support: BarSupport,
     context: Arc<Context>,
 }
 
 impl Device {
-    /// Creates a new device and three queues:
-    ///  * Compute queue
-    ///  * Graphics queue
-    ///  * Transfer queue
+    /// Creates a new device and multiple queues:
+    ///  * Compute queues
+    ///  * Graphics queues
+    ///  * Transfer queues
     ///
-    /// The compute and transfer queue use dedicated queue families if provided by the implementation.
-    /// The graphics queue is guaranteed to be able to write the the surface.
+    /// The compute and transfer queues use dedicated queue families if provided by the implementation.
+    /// The graphics queues are guaranteed to be able to write the the surface.
     #[allow(unused_variables)]
     pub(crate) fn new(
         instance: Instance,
         configuration: DeviceConfiguration,
-    ) -> Result<(Self, (ComputeQueue, GraphicsQueue, TransferQueue))> {
+    ) -> Result<(Self, Queues)> {
         let (physical_device, physical_device_properties, physical_device_driver_properties) =
             instance.find_physical_device(configuration.device_type)?;
 
@@ -199,25 +210,59 @@ impl Device {
 
         let context = Arc::new(Context::new(instance, device, physical_device, allocator));
 
-        let compute_queue = ComputeQueue::new(context.clone(), family_ids[0], queues[0]);
-        let graphics_queue = GraphicsQueue::new(context.clone(), family_ids[1], queues[1]);
-        let transfer_queue = TransferQueue::new(context.clone(), family_ids[2], queues[2]);
+        let compute_queues = queues[0]
+            .iter()
+            .enumerate()
+            .map(|(i, queue)| {
+                let q = ComputeQueue::new(context.clone(), family_ids[0], *queue);
 
-        context.set_object_name(
-            "Compute Queue",
-            vk::ObjectType::QUEUE,
-            compute_queue.raw.0 as u64,
-        )?;
-        context.set_object_name(
-            "Graphics Queue",
-            vk::ObjectType::QUEUE,
-            graphics_queue.raw.0 as u64,
-        )?;
-        context.set_object_name(
-            "Transfer Queue",
-            vk::ObjectType::QUEUE,
-            transfer_queue.raw.0 as u64,
-        )?;
+                context
+                    .set_object_name(
+                        &format!("Compute Queue ({})", i),
+                        vk::ObjectType::QUEUE,
+                        q.raw.0 as u64,
+                    )
+                    .expect("can't set compute queue name");
+
+                q
+            })
+            .collect::<_>();
+
+        let graphics_queues = queues[1]
+            .iter()
+            .enumerate()
+            .map(|(i, queue)| {
+                let q = GraphicsQueue::new(context.clone(), family_ids[1], *queue);
+
+                context
+                    .set_object_name(
+                        &format!("Graphics Queue ({})", i),
+                        vk::ObjectType::QUEUE,
+                        q.raw.0 as u64,
+                    )
+                    .expect("can't set graphics queue name");
+
+                q
+            })
+            .collect::<_>();
+
+        let transfer_queues = queues[2]
+            .iter()
+            .enumerate()
+            .map(|(i, queue)| {
+                let q = TransferQueue::new(context.clone(), family_ids[2], *queue);
+
+                context
+                    .set_object_name(
+                        &format!("Transfer Queue ({})", i),
+                        vk::ObjectType::QUEUE,
+                        q.raw.0 as u64,
+                    )
+                    .expect("can't set graphics queue name");
+
+                q
+            })
+            .collect::<_>();
 
         let device = Device {
             device_type: physical_device_properties.device_type,
@@ -235,7 +280,14 @@ impl Device {
 
         device.recreate_swapchain(None)?;
 
-        Ok((device, (compute_queue, graphics_queue, transfer_queue)))
+        Ok((
+            device,
+            Queues {
+                compute_queues,
+                graphics_queues,
+                transfer_queues,
+            },
+        ))
     }
 
     /// Returns a reference to the context.
@@ -264,7 +316,7 @@ impl Device {
         }
 
         let extent = match capabilities.current_extent.width {
-            std::u32::MAX => window_extend.unwrap_or_default(),
+            u32::MAX => window_extend.unwrap_or_default(),
             _ => capabilities.current_extent,
         };
 
@@ -1253,7 +1305,7 @@ fn query_support_resizable_bar(
     instance: &Instance,
     device: vk::PhysicalDevice,
     device_properties: &vk::PhysicalDeviceProperties,
-) -> BARSupport {
+) -> BarSupport {
     if device_properties.device_type != vk::PhysicalDeviceType::INTEGRATED_GPU {
         let memory_properties = vk::PhysicalDeviceMemoryProperties2Builder::new().build();
         let memory_properties = unsafe {
@@ -1280,14 +1332,14 @@ fn query_support_resizable_bar(
             let property = memory_properties.memory_properties.memory_heaps[*index as usize];
             // Normally BAR is at most 256 MiB, everything more must be resizable BAR.
             if property.size > 268435456 {
-                return BARSupport::ResizableBAR;
+                return BarSupport::ResizableBar;
             }
         }
 
         if !heap_indices.is_empty() {
-            return BARSupport::BAR;
+            return BarSupport::Bar;
         }
     }
 
-    BARSupport::NotSupported
+    BarSupport::NotSupported
 }

@@ -4,11 +4,10 @@ use std::os::raw::c_char;
 use erupt::{vk, ExtendableFrom};
 use tracing::{error, info, warn};
 
+use crate::device::Queues;
 #[cfg(debug_assertions)]
 use crate::vk_debug::debug_utils_callback;
-use crate::{
-    AscheError, ComputeQueue, Device, DeviceConfiguration, GraphicsQueue, Result, TransferQueue,
-};
+use crate::{AscheError, Device, DeviceConfiguration, Result};
 
 /// Describes how the instance should be configured.
 #[derive(Clone, Debug)]
@@ -98,7 +97,7 @@ impl Instance {
     pub fn request_device(
         self,
         device_configuration: DeviceConfiguration,
-    ) -> Result<(Device, (ComputeQueue, GraphicsQueue, TransferQueue))> {
+    ) -> Result<(Device, Queues)> {
         Device::new(self, device_configuration)
     }
 
@@ -177,13 +176,11 @@ impl Instance {
             .enabled_layer_names(layers)
             .enabled_extension_names(instance_extensions);
 
-        Ok(
-            erupt::InstanceLoader::new(&entry, &create_info, None).map_err(|err| {
-                #[cfg(feature = "tracing")]
-                error!("Unable to create Vulkan instance: {}", err);
-                AscheError::LoaderError(err)
-            })?,
-        )
+        erupt::InstanceLoader::new(&entry, &create_info, None).map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create Vulkan instance: {}", err);
+            AscheError::LoaderError(err)
+        })
     }
 
     fn create_layers(instance_layers: &[vk::LayerProperties]) -> Vec<*const c_char> {
@@ -318,18 +315,18 @@ impl Instance {
     }
 
     /// Creates a new logical device. Returns the logical device, and the queue families and the Vulkan queues.
-    /// We have three queues in the following order:
-    ///  * Compute queue
-    ///  * Graphics queue
-    ///  * Transfer queue
+    /// We have three queue vectors in the following order:
+    ///  * Compute queues
+    ///  * Graphics queues
+    ///  * Transfer queues
     ///
-    /// The compute and graphics queue use dedicated queue families if provided by the implementation.
-    /// The graphics queue is guaranteed to be able to write the the surface.
+    /// The compute and graphics queues use dedicated queue families if provided by the implementation.
+    /// The graphics queues are guaranteed to be able to write the the surface.
     pub(crate) fn create_device(
         &self,
         physical_device: vk::PhysicalDevice,
         configuration: DeviceConfiguration,
-    ) -> Result<(erupt::DeviceLoader, [u32; 3], [vk::Queue; 3])> {
+    ) -> Result<(erupt::DeviceLoader, [u32; 3], [Vec<vk::Queue>; 3])> {
         let queue_family_properties = unsafe {
             self.raw
                 .get_physical_device_queue_family_properties(physical_device, None)
@@ -367,8 +364,12 @@ impl Instance {
         graphics_queue_family_id: u32,
         transfer_queue_family_id: u32,
         compute_queue_family_id: u32,
-    ) -> Result<(erupt::DeviceLoader, [u32; 3], [vk::Queue; 3])> {
-        let priorities = &configuration.queue_priority;
+    ) -> Result<(erupt::DeviceLoader, [u32; 3], [Vec<vk::Queue>; 3])> {
+        let queue_configuration = &configuration.queue_configuration;
+
+        let graphics_count = queue_configuration.graphics_queues.len();
+        let transfer_count = queue_configuration.transfer_queues.len();
+        let compute_count = queue_configuration.compute_queues.len();
 
         // If some queue families point to the same ID, we need to create only one
         // `vk::DeviceQueueCreateInfo` for them.
@@ -376,8 +377,13 @@ impl Instance {
             && transfer_queue_family_id != compute_queue_family_id
         {
             // Case: G=T,C
-            let p1 = [priorities.graphics, priorities.transfer];
-            let p2 = [priorities.compute];
+            let mut p1 = Vec::with_capacity(graphics_count + transfer_count);
+            p1.extend_from_slice(&queue_configuration.graphics_queues);
+            p1.extend_from_slice(&queue_configuration.transfer_queues);
+
+            let mut p2 = Vec::with_capacity(compute_count);
+            p2.extend_from_slice(&queue_configuration.compute_queues);
+
             let queue_infos = [
                 vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
@@ -388,9 +394,24 @@ impl Instance {
             ];
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
-            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 1, None) };
-            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 0, None) };
+
+            let g_q = (0..graphics_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let t_q = (graphics_count..graphics_count + transfer_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let c_q = (0..compute_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(compute_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
 
             Ok((
                 device,
@@ -405,8 +426,13 @@ impl Instance {
             && transfer_queue_family_id == compute_queue_family_id
         {
             // Case: G,T=C
-            let p1 = [priorities.graphics];
-            let p2 = [priorities.transfer, priorities.compute];
+            let mut p1 = Vec::with_capacity(graphics_count);
+            p1.extend_from_slice(&queue_configuration.graphics_queues);
+
+            let mut p2 = Vec::with_capacity(transfer_count + compute_count);
+            p2.extend_from_slice(&queue_configuration.transfer_queues);
+            p2.extend_from_slice(&queue_configuration.compute_queues);
+
             let queue_infos = [
                 vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
@@ -417,9 +443,23 @@ impl Instance {
             ];
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
-            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 0, None) };
-            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 1, None) };
+            let g_q = (0..graphics_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let t_q = (0..transfer_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let c_q = (transfer_count..transfer_count + compute_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
 
             Ok((
                 device,
@@ -434,8 +474,13 @@ impl Instance {
             && graphics_queue_family_id != transfer_queue_family_id
         {
             // Case: G=C,T
-            let p1 = [priorities.graphics, priorities.compute];
-            let p2 = [priorities.transfer];
+            let mut p1 = Vec::with_capacity(graphics_count + compute_count);
+            p1.extend_from_slice(&queue_configuration.graphics_queues);
+            p1.extend_from_slice(&queue_configuration.compute_queues);
+
+            let mut p2 = Vec::with_capacity(transfer_count);
+            p2.extend_from_slice(&queue_configuration.transfer_queues);
+
             let queue_infos = [
                 vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
@@ -446,9 +491,24 @@ impl Instance {
             ];
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
-            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 1, None) };
-            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 0, None) };
+
+            let g_q = (0..graphics_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let c_q = (graphics_count..graphics_count + compute_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let t_q = (0..transfer_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
 
             Ok((
                 device,
@@ -463,15 +523,34 @@ impl Instance {
             && transfer_queue_family_id == compute_queue_family_id
         {
             // Case: G=T=C
-            let p1 = [priorities.graphics, priorities.transfer, priorities.compute];
+            let mut p1 = Vec::with_capacity(graphics_count + transfer_count + compute_count);
+            p1.extend_from_slice(&queue_configuration.graphics_queues);
+            p1.extend_from_slice(&queue_configuration.transfer_queues);
+            p1.extend_from_slice(&queue_configuration.compute_queues);
+
             let queue_infos = [vk::DeviceQueueCreateInfoBuilder::new()
                 .queue_family_index(graphics_queue_family_id)
                 .queue_priorities(&p1)];
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
-            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 1, None) };
-            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 2, None) };
+            let g_q = (0..graphics_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let t_q = (graphics_count..graphics_count + transfer_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let c_q = (graphics_count + transfer_count
+                ..graphics_count + transfer_count + compute_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
 
             Ok((
                 device,
@@ -484,9 +563,15 @@ impl Instance {
             ))
         } else {
             // Case: G,T,C
-            let p1 = [priorities.graphics];
-            let p2 = [priorities.transfer];
-            let p3 = [priorities.compute];
+            let mut p1 = Vec::with_capacity(graphics_count);
+            p1.extend_from_slice(&queue_configuration.graphics_queues);
+
+            let mut p2 = Vec::with_capacity(transfer_count);
+            p2.extend_from_slice(&queue_configuration.transfer_queues);
+
+            let mut p3 = Vec::with_capacity(compute_count);
+            p3.extend_from_slice(&queue_configuration.compute_queues);
+
             let queue_infos = [
                 vk::DeviceQueueCreateInfoBuilder::new()
                     .queue_family_index(graphics_queue_family_id)
@@ -500,9 +585,24 @@ impl Instance {
             ];
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
-            let g_q = unsafe { device.get_device_queue(graphics_queue_family_id, 0, None) };
-            let t_q = unsafe { device.get_device_queue(transfer_queue_family_id, 0, None) };
-            let c_q = unsafe { device.get_device_queue(compute_queue_family_id, 0, None) };
+
+            let g_q = (0..graphics_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let t_q = (0..transfer_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
+
+            let c_q = (0..compute_count)
+                .map(|i| unsafe {
+                    device.get_device_queue(compute_queue_family_id, i as u32, None)
+                })
+                .collect::<_>();
 
             Ok((
                 device,
@@ -1004,7 +1104,7 @@ fn check_features(
     let mut missing_features = false;
 
     #[cfg(feature = "tracing")]
-    if features_list.len() > 0 {
+    if !features_list.is_empty() {
         info!("Enabling Vulkan 1.0 features:");
         features_list.retain(|&wanted| {
             let found = physical_features_list
@@ -1023,7 +1123,7 @@ fn check_features(
     }
 
     #[cfg(feature = "tracing")]
-    if features11_list.len() > 0 {
+    if !features11_list.is_empty() {
         info!("Enabling Vulkan 1.1 features:");
         features11_list.retain(|&wanted| {
             let found = physical_features11_list
@@ -1042,7 +1142,7 @@ fn check_features(
     }
 
     #[cfg(feature = "tracing")]
-    if features12_list.len() > 0 {
+    if !features12_list.is_empty() {
         info!("Enabling Vulkan 1.2 features:");
         features12_list.retain(|&wanted| {
             let found = physical_features12_list
@@ -1061,7 +1161,7 @@ fn check_features(
     }
 
     #[cfg(feature = "tracing")]
-    if features_synchronization2_list.len() > 0 {
+    if !features_synchronization2_list.is_empty() {
         info!("Enabling VK_KHR_synchronization2 features:");
         features_synchronization2_list.retain(|&wanted| {
             let found = physical_features_synchronization2_list
@@ -1080,7 +1180,7 @@ fn check_features(
     }
 
     #[cfg(feature = "tracing")]
-    if features_raytracing_list.len() > 0 {
+    if !features_raytracing_list.is_empty() {
         info!("Enabling VK_KHR_ray_tracing_pipeline features:");
         features_raytracing_list.retain(|&wanted| {
             let found = physical_features_raytracing_list
@@ -1102,7 +1202,7 @@ fn check_features(
     }
 
     #[cfg(feature = "tracing")]
-    if features_acceleration_structure_list.len() > 0 {
+    if !features_acceleration_structure_list.is_empty() {
         info!("Enabling VK_KHR_acceleration_structure features:");
         features_acceleration_structure_list.retain(|&wanted| {
             let found = physical_features_acceleration_structure_list

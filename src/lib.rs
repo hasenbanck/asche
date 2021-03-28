@@ -16,7 +16,7 @@ pub use {
     context::Context,
     deferred_operation::DeferredOperation,
     descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},
-    device::{BARSupport, Device, DeviceConfiguration, QueuePriorityDescriptor},
+    device::{BarSupport, Device, DeviceConfiguration, QueueConfiguration, Queues},
     error::AscheError,
     image::{Image, ImageView, Sampler},
     instance::{Instance, InstanceConfiguration},

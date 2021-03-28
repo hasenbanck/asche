@@ -1,5 +1,7 @@
 use erupt::vk;
 
+use asche::{QueueConfiguration, Queues};
+
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -24,11 +26,22 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, (_, graphics_queue, _)) = instance.request_device(asche::DeviceConfiguration {
+    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+        queue_configuration: QueueConfiguration {
+            compute_queues: vec![],
+            graphics_queues: vec![1.0],
+            transfer_queues: vec![],
+        },
         ..Default::default()
     })?;
 
-    let mut app = Application::new(device, graphics_queue, &window)?;
+    let Queues {
+        compute_queues: _compute_queues,
+        mut graphics_queues,
+        transfer_queues: _transfer_queues,
+    } = queues;
+
+    let mut app = Application::new(device, graphics_queues.pop().unwrap(), &window)?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;

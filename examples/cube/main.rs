@@ -2,6 +2,8 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::vk;
 use glam::{Mat4, Vec3, Vec4};
 
+use asche::{QueueConfiguration, Queues};
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -37,12 +39,27 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, (_, graphics_queue, transfer_queue)) =
-        instance.request_device(asche::DeviceConfiguration {
-            ..Default::default()
-        })?;
+    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+        queue_configuration: QueueConfiguration {
+            compute_queues: vec![],
+            graphics_queues: vec![1.0],
+            transfer_queues: vec![1.0],
+        },
+        ..Default::default()
+    })?;
 
-    let mut app = Application::new(device, graphics_queue, transfer_queue, &window)?;
+    let Queues {
+        compute_queues: _compute_queues,
+        mut graphics_queues,
+        mut transfer_queues,
+    } = queues;
+
+    let mut app = Application::new(
+        device,
+        graphics_queues.pop().unwrap(),
+        transfer_queues.pop().unwrap(),
+        &window,
+    )?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;

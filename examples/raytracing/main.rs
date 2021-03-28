@@ -4,6 +4,8 @@ use glam::{Mat4, Vec3, Vec4};
 #[cfg(feature = "tracing")]
 use tracing::info;
 
+use asche::Queues;
+
 use crate::gltf::{Material, Mesh, Vertex};
 use crate::uploader::Uploader;
 
@@ -44,46 +46,51 @@ fn main() -> Result<()> {
         },
     )?;
 
-    let (device, (compute_queue, graphics_queue, transfer_queue)) =
-        instance.request_device(asche::DeviceConfiguration {
-            swapchain_format: SURFACE_FORMAT,
-            extensions: vec![
-                // For RT support
-                vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-                vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-                vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
-                vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-                // For GLSL_EXT_debug_printf support
-                vk::KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
-            ],
-            features_v1_2: Some(
-                vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
-                    .timeline_semaphore(true)
-                    .buffer_device_address(true)
-                    .scalar_block_layout(true)
-                    .uniform_buffer_standard_layout(true)
-                    .descriptor_indexing(true)
-                    .descriptor_binding_partially_bound(true)
-                    .descriptor_binding_variable_descriptor_count(true)
-                    .runtime_descriptor_array(true)
-                    .shader_storage_buffer_array_non_uniform_indexing(true),
-            ),
-            features_raytracing: Some(
-                vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
-                    .ray_tracing_pipeline(true),
-            ),
-            features_acceleration_structure: Some(
-                vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
-                    .acceleration_structure(true),
-            ),
-            ..Default::default()
-        })?;
+    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+        swapchain_format: SURFACE_FORMAT,
+        extensions: vec![
+            // For RT support
+            vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+            vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+            vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+            vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+            // For GLSL_EXT_debug_printf support
+            vk::KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
+        ],
+        features_v1_2: Some(
+            vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
+                .timeline_semaphore(true)
+                .buffer_device_address(true)
+                .scalar_block_layout(true)
+                .uniform_buffer_standard_layout(true)
+                .descriptor_indexing(true)
+                .descriptor_binding_partially_bound(true)
+                .descriptor_binding_variable_descriptor_count(true)
+                .runtime_descriptor_array(true)
+                .shader_storage_buffer_array_non_uniform_indexing(true),
+        ),
+        features_raytracing: Some(
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
+                .ray_tracing_pipeline(true),
+        ),
+        features_acceleration_structure: Some(
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
+                .acceleration_structure(true),
+        ),
+        ..Default::default()
+    })?;
+
+    let Queues {
+        mut compute_queues,
+        mut graphics_queues,
+        mut transfer_queues,
+    } = queues;
 
     let mut app = RayTracingApplication::new(
         device,
-        compute_queue,
-        graphics_queue,
-        transfer_queue,
+        compute_queues.pop().unwrap(),
+        graphics_queues.pop().unwrap(),
+        transfer_queues.pop().unwrap(),
         window.inner_size().width,
         window.inner_size().height,
     )

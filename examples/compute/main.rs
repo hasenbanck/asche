@@ -1,5 +1,7 @@
 use erupt::vk;
 
+use asche::{QueueConfiguration, Queues};
+
 fn main() -> Result<(), asche::AscheError> {
     // Asche doesn't support headless compute only setups!
     let event_loop = winit::event_loop::EventLoop::new();
@@ -25,11 +27,22 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, (compute_queue, _, _)) = instance.request_device(asche::DeviceConfiguration {
+    let (device, queues) = instance.request_device(asche::DeviceConfiguration {
+        queue_configuration: QueueConfiguration {
+            compute_queues: vec![1.0],
+            graphics_queues: vec![],
+            transfer_queues: vec![],
+        },
         ..Default::default()
     })?;
 
-    let mut app = Application::new(device, compute_queue)?;
+    let Queues {
+        mut compute_queues,
+        graphics_queues: _graphics_queues,
+        transfer_queues: _transfer_queues,
+    } = queues;
+
+    let mut app = Application::new(device, compute_queues.pop().unwrap())?;
     app.compute()?;
 
     Ok(())
