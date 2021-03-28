@@ -372,6 +372,10 @@ impl Instance {
         let transfer_count = queue_configuration.transfer_queues.len();
         let compute_count = queue_configuration.compute_queues.len();
 
+        if graphics_count + transfer_count + compute_count == 0 {
+            return Err(AscheError::NoQueueConfigured);
+        }
+
         // If some queue families point to the same ID, we need to create only one
         // `vk::DeviceQueueCreateInfo` for them.
         if graphics_queue_family_id == transfer_queue_family_id
@@ -385,14 +389,23 @@ impl Instance {
             let mut p2 = Vec::with_capacity(compute_count);
             p2.extend_from_slice(&queue_configuration.compute_queues);
 
-            let queue_infos = [
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&p1),
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(compute_queue_family_id)
-                    .queue_priorities(&p2),
-            ];
+            let mut queue_infos = Vec::with_capacity(2);
+            if !p1.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(graphics_queue_family_id)
+                        .queue_priorities(&p1),
+                );
+            }
+
+            if !p2.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(compute_queue_family_id)
+                        .queue_priorities(&p2),
+                );
+            }
+
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
 
@@ -434,14 +447,22 @@ impl Instance {
             p2.extend_from_slice(&queue_configuration.transfer_queues);
             p2.extend_from_slice(&queue_configuration.compute_queues);
 
-            let queue_infos = [
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&p1),
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&p2),
-            ];
+            let mut queue_infos = Vec::with_capacity(2);
+            if !p1.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(graphics_queue_family_id)
+                        .queue_priorities(&p1),
+                );
+            }
+            if !p2.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(transfer_queue_family_id)
+                        .queue_priorities(&p2),
+                );
+            }
+
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
             let g_q = (0..graphics_count)
@@ -482,14 +503,22 @@ impl Instance {
             let mut p2 = Vec::with_capacity(transfer_count);
             p2.extend_from_slice(&queue_configuration.transfer_queues);
 
-            let queue_infos = [
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&p1),
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&p2),
-            ];
+            let mut queue_infos = Vec::with_capacity(2);
+            if !p1.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(graphics_queue_family_id)
+                        .queue_priorities(&p1),
+                );
+            }
+            if !p2.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(transfer_queue_family_id)
+                        .queue_priorities(&p2),
+                );
+            }
+
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
 
@@ -573,17 +602,29 @@ impl Instance {
             let mut p3 = Vec::with_capacity(compute_count);
             p3.extend_from_slice(&queue_configuration.compute_queues);
 
-            let queue_infos = [
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(graphics_queue_family_id)
-                    .queue_priorities(&p1),
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(transfer_queue_family_id)
-                    .queue_priorities(&p2),
-                vk::DeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(compute_queue_family_id)
-                    .queue_priorities(&p3),
-            ];
+            let mut queue_infos = Vec::with_capacity(2);
+            if !p1.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(graphics_queue_family_id)
+                        .queue_priorities(&p1),
+                );
+            }
+            if !p2.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(transfer_queue_family_id)
+                        .queue_priorities(&p2),
+                );
+            }
+            if !p3.is_empty() {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(compute_queue_family_id)
+                        .queue_priorities(&p3),
+                );
+            }
+
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
 

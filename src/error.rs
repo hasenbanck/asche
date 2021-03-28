@@ -46,6 +46,9 @@ pub enum AscheError {
 
     /// The requested buffer has a size of zero.
     BufferZeroSize,
+
+    /// No queue was configured.
+    NoQueueConfigured,
 }
 
 impl std::fmt::Display for AscheError {
@@ -95,6 +98,9 @@ impl std::fmt::Display for AscheError {
             }
             AscheError::BufferZeroSize => {
                 write!(f, "the requested buffer has a size of zero")
+            }
+            AscheError::NoQueueConfigured => {
+                write!(f, "no queue was configured")
             }
         }
     }
