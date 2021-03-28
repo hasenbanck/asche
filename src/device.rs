@@ -555,12 +555,11 @@ impl Device {
         self.context
             .set_object_name(&descriptor.name, vk::ObjectType::BUFFER, raw.0)?;
 
-        let allocation = self
-            .context
-            .allocator
-            .lock()
-            .unwrap()
-            .allocate_memory_for_buffer(&self.context.device, raw, descriptor.memory_location)?;
+        let allocation = self.context.allocator.allocate_memory_for_buffer(
+            &self.context.device,
+            raw,
+            descriptor.memory_location,
+        )?;
 
         let bind_infos = vk::BindBufferMemoryInfoBuilder::new()
             .buffer(raw)
@@ -657,12 +656,11 @@ impl Device {
         self.context
             .set_object_name(&descriptor.name, vk::ObjectType::IMAGE, raw.0)?;
 
-        let allocation = self
-            .context
-            .allocator
-            .lock()
-            .unwrap()
-            .allocate_memory_for_image(&self.context.device, raw, descriptor.memory_location)?;
+        let allocation = self.context.allocator.allocate_memory_for_image(
+            &self.context.device,
+            raw,
+            descriptor.memory_location,
+        )?;
 
         let bind_infos = vk::BindImageMemoryInfoBuilder::new()
             .image(raw)

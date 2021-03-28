@@ -1,6 +1,4 @@
 //! Implements the internal context.
-use std::sync::Mutex;
-
 use erupt::vk;
 #[cfg(feature = "tracing")]
 use tracing::error;
@@ -11,7 +9,7 @@ use crate::{AscheError, Instance, Result};
 #[derive(Debug)]
 pub(crate) struct Context {
     /// The memory allocator.
-    pub(crate) allocator: Mutex<vk_alloc::Allocator>,
+    pub(crate) allocator: vk_alloc::Allocator,
     /// The raw logical Vulkan device.
     pub(crate) device: erupt::DeviceLoader,
     /// The raw physical Vulkan device.
@@ -24,7 +22,7 @@ impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
-            self.allocator.lock().unwrap().cleanup(&self.device);
+            self.allocator.cleanup(&self.device);
             self.device.destroy_device(None);
         };
     }
@@ -42,7 +40,7 @@ impl Context {
             instance,
             device,
             physical_device,
-            allocator: Mutex::new(allocator),
+            allocator,
         }
     }
 

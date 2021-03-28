@@ -19,8 +19,6 @@ impl Drop for Image {
             self.context.device.destroy_image(Some(self.raw), None);
             self.context
                 .allocator
-                .lock()
-                .unwrap()
                 .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free image allocation");
         };

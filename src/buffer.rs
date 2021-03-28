@@ -20,8 +20,6 @@ impl Drop for Buffer {
             self.context.device.destroy_buffer(Some(self.raw), None);
             self.context
                 .allocator
-                .lock()
-                .unwrap()
                 .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free buffer allocation");
         };
