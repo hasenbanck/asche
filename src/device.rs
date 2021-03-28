@@ -285,11 +285,6 @@ impl Device {
         ))
     }
 
-    /// Returns a reference to the context.
-    pub fn context(&self) -> &Context {
-        &self.context
-    }
-
     /// Creates a new render pass.
     pub fn create_render_pass(
         &self,

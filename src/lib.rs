@@ -13,7 +13,6 @@ pub use {
         GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder, TransferCommandBuffer,
         TransferCommandEncoder, TransferCommandPool,
     },
-    context::Context,
     deferred_operation::DeferredOperation,
     descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},
     device::{BarSupport, Device, DeviceConfiguration, QueueConfiguration, Queues},
@@ -26,6 +25,8 @@ pub use {
     swapchain::{Swapchain, SwapchainFrame},
     vk_alloc::MemoryLocation,
 };
+
+use crate::context::Context;
 
 pub(crate) mod acceleration_structure;
 pub(crate) mod buffer;

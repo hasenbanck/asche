@@ -16,17 +16,17 @@ use crate::{
 
 /// The internal context.
 #[derive(Debug)]
-pub struct Context {
+pub(crate) struct Context {
     /// The framebuffer.
     framebuffers: Mutex<HashMap<u64, vk::Framebuffer>>,
     /// The memory allocator.
-    pub allocator: Mutex<vk_alloc::Allocator>,
+    pub(crate) allocator: Mutex<vk_alloc::Allocator>,
     /// The raw logical Vulkan device.
-    pub device: erupt::DeviceLoader,
+    pub(crate) device: erupt::DeviceLoader,
     /// The raw physical Vulkan device.
-    pub physical_device: vk::PhysicalDevice,
+    pub(crate) physical_device: vk::PhysicalDevice,
     /// The wrapped Vulkan instance.
-    pub instance: Instance,
+    pub(crate) instance: Instance,
 }
 
 impl Drop for Context {

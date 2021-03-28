@@ -4,7 +4,8 @@ use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
 use tracing::error;
 
-use crate::{AscheError, Context, Result};
+use crate::context::Context;
+use crate::{AscheError, Result};
 
 /// Wraps a descriptor pool.
 #[derive(Debug)]

@@ -5,7 +5,8 @@ use erupt::vk;
 #[cfg(feature = "tracing")]
 use tracing::error;
 
-use crate::{AscheError, Context, Result};
+use crate::context::Context;
+use crate::{AscheError, Result};
 
 /// Wraps an acceleration structure.
 #[derive(Debug)]

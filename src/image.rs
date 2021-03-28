@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use erupt::vk;
 
-use crate::Context;
+use crate::context::Context;
 
 /// Wraps an image.
 #[derive(Debug)]
