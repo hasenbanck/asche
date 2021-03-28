@@ -21,6 +21,7 @@ impl Drop for Buffer {
             self.context
                 .allocator
                 .lock()
+                .unwrap()
                 .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free buffer allocation");
         };

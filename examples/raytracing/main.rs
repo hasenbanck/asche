@@ -1556,6 +1556,7 @@ impl RayTracingApplication {
 
             {
                 let pass = encoder.begin_render_pass(
+                    &mut self.swapchain,
                     &self.renderpass,
                     &[asche::RenderPassColorAttachmentDescriptor {
                         attachment: frame.view,

@@ -1,11 +1,18 @@
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 use erupt::vk;
+use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
 
 use crate::context::Context;
-use crate::{AscheError, GraphicsQueue, ImageView, Result};
+use crate::{
+    AscheError, GraphicsQueue, ImageView, RenderPass, RenderPassColorAttachmentDescriptor,
+    RenderPassDepthAttachmentDescriptor, Result,
+};
 
 /// Swapchain frame.
 #[derive(Debug)]
@@ -19,6 +26,8 @@ pub struct SwapchainFrame {
 /// Abstracts a Vulkan swapchain.
 #[derive(Debug)]
 pub struct Swapchain {
+    /// The framebuffer.
+    framebuffers: HashMap<u64, vk::Framebuffer>,
     graphic_queue_family_index: u32,
     presentation_mode: vk::PresentModeKHR,
     size: Option<u32>,
@@ -37,6 +46,7 @@ impl Swapchain {
         color_space: vk::ColorSpaceKHR,
     ) -> Result<Self> {
         let mut swapchain = Self {
+            framebuffers: HashMap::with_capacity(3),
             graphic_queue_family_index,
             presentation_mode,
             size: None,
@@ -53,7 +63,7 @@ impl Swapchain {
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
     pub fn recreate(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
-        self.context.destroy_framebuffer();
+        self.destroy_framebuffer();
 
         #[cfg(feature = "tracing")]
         info!(
@@ -202,6 +212,90 @@ impl Swapchain {
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
             .queue_frame(frame, graphics_queue.raw)
+    }
+
+    /// Re-uses a cached framebuffer or creates a new one.
+    pub(crate) fn next_framebuffer(
+        &mut self,
+        render_pass: &RenderPass,
+        color_attachments: &[RenderPassColorAttachmentDescriptor],
+        depth_attachment: &Option<RenderPassDepthAttachmentDescriptor>,
+        extent: vk::Extent2D,
+    ) -> Result<vk::Framebuffer> {
+        // Calculate the hash for the renderpass / attachment combination.
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u64(render_pass.raw.0);
+        for color_attachment in color_attachments {
+            hasher.write_u64(color_attachment.attachment.0);
+        }
+        if let Some(depth_attachment) = depth_attachment {
+            hasher.write_u64(depth_attachment.attachment.0);
+        }
+        let hash = hasher.finish();
+
+        let mut created = false;
+        let framebuffer = if let Some(framebuffer) = self.framebuffers.get(&hash) {
+            *framebuffer
+        } else {
+            created = true;
+            self.create_framebuffer(render_pass, color_attachments, depth_attachment, extent)?
+        };
+
+        if created {
+            self.framebuffers.insert(hash, framebuffer);
+        }
+
+        Ok(framebuffer)
+    }
+
+    fn create_framebuffer(
+        &self,
+        render_pass: &RenderPass,
+        color_attachments: &[RenderPassColorAttachmentDescriptor],
+        depth_attachment: &Option<RenderPassDepthAttachmentDescriptor>,
+        extent: vk::Extent2D,
+    ) -> Result<vk::Framebuffer> {
+        let attachments: SmallVec<[vk::ImageView; 4]> = color_attachments
+            .iter()
+            .map(|x| x.attachment)
+            .chain(depth_attachment.iter().map(|x| x.attachment))
+            .collect();
+
+        let framebuffer_info = vk::FramebufferCreateInfoBuilder::new()
+            .render_pass(render_pass.raw)
+            .attachments(&attachments)
+            .width(extent.width)
+            .height(extent.height)
+            .layers(1);
+
+        let framebuffer = unsafe {
+            self.context
+                .device
+                .create_framebuffer(&framebuffer_info, None, None)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a frame buffer: {}", err);
+            AscheError::VkResult(err)
+        })?;
+
+        Ok(framebuffer)
+    }
+
+    fn destroy_framebuffer(&mut self) {
+        for (_, framebuffer) in self.framebuffers.drain() {
+            unsafe {
+                self.context
+                    .device
+                    .destroy_framebuffer(Some(framebuffer), None);
+            }
+        }
+    }
+}
+
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        self.destroy_framebuffer();
     }
 }
 

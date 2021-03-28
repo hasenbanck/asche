@@ -13,7 +13,7 @@ use crate::context::Context;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
     AscheError, ComputePipeline, GraphicsPipeline, QueueType, RayTracingPipeline, RenderPass,
-    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
+    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result, Swapchain,
 };
 
 macro_rules! impl_command_pool {
@@ -43,11 +43,7 @@ macro_rules! impl_command_pool {
 
         impl $pool_name {
             /// Creates a new command pool.
-            pub(crate) fn new(
-                context: Arc<Context>,
-                family_index: u32,
-                id: u64,
-            ) -> Result<Self> {
+            pub(crate) fn new(context: Arc<Context>, family_index: u32, id: u64) -> Result<Self> {
                 let command_pool_info =
                     vk::CommandPoolCreateInfoBuilder::new().queue_family_index(family_index);
 
@@ -88,12 +84,14 @@ macro_rules! impl_command_pool {
                     .level(vk::CommandBufferLevel::PRIMARY)
                     .command_buffer_count(1);
 
-                let command_buffers = unsafe { self.context.device.allocate_command_buffers(&info) }
-                    .map_err(|err| {
-                        #[cfg(feature = "tracing")]
-                        error!("Unable to allocate a command buffer: {}", err);
-                        AscheError::VkResult(err)
-                    })?;
+                let command_buffers =
+                    unsafe { self.context.device.allocate_command_buffers(&info) }.map_err(
+                        |err| {
+                            #[cfg(feature = "tracing")]
+                            error!("Unable to allocate a command buffer: {}", err);
+                            AscheError::VkResult(err)
+                        },
+                    )?;
 
                 self.context.set_object_name(
                     &format!(
@@ -120,11 +118,13 @@ macro_rules! impl_command_pool {
 
             /// Resets a command pool.
             pub fn reset(&self) -> Result<()> {
-                unsafe { self.context.device.reset_command_pool(self.raw, None) }.map_err(|err| {
-                    #[cfg(feature = "tracing")]
-                    error!("Unable to reset a command pool: {}", err);
-                    AscheError::VkResult(err)
-                })?;
+                unsafe { self.context.device.reset_command_pool(self.raw, None) }.map_err(
+                    |err| {
+                        #[cfg(feature = "tracing")]
+                        error!("Unable to reset a command pool: {}", err);
+                        AscheError::VkResult(err)
+                    },
+                )?;
 
                 Ok(())
             }
@@ -152,7 +152,6 @@ macro_rules! impl_command_buffer {
         #[doc = $doc:expr]
         $buffer_name:ident => $encoder_name:ident
     ) => {
-
         #[doc = $doc]
         #[derive(Debug)]
         pub struct $buffer_name {
@@ -188,7 +187,7 @@ macro_rules! impl_command_buffer {
             pub fn record(&self) -> Result<$encoder_name> {
                 let encoder = $encoder_name {
                     context: &self.context,
-                    buffer: self.raw
+                    buffer: self.raw,
                 };
                 encoder.begin()?;
                 Ok(encoder)
@@ -216,7 +215,7 @@ macro_rules! impl_command_buffer {
                 };
             }
         }
-    }
+    };
 }
 
 impl_command_buffer!(
@@ -609,6 +608,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     /// Returns a render pass encoder. Drop once finished recording.
     pub fn begin_render_pass(
         &self,
+        swapchain: &mut Swapchain,
         render_pass: &RenderPass,
         color_attachments: &[RenderPassColorAttachmentDescriptor],
         depth_attachment: Option<RenderPassDepthAttachmentDescriptor>,
@@ -619,7 +619,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
             buffer: self.buffer,
         };
 
-        let framebuffer = self.context.get_framebuffer(
+        let framebuffer = swapchain.next_framebuffer(
             render_pass,
             color_attachments,
             &depth_attachment,

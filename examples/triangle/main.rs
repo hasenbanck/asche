@@ -234,6 +234,7 @@ impl Application {
 
             {
                 let pass = encoder.begin_render_pass(
+                    &mut self.swapchain,
                     &self.render_pass,
                     &[asche::RenderPassColorAttachmentDescriptor {
                         attachment: frame.view,
