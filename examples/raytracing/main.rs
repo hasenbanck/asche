@@ -1221,6 +1221,7 @@ impl RayTracingApplication {
         Ok(())
     }
 
+    #[allow(unused_variables)]
     fn compact_blas(&mut self, max_sizes: &mut [u64], compacted_sizes: &[u64]) -> Result<()> {
         let command_buffer = self.compute_pool.create_command_buffer(
             &self.timeline,

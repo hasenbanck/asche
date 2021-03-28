@@ -2,6 +2,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 
 use erupt::{vk, ExtendableFrom};
+#[cfg(feature = "tracing")]
 use tracing::{error, info, warn};
 
 use crate::device::Queues;
@@ -728,6 +729,7 @@ impl Instance {
         Ok(device)
     }
 
+    #[cfg(feature = "tracing")]
     fn print_extensions(what: &str, extensions: &[*const i8]) {
         info!("Loading {} extensions:", what);
         for extension in extensions.iter() {
@@ -912,6 +914,7 @@ macro_rules! impl_feature_assemble {
     };
 }
 
+#[allow(unused_mut)]
 #[allow(clippy::too_many_arguments)]
 fn check_features(
     physical_features: &vk::PhysicalDeviceFeatures,

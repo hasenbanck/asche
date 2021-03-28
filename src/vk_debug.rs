@@ -42,16 +42,16 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
     #[cfg(not(feature = "tracing"))]
     {
         match message_severity {
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::ERROR_EXT => {
                 println!("ERROR: {} - {:?}", ty, message)
             }
-            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::WARNING_EXT => {
                 println!("WARN: {} - {:?}", ty, message)
             }
-            vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::INFO_EXT => {
                 println!("INFO: {} - {:?}", ty, message)
             }
-            vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::VERBOSE_EXT => {
                 println!("DEBUG: {} - {:?}", ty, message)
             }
             _ => {
