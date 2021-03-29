@@ -2,8 +2,8 @@
 name = "asche"
 version = "0.1.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
-description = "Provides an abstraction layer above ash to easier use Vulkan in Rust."
-license = "MIT OR Apache-2.0"
+description = "Provides an abstraction layer above erupt to easier use Vulkan in Rust."
+license = "Zlib OR MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/asche"
 categories = ["graphics"]
