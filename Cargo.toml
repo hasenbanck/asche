@@ -11,14 +11,21 @@ keywords = ["vulkan", "erupt"]
 edition = "2018"
 
 [features]
-default = ["tracing", "smallvec"]
+default = ["logging", "smallvec"]
+logging = ["tracing", "vk-alloc/tracing"]
+profile-with-puffin = ["profiling/profile-with-puffin", "vk-alloc/profile-with-puffin"]
+profile-with-optick = ["profiling/profile-with-optick", "vk-alloc/profile-with-optick"]
+profile-with-superluminal = ["profiling/profile-with-superluminal", "vk-alloc/profile-with-superluminal"]
+profile-with-tracing = ["profiling/profile-with-tracing", "vk-alloc/profile-with-tracing"]
+profile-with-tracy = ["profiling/profile-with-tracy", "vk-alloc/profile-with-tracy"]
 
 [dependencies]
 erupt = { version = "0.17", features = ["bytemuck"] }
+profiling = { version = "0.1", optional = true }
 raw-window-handle = "0.3"
-smallvec = { version = "1.6", optional = true }
+smallvec = { version = "1.6", features = ["union", "const_generics"], optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
-vk-alloc = { version = "0.7", features = ["vk-buffer-device-address"] }
+vk-alloc = { version = "1.0", features = ["vk-buffer-device-address"] }
 
 [dev-dependencies]
 bytemuck = "1.5"

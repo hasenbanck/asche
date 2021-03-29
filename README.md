@@ -18,9 +18,14 @@ Used features:
 - "buffer device address"
 - "timeline_semaphores"
 
-## Status
+## Features
 
-General API is finished. Not stability
+* `logging` Adds logging using [tracing](https://github.com/tokio-rs/tracing).
+* `profiling` Adds support for [profiling](https://github.com/aclysma/profiling).
+* `smallvec` Uses the crate [smallvec](https://github.com/servo/smallvec)
+  for vectors in the hot path to reduce pressure on the heap.
+
+`logging` and `smallvec` are on by default.
 
 ## Examples
 
