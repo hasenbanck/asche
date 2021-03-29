@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use erupt::vk;
+#[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
@@ -98,50 +99,65 @@ macro_rules! impl_queue {
             ///
             /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
             pub fn submit_all(&mut self, command_buffer: &[$buffer_name]) -> Result<()> {
-                let command_buffer_infos: SmallVec<[vk::CommandBufferSubmitInfoKHRBuilder; 4]> =
-                    command_buffer
-                        .iter()
-                        .map(|cb| {
-                            vk::CommandBufferSubmitInfoKHRBuilder::new()
-                                .command_buffer(cb.raw)
-                                .device_mask(1)
-                        })
-                        .collect();
+                let command_buffer_infos = command_buffer.iter().map(|cb| {
+                    vk::CommandBufferSubmitInfoKHRBuilder::new()
+                        .command_buffer(cb.raw)
+                        .device_mask(1)
+                });
 
-                let wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> =
-                    command_buffer
-                        .iter()
-                        .map(|cb| {
-                            vk::SemaphoreSubmitInfoKHRBuilder::new()
-                                .semaphore(cb.timeline_semaphore)
-                                .value(cb.wait_value)
-                                .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
-                                .device_index(1)
-                        })
-                        .collect();
+                #[cfg(feature = "smallvec")]
+                let command_buffer_infos = command_buffer_infos
+                    .collect::<SmallVec<[vk::CommandBufferSubmitInfoKHRBuilder; 4]>>();
 
-                let signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> =
-                    command_buffer
-                        .iter()
-                        .map(|cb| {
-                            vk::SemaphoreSubmitInfoKHRBuilder::new()
-                                .semaphore(cb.timeline_semaphore)
-                                .value(cb.signal_value)
-                                .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
-                                .device_index(1)
-                        })
-                        .collect();
+                #[cfg(not(feature = "smallvec"))]
+                let command_buffer_infos =
+                    command_buffer_infos.collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
 
-                let submit_infos: SmallVec<[vk::SubmitInfo2KHRBuilder; 4]> = command_buffer
-                    .iter()
-                    .enumerate()
-                    .map(|(id, _)| {
-                        vk::SubmitInfo2KHRBuilder::new()
-                            .command_buffer_infos(&command_buffer_infos[id..id + 1])
-                            .wait_semaphore_infos(&wait_semaphore_infos[id..id + 1])
-                            .signal_semaphore_infos(&signal_semaphore_infos[id..id + 1])
-                    })
-                    .collect();
+                let wait_semaphore_infos = command_buffer.iter().map(|cb| {
+                    vk::SemaphoreSubmitInfoKHRBuilder::new()
+                        .semaphore(cb.timeline_semaphore)
+                        .value(cb.wait_value)
+                        .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
+                        .device_index(1)
+                });
+
+                #[cfg(feature = "smallvec")]
+                let wait_semaphore_infos = wait_semaphore_infos
+                    .collect::<SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]>>();
+
+                #[cfg(not(feature = "smallvec"))]
+                let wait_semaphore_infos =
+                    wait_semaphore_infos.collect::<Vec<vk::SemaphoreSubmitInfoKHRBuilder>>();
+
+                let signal_semaphore_infos = command_buffer.iter().map(|cb| {
+                    vk::SemaphoreSubmitInfoKHRBuilder::new()
+                        .semaphore(cb.timeline_semaphore)
+                        .value(cb.signal_value)
+                        .stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
+                        .device_index(1)
+                });
+
+                #[cfg(feature = "smallvec")]
+                let signal_semaphore_infos = signal_semaphore_infos
+                    .collect::<SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]>>();
+
+                #[cfg(not(feature = "smallvec"))]
+                let signal_semaphore_infos =
+                    signal_semaphore_infos.collect::<Vec<vk::SemaphoreSubmitInfoKHRBuilder>>();
+
+                let submit_infos = command_buffer.iter().enumerate().map(|(id, _)| {
+                    vk::SubmitInfo2KHRBuilder::new()
+                        .command_buffer_infos(&command_buffer_infos[id..id + 1])
+                        .wait_semaphore_infos(&wait_semaphore_infos[id..id + 1])
+                        .signal_semaphore_infos(&signal_semaphore_infos[id..id + 1])
+                });
+
+                #[cfg(feature = "smallvec")]
+                let submit_infos =
+                    submit_infos.collect::<SmallVec<[vk::SubmitInfo2KHRBuilder; 4]>>();
+
+                #[cfg(not(feature = "smallvec"))]
+                let submit_infos = submit_infos.collect::<Vec<vk::SubmitInfo2KHRBuilder>>();
 
                 unsafe {
                     self.context

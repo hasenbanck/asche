@@ -4,6 +4,7 @@ use std::hash::Hasher;
 use std::sync::Arc;
 
 use erupt::vk;
+#[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
@@ -255,11 +256,16 @@ impl Swapchain {
         depth_attachment: &Option<RenderPassDepthAttachmentDescriptor>,
         extent: vk::Extent2D,
     ) -> Result<vk::Framebuffer> {
-        let attachments: SmallVec<[vk::ImageView; 4]> = color_attachments
+        let attachments = color_attachments
             .iter()
             .map(|x| x.attachment)
-            .chain(depth_attachment.iter().map(|x| x.attachment))
-            .collect();
+            .chain(depth_attachment.iter().map(|x| x.attachment));
+
+        #[cfg(feature = "smallvec")]
+        let attachments = attachments.collect::<SmallVec<[vk::ImageView; 4]>>();
+
+        #[cfg(not(feature = "smallvec"))]
+        let attachments = attachments.collect::<Vec<vk::ImageView>>();
 
         let framebuffer_info = vk::FramebufferCreateInfoBuilder::new()
             .render_pass(render_pass.raw)

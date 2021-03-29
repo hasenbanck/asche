@@ -3,6 +3,7 @@ use std::os::raw::c_char;
 use std::sync::Arc;
 
 use erupt::{vk, ExtendableFrom};
+#[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::{error, info};
@@ -515,7 +516,11 @@ impl Device {
             return Err(AscheError::BufferZeroSize);
         }
 
+        #[cfg(feature = "smallvec")]
         let mut families: SmallVec<[u32; 3]> = SmallVec::new();
+
+        #[cfg(not(feature = "smallvec"))]
+        let mut families: Vec<u32> = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
             families.push(self.compute_queue_family_index)
@@ -609,7 +614,11 @@ impl Device {
 
     /// Creates a new image.
     pub fn create_image(&self, descriptor: &ImageDescriptor) -> Result<Image> {
+        #[cfg(feature = "smallvec")]
         let mut families: SmallVec<[u32; 3]> = SmallVec::new();
+
+        #[cfg(not(feature = "smallvec"))]
+        let mut families: Vec<u32> = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
             families.push(self.compute_queue_family_index)
@@ -965,11 +974,18 @@ impl Device {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
-        let build_range_infos: SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]> =
-            build_range_infos
-                .iter()
-                .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
-                .collect();
+        let build_range_infos = build_range_infos
+            .iter()
+            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
+
+        #[cfg(feature = "smallvec")]
+        let build_range_infos = build_range_infos
+            .collect::<SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]>>();
+
+        #[cfg(not(feature = "smallvec"))]
+        let build_range_infos =
+            build_range_infos.collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
+
         unsafe {
             self.context
                 .device

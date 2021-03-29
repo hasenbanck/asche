@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use erupt::vk;
 use erupt::vk::ClearValue;
+#[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
@@ -407,11 +408,18 @@ impl<'a> ComputeCommandEncoder<'a> {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
-        let build_range_infos: SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]> =
-            build_range_infos
-                .iter()
-                .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
-                .collect();
+        let build_range_infos = build_range_infos
+            .iter()
+            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
+
+        #[cfg(feature = "smallvec")]
+        let build_range_infos = build_range_infos
+            .collect::<SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]>>();
+
+        #[cfg(not(feature = "smallvec"))]
+        let build_range_infos =
+            build_range_infos.collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
+
         unsafe {
             self.context.device.cmd_build_acceleration_structures_khr(
                 self.buffer,
@@ -626,7 +634,12 @@ impl<'a> GraphicsCommandEncoder<'a> {
             extent,
         )?;
 
+        #[cfg(feature = "smallvec")]
         let mut clear_values: SmallVec<[ClearValue; 4]> = SmallVec::new();
+
+        #[cfg(not(feature = "smallvec"))]
+        let mut clear_values: Vec<ClearValue> = Vec::with_capacity(4);
+
         color_attachments.iter().for_each(|x| {
             if let Some(clear_value) = x.clear_value {
                 clear_values.push(clear_value)

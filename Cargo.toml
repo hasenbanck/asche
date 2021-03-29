@@ -11,12 +11,12 @@ keywords = ["vulkan", "erupt"]
 edition = "2018"
 
 [features]
-default = ["tracing"]
+default = ["tracing", "smallvec"]
 
 [dependencies]
 erupt = { version = "0.17", features = ["bytemuck"] }
 raw-window-handle = "0.3"
-smallvec = "1.6"
+smallvec = { version = "1.6", optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
 vk-alloc = { version = "0.7", features = ["tracing", "vk-buffer-device-address"] }
 

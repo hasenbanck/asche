@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use erupt::vk;
+#[cfg(feature = "smallvec")]
 use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
 use tracing::error;
@@ -80,11 +81,18 @@ impl DeferredOperation {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
-        let build_range_infos: SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]> =
-            build_range_infos
-                .iter()
-                .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
-                .collect();
+        let build_range_infos = build_range_infos
+            .iter()
+            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
+
+        #[cfg(feature = "smallvec")]
+        let build_range_infos = build_range_infos
+            .collect::<SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]>>();
+
+        #[cfg(not(feature = "smallvec"))]
+        let build_range_infos =
+            build_range_infos.collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
+
         unsafe {
             self.context.device.build_acceleration_structures_khr(
                 Some(self.raw),
