@@ -1,7 +1,7 @@
 # asche
 
 [![Latest version](https://img.shields.io/crates/v/asche.svg)](https://crates.io/crates/asche)
-[![Documentation](https://docs.rs/vk-alloc/badge.svg)](https://docs.rs/asche)
+[![Documentation](https://docs.rs/asche/badge.svg)](https://docs.rs/asche)
 ![ZLIB](https://img.shields.io/badge/license-zlib-blue.svg)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
