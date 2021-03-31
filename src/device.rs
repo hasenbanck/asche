@@ -115,7 +115,8 @@ pub struct Queues {
 
 /// A Vulkan device.
 ///
-/// Handles all resource creation, swapchain and framebuffer handling. Command buffer and queue handling are handled by the `Queue`.
+/// Handles all resource creation. Command buffer and queue handling are handled by the `Queue`.
+/// Swapchain and framebuffer handling are handled by the `Swapchain`.
 #[derive(Debug)]
 pub struct Device {
     compute_queue_family_index: u32,
@@ -815,8 +816,7 @@ impl Device {
     }
 
     /// Flush mapped memory. Used for CPU->GPU transfers.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkFlushMappedMemoryRanges.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkFlushMappedMemoryRanges.html)"]
     pub fn flush_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
         let ranges = [vk::MappedMemoryRangeBuilder::new()
             .memory(allocation.device_memory)
@@ -832,8 +832,7 @@ impl Device {
     }
 
     /// Invalidate mapped memory. Used for GPU->CPU transfers.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkInvalidateMappedMemoryRanges.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkInvalidateMappedMemoryRanges.html)"]
     pub fn invalidate_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
         let ranges = [vk::MappedMemoryRangeBuilder::new()
             .memory(allocation.device_memory)
@@ -849,8 +848,7 @@ impl Device {
     }
 
     /// Query ray tracing capture replay pipeline shader group handles.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html)"]
     pub fn ray_tracing_capture_replay_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,
@@ -882,8 +880,7 @@ impl Device {
     }
 
     /// Query ray tracing pipeline shader group handles.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)"]
     pub fn ray_tracing_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,
@@ -915,8 +912,7 @@ impl Device {
     }
 
     /// Query ray tracing pipeline shader group shader stack size.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupStackSizeKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupStackSizeKHR.html)"]
     pub fn ray_tracing_shader_group_stack_size(
         &self,
         pipeline: vk::Pipeline,
@@ -931,8 +927,7 @@ impl Device {
     }
 
     /// Returns properties of a physical device.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetPhysicalDeviceProperties2.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetPhysicalDeviceProperties2.html)"]
     pub fn physical_device_properties(
         &self,
         properties: vk::PhysicalDeviceProperties2Builder,
@@ -946,8 +941,7 @@ impl Device {
     }
 
     /// Create a deferred operation handle.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html)"]
     pub fn create_deferred_operation(&self, name: &str) -> Result<DeferredOperation> {
         let operation = unsafe {
             self.context
@@ -967,8 +961,7 @@ impl Device {
     }
 
     /// Build an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBuildAccelerationStructuresKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBuildAccelerationStructuresKHR.html)"]
     pub fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
@@ -1002,8 +995,7 @@ impl Device {
     }
 
     /// Create a new acceleration structure object.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateAccelerationStructureKHR.html)"]
     pub fn create_acceleration_structure(
         &self,
         name: &str,
@@ -1033,8 +1025,7 @@ impl Device {
     }
 
     /// Retrieve the required size for an acceleration structure.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html)"]
     pub fn acceleration_structure_build_sizes(
         &self,
         build_type: vk::AccelerationStructureBuildTypeKHR,
@@ -1054,8 +1045,7 @@ impl Device {
     }
 
     ///  Check if a serialized acceleration structure is compatible with the current device.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeviceAccelerationStructureCompatibilityKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeviceAccelerationStructureCompatibilityKHR.html)"]
     pub fn device_acceleration_structure_compatibility(
         &self,
         version_info: &vk::AccelerationStructureVersionInfoKHR,
@@ -1069,8 +1059,7 @@ impl Device {
     }
 
     /// Copy an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureKHR.html)"]
     pub fn copy_acceleration_structure(
         &self,
         info: &vk::CopyAccelerationStructureInfoKHRBuilder,
@@ -1091,8 +1080,7 @@ impl Device {
     }
 
     /// Serialize an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureToMemoryKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureToMemoryKHR.html)"]
     pub fn copy_acceleration_structure_to_memory(
         &self,
         info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
@@ -1113,8 +1101,7 @@ impl Device {
     }
 
     /// Deserialize an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyMemoryToAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyMemoryToAccelerationStructureKHR.html)"]
     pub fn copy_memory_to_acceleration_structure(
         &self,
         info: &vk::CopyMemoryToAccelerationStructureInfoKHR,
@@ -1135,8 +1122,7 @@ impl Device {
     }
 
     /// Update the contents of a descriptor set object.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkUpdateDescriptorSets.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkUpdateDescriptorSets.html)"]
     pub fn update_descriptor_sets(
         &self,
         descriptor_writes: &[vk::WriteDescriptorSetBuilder],

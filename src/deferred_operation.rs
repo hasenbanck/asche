@@ -33,8 +33,7 @@ impl DeferredOperation {
     }
 
     /// Assign a thread to a deferred operation.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeferredOperationJoinKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeferredOperationJoinKHR.html)"]
     pub fn join(&self) -> Result<()> {
         unsafe { self.context.device.deferred_operation_join_khr(self.raw) }.map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -44,8 +43,7 @@ impl DeferredOperation {
     }
 
     /// Query the maximum concurrency on a deferred operation.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationMaxConcurrencyKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationMaxConcurrencyKHR.html)"]
     pub fn max_concurrency(&self) -> u32 {
         unsafe {
             self.context
@@ -55,8 +53,7 @@ impl DeferredOperation {
     }
 
     /// Query the result of a deferred operation.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationResultKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeferredOperationResultKHR.html)"]
     pub fn result(&self) -> Result<()> {
         unsafe {
             self.context
@@ -74,8 +71,7 @@ impl DeferredOperation {
     }
 
     /// Build an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBuildAccelerationStructuresKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBuildAccelerationStructuresKHR.html)"]
     pub fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
@@ -111,8 +107,7 @@ impl DeferredOperation {
     }
 
     /// Copy an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureKHR.html)"]
     pub fn copy_acceleration_structure(
         &self,
         info: &vk::CopyAccelerationStructureInfoKHRBuilder,
@@ -133,8 +128,7 @@ impl DeferredOperation {
     }
 
     /// Serialize an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureToMemoryKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureToMemoryKHR.html)"]
     pub fn copy_acceleration_structure_to_memory(
         &self,
         info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
@@ -155,8 +149,7 @@ impl DeferredOperation {
     }
 
     /// Deserialize an acceleration structure on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyMemoryToAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyMemoryToAccelerationStructureKHR.html)"]
     pub fn copy_memory_to_acceleration_structure(
         &self,
         info: &vk::CopyMemoryToAccelerationStructureInfoKHR,

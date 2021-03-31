@@ -57,8 +57,7 @@ macro_rules! impl_queue {
             }
 
             /// Submits a command buffer to a queue.
-            ///
-            /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
+            #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html)"]
             pub fn submit(&mut self, command_buffer: &$buffer_name) -> Result<()> {
                 let command_buffer_infos = [vk::CommandBufferSubmitInfoKHRBuilder::new()
                     .command_buffer(command_buffer.raw)
@@ -96,8 +95,7 @@ macro_rules! impl_queue {
             }
 
             /// Submit command buffers to a queue.
-            ///
-            /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html
+            #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html)"]
             pub fn submit_all(&mut self, command_buffer: &[$buffer_name]) -> Result<()> {
                 let command_buffer_infos = command_buffer.iter().map(|cb| {
                     vk::CommandBufferSubmitInfoKHRBuilder::new()

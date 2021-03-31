@@ -22,8 +22,7 @@ impl QueryPool {
     }
 
     /// Copy results of queries in a query pool to a host memory region.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetQueryPoolResults.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetQueryPoolResults.html)"]
     pub fn results(
         &self,
         first_query: u32,

@@ -291,8 +291,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Binds a pipeline.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
     pub fn bind_pipeline(&self, compute_pipeline: &ComputePipeline) {
         bind_pipeline(
             self.context,
@@ -303,8 +302,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Binds descriptor sets.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html)"]
     pub fn bind_descriptor_sets(
         &self,
         layout: vk::PipelineLayout,
@@ -324,8 +322,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Update the values of push constants.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html)"]
     pub fn push_constants(
         &self,
         layout: vk::PipelineLayout,
@@ -344,15 +341,13 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Dispatch compute work items.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatch.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatch.html)"]
     pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         unsafe {
             self.context.device.cmd_dispatch(
@@ -365,8 +360,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Dispatch compute work items.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchBase.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchBase.html)"]
     pub fn dispatch_base(
         &self,
         base_group_x: u32,
@@ -390,8 +384,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Dispatch compute work items using indirect parameters.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchIndirect.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchIndirect.html)"]
     pub fn dispatch_indirect(&self, buffer: vk::Buffer, offset: vk::DeviceSize) {
         unsafe {
             self.context
@@ -401,8 +394,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Build acceleration structures with some parameters provided on the device.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html)"]
     pub fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
@@ -430,8 +422,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Build an acceleration structure with some parameters provided on the device.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html)"]
     pub fn build_acceleration_structures_indirect(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
@@ -453,8 +444,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Copy an acceleration structure.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureKHR.html)"]
     pub fn copy_acceleration_structure(&self, info: &vk::CopyAccelerationStructureInfoKHR) {
         unsafe {
             self.context
@@ -464,8 +454,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Copy an acceleration structure to device memory.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureToMemoryKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureToMemoryKHR.html)"]
     pub fn copy_acceleration_structure_to_memory(
         &self,
         info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
@@ -478,8 +467,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Copy device memory to an acceleration structure.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyMemoryToAccelerationStructureKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyMemoryToAccelerationStructureKHR.html)"]
     pub fn copy_memory_to_acceleration_structure(
         &self,
         info: &vk::CopyMemoryToAccelerationStructureInfoKHR,
@@ -492,8 +480,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Write acceleration structure result parameters to query results.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdWriteAccelerationStructuresPropertiesKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdWriteAccelerationStructuresPropertiesKHR.html)"]
     pub fn write_acceleration_structures_properties(
         &self,
         acceleration_structures: &[vk::AccelerationStructureKHR],
@@ -515,8 +502,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Reset queries in a query pool.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html)"]
     pub fn reset_query_pool(&self, query_pool: vk::QueryPool, first_query: u32, query_count: u32) {
         unsafe {
             self.context.device.cmd_reset_query_pool(
@@ -529,8 +515,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Clear regions of a color image.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html)"]
     pub fn clear_color_image(
         &self,
         image: vk::Image,
@@ -675,8 +660,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Binds a pipeline.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
     pub fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
         bind_pipeline(
             self.context,
@@ -687,8 +671,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Binds a raytracing pipeline.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
     pub fn bind_raytrace_pipeline(&self, raytracing_pipeline: &RayTracingPipeline) {
         bind_pipeline(
             self.context,
@@ -699,8 +682,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Binds descriptor sets.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html)"]
     pub fn bind_descriptor_set(
         &self,
         pipeline_bind_point: vk::PipelineBindPoint,
@@ -721,8 +703,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Update the values of push constants.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html)"]
     pub fn push_constants(
         &self,
         layout: vk::PipelineLayout,
@@ -741,15 +722,13 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Set the dynamic stack size for a ray tracing pipeline
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html)"]
     pub fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
         unsafe {
             self.context
@@ -759,8 +738,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Initialize an indirect ray tracing dispatch.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysIndirectKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysIndirectKHR.html)"]
     pub fn trace_rays_indirect_khr(
         &self,
         raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
@@ -782,8 +760,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Initialize a ray tracing dispatch.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysKHR.html)"]
     #[allow(clippy::too_many_arguments)]
     pub fn trace_rays_khr(
         &self,
@@ -810,8 +787,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Reset queries in a query pool.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html)"]
     pub fn reset_query_pool(&self, query_pool: vk::QueryPool, first_query: u32, query_count: u32) {
         unsafe {
             self.context.device.cmd_reset_query_pool(
@@ -824,8 +800,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Clear regions of a color image.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html)"]
     pub fn clear_color_image(
         &self,
         image: vk::Image,
@@ -909,8 +884,7 @@ impl<'a> TransferCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
@@ -963,8 +937,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Bind a pipeline object to a command buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
     pub fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
         bind_pipeline(
             self.context,
@@ -975,8 +948,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Binds descriptor sets.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html)"]
     pub fn bind_descriptor_sets(
         &self,
         layout: vk::PipelineLayout,
@@ -996,8 +968,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Bind an index buffer to a command buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html)"]
     pub fn bind_index_buffer(
         &self,
         buffer: vk::Buffer,
@@ -1012,8 +983,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Bind vertex buffers to a command buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html)"]
     pub fn bind_vertex_buffers(&self, first_binding: u32, buffers: &[vk::Buffer], offsets: &[u64]) {
         unsafe {
             self.context.device.cmd_bind_vertex_buffers(
@@ -1026,8 +996,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Update the values of push constants.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html)"]
     pub fn push_constants(
         &self,
         layout: vk::PipelineLayout,
@@ -1046,15 +1015,13 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Draws primitives.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDraw.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDraw.html)"]
     pub fn draw(
         &self,
         vertex_count: u32,
@@ -1074,8 +1041,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Issue an indexed draw into a command buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexed.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexed.html)"]
     pub fn draw_indexed(
         &self,
         index_count: u32,
@@ -1097,8 +1063,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Perform an indexed indirect draw.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html)"]
     pub fn draw_indexed_indirect(
         &self,
         buffer: vk::Buffer,
@@ -1118,8 +1083,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html)"]
     pub fn draw_indexed_indirect_count(
         &self,
         buffer: vk::Buffer,
@@ -1143,8 +1107,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html)"]
     pub fn draw_indirect(
         &self,
         buffer: vk::Buffer,
@@ -1160,8 +1123,7 @@ impl<'a> RenderPassEncoder<'a> {
     }
 
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCount.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCount.html)"]
     pub fn draw_indirect_count(
         &self,
         buffer: vk::Buffer,

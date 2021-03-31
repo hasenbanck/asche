@@ -32,8 +32,7 @@ impl AccelerationStructure {
     }
 
     /// Query an address of a acceleration structure.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureDeviceAddressKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureDeviceAddressKHR.html)"]
     pub fn device_address(&self) -> vk::DeviceAddress {
         let info = vk::AccelerationStructureDeviceAddressInfoKHRBuilder::new()
             .acceleration_structure(self.raw);
@@ -45,8 +44,7 @@ impl AccelerationStructure {
     }
 
     /// Query acceleration structure meta-data on the host.
-    ///
-    /// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkWriteAccelerationStructuresPropertiesKHR.html
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkWriteAccelerationStructuresPropertiesKHR.html)"]
     pub fn write_acceleration_structures_properties(
         &self,
         query_type: vk::QueryType,
