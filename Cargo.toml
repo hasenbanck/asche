@@ -1,12 +1,12 @@
 [package]
 name = "asche"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 description = "Provides an abstraction layer above erupt to easier use Vulkan in Rust."
 license = "Zlib OR MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/asche"
-categories = ["graphics"]
+categories = ["rendering::graphics-api", "rendering"]
 keywords = ["vulkan", "erupt"]
 edition = "2018"
 
@@ -20,12 +20,12 @@ profile-with-tracing = ["profiling/profile-with-tracing", "vk-alloc/profile-with
 profile-with-tracy = ["profiling/profile-with-tracy", "vk-alloc/profile-with-tracy"]
 
 [dependencies]
-erupt = { version = "0.17", features = ["bytemuck"] }
+erupt = { version = "0.18", features = ["bytemuck"] }
 profiling = { version = "0.1", optional = true }
 raw-window-handle = "0.3"
 smallvec = { version = "1.6", features = ["union", "const_generics"], optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
-vk-alloc = { version = "1.0", features = ["vk-buffer-device-address"] }
+vk-alloc = { version = "1.1", features = ["vk-buffer-device-address"] }
 
 [dev-dependencies]
 bytemuck = "1.5"
@@ -34,6 +34,3 @@ gltf = "0.15"
 glam = "0.13"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 winit = "0.24"
-
-[patch.crates-io]
-erupt = { git = "https://gitlab.com/Friz64/erupt" }
