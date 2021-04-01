@@ -1,6 +1,6 @@
 use erupt::vk;
 
-use asche::{QueueConfiguration, Queues};
+use asche::{CommandBufferSemaphore, QueueConfiguration, Queues};
 
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
@@ -77,8 +77,9 @@ struct Application {
     _pipeline_layout: asche::PipelineLayout,
     pipeline: asche::GraphicsPipeline,
     render_pass: asche::RenderPass,
-    timeline: asche::TimelineSemaphore,
-    timeline_value: u64,
+    render_fence: asche::Fence,
+    presentation_semaphore: asche::BinarySemaphore,
+    render_semaphore: asche::BinarySemaphore,
     command_pool: asche::GraphicsCommandPool,
     queue: asche::GraphicsQueue,
     swapchain: asche::Swapchain,
@@ -198,8 +199,9 @@ impl Application {
 
         let graphics_command_pool = graphics_queue.create_command_pool()?;
 
-        let timeline_value = 0;
-        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
+        let render_fence = device.create_fence("Render fence")?;
+        let presentation_semaphore = device.create_binary_semaphore("Presentation Semaphore")?;
+        let render_semaphore = device.create_binary_semaphore("Render Semaphore")?;
 
         Ok(Self {
             _device: device,
@@ -209,19 +211,22 @@ impl Application {
             _pipeline_layout: pipeline_layout,
             pipeline,
             render_pass,
-            timeline,
-            timeline_value,
+            render_fence,
+            presentation_semaphore,
+            render_semaphore,
             swapchain,
         })
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame = self.swapchain.next_frame()?;
+        let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let graphics_buffer = self.command_pool.create_command_buffer(
-            &self.timeline,
-            Timeline::RenderStart.with_offset(self.timeline_value),
-            Timeline::RenderEnd.with_offset(self.timeline_value),
+            None,
+            &CommandBufferSemaphore::Binary {
+                semaphore: &self.render_semaphore,
+                stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
+            },
         )?;
 
         {
@@ -253,27 +258,19 @@ impl Application {
             }
         }
 
-        self.queue.submit(&graphics_buffer)?;
-        self.timeline
-            .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
+        self.queue
+            .submit(&graphics_buffer, Some(&self.render_fence))?;
+        self.swapchain.queue_frame(
+            &self.queue,
+            frame,
+            &[&self.presentation_semaphore, &self.render_semaphore],
+        )?;
+
+        self.render_fence.wait()?;
+        self.render_fence.reset()?;
 
         self.command_pool.reset()?;
 
-        self.swapchain.queue_frame(&self.queue, frame)?;
-        self.timeline_value += Timeline::RenderEnd as u64;
-
         Ok(())
-    }
-}
-
-#[derive(Copy, Clone)]
-enum Timeline {
-    RenderStart = 0,
-    RenderEnd,
-}
-
-impl Timeline {
-    fn with_offset(&self, offset: u64) -> u64 {
-        *self as u64 + offset
     }
 }

@@ -2,7 +2,7 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::vk;
 use glam::{Mat4, Vec3, Vec4};
 
-use asche::{QueueConfiguration, Queues};
+use asche::{CommandBufferSemaphore, QueueConfiguration, Queues};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -92,10 +92,14 @@ fn main() -> Result<(), asche::AscheError> {
 }
 
 struct Application {
+    frame_counter: u64,
     extent: vk::Extent2D,
     vp_matrix: Mat4,
-    timeline: asche::TimelineSemaphore,
-    timeline_value: u64,
+    render_fence: asche::Fence,
+    presentation_semaphore: asche::BinarySemaphore,
+    render_semaphore: asche::BinarySemaphore,
+    transfer_timeline: asche::TimelineSemaphore,
+    transfer_timeline_value: u64,
     descriptor_set_layout: asche::DescriptorSetLayout,
     descriptor_pool: asche::DescriptorPool,
     graphics_command_pool: asche::GraphicsCommandPool,
@@ -369,10 +373,16 @@ impl Application {
         let v_matrix = Mat4::look_at_rh(Vec3::new(0.0, 2.0, 3.0), Vec3::ZERO, Vec3::Y);
         let vp_matrix = p_matrix * v_matrix;
 
-        let timeline_value = 0;
-        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
+        let render_fence = device.create_fence("Render Fence")?;
+        let presentation_semaphore = device.create_binary_semaphore("Presentation Semaphore")?;
+        let render_semaphore = device.create_binary_semaphore("Render Semaphore")?;
+
+        let transfer_timeline_value = 0;
+        let transfer_timeline =
+            device.create_timeline_semaphore("Transfer Timeline", transfer_timeline_value)?;
 
         let mut app = Self {
+            frame_counter: 0,
             device,
             swapchain,
             graphics_queue,
@@ -388,8 +398,11 @@ impl Application {
             depth_texture,
             sampler,
             vp_matrix,
-            timeline,
-            timeline_value,
+            render_fence,
+            presentation_semaphore,
+            render_semaphore,
+            transfer_timeline,
+            transfer_timeline_value,
             descriptor_set_layout,
             descriptor_pool,
         };
@@ -492,9 +505,16 @@ impl Application {
 
         let mut transfer_pool = self.transfer_queue.create_command_pool()?;
         let transfer_buffer = transfer_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
+            Some(&CommandBufferSemaphore::Timeline {
+                semaphore: &self.transfer_timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.transfer_timeline_value,
+            }),
+            &CommandBufferSemaphore::Timeline {
+                semaphore: &self.transfer_timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.transfer_timeline_value + 1,
+            },
         )?;
 
         {
@@ -553,9 +573,10 @@ impl Application {
 
             encoder.pipeline_barrier2(&dependency_info);
         }
-        self.timeline_value += 1;
-        self.transfer_queue.submit(&transfer_buffer)?;
-        self.timeline.wait_for_value(self.timeline_value)?;
+        self.transfer_timeline_value += 1;
+        self.transfer_queue.submit(&transfer_buffer, None)?;
+        self.transfer_timeline
+            .wait_for_value(self.transfer_timeline_value)?;
 
         Ok(Texture {
             view,
@@ -597,9 +618,16 @@ impl Application {
 
         let mut transfer_pool = self.transfer_queue.create_command_pool()?;
         let transfer_buffer = transfer_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
+            Some(&CommandBufferSemaphore::Timeline {
+                semaphore: &self.transfer_timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.transfer_timeline_value,
+            }),
+            &CommandBufferSemaphore::Timeline {
+                semaphore: &self.transfer_timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.transfer_timeline_value + 1,
+            },
         )?;
 
         {
@@ -613,9 +641,10 @@ impl Application {
             );
         }
 
-        self.timeline_value += 1;
-        self.transfer_queue.submit(&transfer_buffer)?;
-        self.timeline.wait_for_value(self.timeline_value)?;
+        self.transfer_timeline_value += 1;
+        self.transfer_queue.submit(&transfer_buffer, None)?;
+        self.transfer_timeline
+            .wait_for_value(self.transfer_timeline_value)?;
 
         transfer_pool.reset()?;
         self.graphics_command_pool.reset()?;
@@ -624,16 +653,18 @@ impl Application {
     }
 
     fn render(&mut self) -> Result<(), asche::AscheError> {
-        let frame = self.swapchain.next_frame()?;
+        let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
-            &self.timeline,
-            Timeline::RenderStart.with_offset(self.timeline_value),
-            Timeline::RenderEnd.with_offset(self.timeline_value),
+            None,
+            &CommandBufferSemaphore::Binary {
+                semaphore: &self.render_semaphore,
+                stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
+            },
         )?;
 
         let m_matrix =
-            Mat4::from_rotation_y((std::f32::consts::PI) * self.timeline_value as f32 / 500.0);
+            Mat4::from_rotation_y((std::f32::consts::PI) * self.frame_counter as f32 / 500.0);
         let mvp_matrix = self.vp_matrix * m_matrix;
 
         let set = self.descriptor_pool.create_descriptor_set(
@@ -699,29 +730,24 @@ impl Application {
             pass.draw_indexed(36, 1, 0, 0, 0);
         }
 
-        self.graphics_queue.submit(&graphics_buffer)?;
-        self.timeline
-            .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
+        self.graphics_queue
+            .submit(&graphics_buffer, Some(&self.render_fence))?;
+
+        self.render_fence.wait()?;
+        self.render_fence.reset()?;
 
         self.graphics_command_pool.reset()?;
         self.descriptor_pool.free_sets()?;
 
-        self.swapchain.queue_frame(&self.graphics_queue, frame)?;
-        self.timeline_value += Timeline::RenderEnd as u64;
+        self.swapchain.queue_frame(
+            &self.graphics_queue,
+            frame,
+            &[&self.presentation_semaphore, &self.render_semaphore],
+        )?;
+
+        self.frame_counter += 1;
 
         Ok(())
-    }
-}
-
-#[derive(Copy, Clone)]
-enum Timeline {
-    RenderStart = 0,
-    RenderEnd,
-}
-
-impl Timeline {
-    fn with_offset(&self, offset: u64) -> u64 {
-        *self as u64 + offset
     }
 }
 

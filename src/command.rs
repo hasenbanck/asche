@@ -13,9 +13,89 @@ use tracing::error;
 use crate::context::Context;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    AscheError, ComputePipeline, GraphicsPipeline, QueueType, RayTracingPipeline, RenderPass,
-    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result, Swapchain,
+    AscheError, BinarySemaphore, ComputePipeline, GraphicsPipeline, QueueType, RayTracingPipeline,
+    RenderPass, RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
+    Swapchain,
 };
+
+/// Defines the semaphore a command buffer will use on wait and signal.
+#[derive(Debug)]
+pub enum CommandBufferSemaphore<'a> {
+    /// A binary semaphore.
+    Binary {
+        /// Reference to the binary semaphore.
+        semaphore: &'a BinarySemaphore,
+        /// The stage for this semaphore.
+        stage: vk::PipelineStageFlags2KHR,
+    },
+    /// A timeline semaphore.
+    Timeline {
+        /// Reference to the timeline semaphore.
+        semaphore: &'a TimelineSemaphore,
+        /// The stage for this semaphore.
+        stage: vk::PipelineStageFlags2KHR,
+        /// The timeline value to wait / signal.
+        value: u64,
+    },
+}
+
+/// Defines the internal representation of the semaphore a command buffer will use on wait and signal.
+#[derive(Debug)]
+pub(crate) enum CommandBufferSemaphoreInner {
+    Binary {
+        semaphore: vk::Semaphore,
+        stage: vk::PipelineStageFlags2KHR,
+    },
+    Timeline {
+        semaphore: vk::Semaphore,
+        stage: vk::PipelineStageFlags2KHR,
+        value: u64,
+    },
+}
+
+impl From<&CommandBufferSemaphore<'_>> for CommandBufferSemaphoreInner {
+    fn from(s: &CommandBufferSemaphore<'_>) -> Self {
+        match s {
+            CommandBufferSemaphore::Binary { semaphore, stage } => {
+                CommandBufferSemaphoreInner::Binary {
+                    semaphore: semaphore.raw,
+                    stage: *stage,
+                }
+            }
+            CommandBufferSemaphore::Timeline {
+                semaphore,
+                stage,
+                value,
+            } => CommandBufferSemaphoreInner::Timeline {
+                semaphore: semaphore.raw,
+                stage: *stage,
+                value: *value,
+            },
+        }
+    }
+}
+
+impl From<&CommandBufferSemaphoreInner> for vk::SemaphoreSubmitInfoKHRBuilder<'_> {
+    fn from(s: &CommandBufferSemaphoreInner) -> Self {
+        match s {
+            CommandBufferSemaphoreInner::Binary { semaphore, stage } => {
+                vk::SemaphoreSubmitInfoKHRBuilder::new()
+                    .semaphore(*semaphore)
+                    .stage_mask(*stage)
+                    .device_index(1)
+            }
+            CommandBufferSemaphoreInner::Timeline {
+                semaphore,
+                value,
+                stage,
+            } => vk::SemaphoreSubmitInfoKHRBuilder::new()
+                .semaphore(*semaphore)
+                .value(*value)
+                .stage_mask(*stage)
+                .device_index(1),
+        }
+    }
+}
 
 macro_rules! impl_command_pool {
     (
@@ -76,9 +156,8 @@ macro_rules! impl_command_pool {
             /// Creates a new command buffer.
             pub fn create_command_buffer(
                 &mut self,
-                timeline_semaphore: &TimelineSemaphore,
-                wait_value: u64,
-                signal_value: u64,
+                wait_semaphore: Option<&CommandBufferSemaphore>,
+                signal_semaphore: &CommandBufferSemaphore,
             ) -> Result<$buffer_name> {
                 let info = vk::CommandBufferAllocateInfoBuilder::new()
                     .command_pool(self.raw)
@@ -103,13 +182,19 @@ macro_rules! impl_command_pool {
                     command_buffers[0].0 as u64,
                 )?;
 
+                let wait_semaphore = if let Some(wait_semaphore) = wait_semaphore {
+                    let wait_semaphore: CommandBufferSemaphoreInner = wait_semaphore.into();
+                    Some(wait_semaphore)
+                } else {
+                    None
+                };
+
                 let command_buffer = $buffer_name::new(
                     self.context.clone(),
                     self.raw,
                     command_buffers[0],
-                    timeline_semaphore.raw,
-                    wait_value,
-                    signal_value,
+                    wait_semaphore.into(),
+                    signal_semaphore.into(),
                 );
 
                 self.command_buffer_counter += 1;
@@ -157,10 +242,9 @@ macro_rules! impl_command_buffer {
         #[derive(Debug)]
         pub struct $buffer_name {
             /// The raw Vulkan command buffer.
-            pub raw: vk::CommandBuffer,
-            pub(crate) timeline_semaphore: vk::Semaphore,
-            pub(crate) wait_value: u64,
-            pub(crate) signal_value: u64,
+            pub(crate) raw: vk::CommandBuffer,
+            pub(crate) wait_semaphore: Option<CommandBufferSemaphoreInner>,
+            pub(crate) signal_semaphore: CommandBufferSemaphoreInner,
             pool: vk::CommandPool,
             context: Arc<Context>,
         }
@@ -170,17 +254,15 @@ macro_rules! impl_command_buffer {
                 context: Arc<Context>,
                 pool: vk::CommandPool,
                 buffer: vk::CommandBuffer,
-                timeline_semaphore: vk::Semaphore,
-                wait_value: u64,
-                signal_value: u64,
+                wait_semaphore: Option<CommandBufferSemaphoreInner>,
+                signal_semaphore: CommandBufferSemaphoreInner,
             ) -> Self {
                 Self {
                     context,
                     pool,
                     raw: buffer,
-                    timeline_semaphore,
-                    wait_value,
-                    signal_value,
+                    wait_semaphore,
+                    signal_semaphore,
                 }
             }
 
@@ -194,16 +276,21 @@ macro_rules! impl_command_buffer {
                 Ok(encoder)
             }
 
-            /// Sets the timeline semaphore of a command buffer.
+            /// Sets the wait and signal semaphores of the command buffer.
             pub fn set_timeline_semaphore(
                 &mut self,
-                timeline_semaphore: &TimelineSemaphore,
-                wait_value: u64,
-                signal_value: u64,
+                wait_semaphore: Option<&CommandBufferSemaphore>,
+                signal_semaphore: &CommandBufferSemaphore,
             ) {
-                self.timeline_semaphore = timeline_semaphore.raw;
-                self.wait_value = wait_value;
-                self.signal_value = signal_value;
+                let wait_semaphore = if let Some(wait_semaphore) = wait_semaphore {
+                    let wait_semaphore: CommandBufferSemaphoreInner = wait_semaphore.into();
+                    Some(wait_semaphore)
+                } else {
+                    None
+                };
+
+                self.wait_semaphore = wait_semaphore;
+                self.signal_semaphore = signal_semaphore.into();
             }
         }
 

@@ -13,11 +13,11 @@ use crate::instance::Instance;
 use crate::query::QueryPool;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
-    AccelerationStructure, AscheError, Buffer, BufferDescriptor, BufferView, BufferViewDescriptor,
-    ComputePipeline, ComputeQueue, DeferredOperation, DescriptorPool, DescriptorPoolDescriptor,
-    DescriptorSetLayout, GraphicsPipeline, GraphicsQueue, Image, ImageDescriptor, ImageView,
-    ImageViewDescriptor, PipelineLayout, RayTracingPipeline, RenderPass, Result, Sampler,
-    SamplerDescriptor, ShaderModule, Swapchain, TransferQueue,
+    AccelerationStructure, AscheError, BinarySemaphore, Buffer, BufferDescriptor, BufferView,
+    BufferViewDescriptor, ComputePipeline, ComputeQueue, DeferredOperation, DescriptorPool,
+    DescriptorPoolDescriptor, DescriptorSetLayout, Fence, GraphicsPipeline, GraphicsQueue, Image,
+    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RayTracingPipeline,
+    RenderPass, Result, Sampler, SamplerDescriptor, ShaderModule, Swapchain, TransferQueue,
 };
 
 /// Defines the configuration of the queues. Each vector entry defines the priority of a queue.
@@ -768,6 +768,45 @@ impl Device {
         Ok(Sampler::new(raw, self.context.clone()))
     }
 
+    /// Creates a fence.
+    pub fn create_fence(&self, name: &str) -> Result<Fence> {
+        let fence_info = vk::FenceCreateInfoBuilder::new();
+        let raw = unsafe { self.context.device.create_fence(&fence_info, None, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a fence: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
+
+        self.context
+            .set_object_name(name, vk::ObjectType::FENCE, raw.0)?;
+
+        Ok(Fence::new(self.context.clone(), raw))
+    }
+
+    /// Creates a new binary semaphore.
+    pub fn create_binary_semaphore(&self, name: &str) -> Result<BinarySemaphore> {
+        let mut create_info =
+            vk::SemaphoreTypeCreateInfoBuilder::new().semaphore_type(vk::SemaphoreType::BINARY);
+        let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut create_info);
+        let raw = unsafe {
+            self.context
+                .device
+                .create_semaphore(&semaphore_info, None, None)
+        }
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to create a binary semaphore: {}", err);
+            AscheError::VkResult(err)
+        })?;
+
+        self.context
+            .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
+
+        Ok(BinarySemaphore::new(self.context.clone(), raw))
+    }
+
     /// Creates a new timeline semaphore.
     pub fn create_timeline_semaphore(
         &self,
@@ -785,7 +824,7 @@ impl Device {
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
-            error!("Unable to create a semaphore: {}", err);
+            error!("Unable to create a timeline semaphore: {}", err);
             AscheError::VkResult(err)
         })?;
 

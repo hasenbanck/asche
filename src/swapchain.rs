@@ -11,8 +11,8 @@ use tracing::{error, info};
 
 use crate::context::Context;
 use crate::{
-    AscheError, GraphicsQueue, ImageView, RenderPass, RenderPassColorAttachmentDescriptor,
-    RenderPassDepthAttachmentDescriptor, Result,
+    AscheError, BinarySemaphore, GraphicsQueue, ImageView, RenderPass,
+    RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
 };
 
 /// Swapchain frame.
@@ -200,19 +200,24 @@ impl Swapchain {
     }
 
     /// Gets the next frame the program can render into.
-    pub fn next_frame(&self) -> Result<SwapchainFrame> {
+    pub fn next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
         self.swapchain
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
-            .get_next_frame()
+            .get_next_frame(signal_semaphore)
     }
 
     /// Queues the frame in the presentation queue.
-    pub fn queue_frame(&self, graphics_queue: &GraphicsQueue, frame: SwapchainFrame) -> Result<()> {
+    pub fn queue_frame(
+        &self,
+        graphics_queue: &GraphicsQueue,
+        frame: SwapchainFrame,
+        wait_semaphores: &[&BinarySemaphore],
+    ) -> Result<()> {
         self.swapchain
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
-            .queue_frame(frame, graphics_queue.raw)
+            .queue_frame(frame, graphics_queue.raw, wait_semaphores)
     }
 
     /// Re-uses a cached framebuffer or creates a new one.
@@ -409,9 +414,9 @@ impl SwapchainInner {
     }
 
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
-    fn get_next_frame(&self) -> Result<SwapchainFrame> {
+    fn get_next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
         let info = vk::AcquireNextImageInfoKHRBuilder::new()
-            .semaphore(self.present_complete_semaphore)
+            .semaphore(signal_semaphore.raw)
             .device_mask(1)
             .swapchain(self.raw)
             .timeout(u64::MAX);
@@ -427,12 +432,24 @@ impl SwapchainInner {
     }
 
     /// Queues the given frame into the graphic queue.
-    fn queue_frame(&self, frame: SwapchainFrame, graphic_queue: vk::Queue) -> Result<()> {
-        let wait_semaphors = [self.present_complete_semaphore];
+    fn queue_frame(
+        &self,
+        frame: SwapchainFrame,
+        graphic_queue: vk::Queue,
+        wait_semaphores: &[&BinarySemaphore],
+    ) -> Result<()> {
+        let wait_semaphores = wait_semaphores.iter().map(|s| s.raw);
+
+        #[cfg(feature = "smallvec")]
+        let wait_semaphores = wait_semaphores.collect::<SmallVec<[vk::Semaphore; 4]>>();
+
+        #[cfg(not(feature = "smallvec"))]
+        let wait_semaphores = wait_semaphores.collect::<Vec<vk::Semaphore>>();
+
         let swapchains = [self.raw];
         let image_indices = [frame.index];
         let present_info = vk::PresentInfoKHRBuilder::new()
-            .wait_semaphores(&wait_semaphors) // &base.rendering_complete_semaphore)
+            .wait_semaphores(&wait_semaphores)
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 

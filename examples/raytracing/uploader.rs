@@ -1,5 +1,7 @@
 use erupt::vk;
 
+use asche::CommandBufferSemaphore;
+
 use crate::Result;
 
 pub struct Uploader {
@@ -61,10 +63,14 @@ impl Uploader {
             flags: None,
         })?;
 
+        self.timeline_value += 1;
         let transfer_buffer = self.transfer_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
+            None,
+            &CommandBufferSemaphore::Timeline {
+                semaphore: &self.timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.timeline_value,
+            },
         )?;
 
         {
@@ -78,8 +84,7 @@ impl Uploader {
             );
         }
 
-        self.timeline_value += 1;
-        self.transfer_queue.submit(&transfer_buffer)?;
+        self.transfer_queue.submit(&transfer_buffer, None)?;
         self.timeline.wait_for_value(self.timeline_value)?;
 
         self.transfer_pool.reset()?;

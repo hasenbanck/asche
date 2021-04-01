@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3, Vec4};
 #[cfg(feature = "tracing")]
 use tracing::info;
 
-use asche::Queues;
+use asche::{CommandBufferSemaphore, Queues};
 
 use crate::gltf::{Material, Mesh, Vertex};
 use crate::uploader::Uploader;
@@ -139,8 +139,11 @@ struct RayTracingApplication {
     blas: Vec<BLAS>,
     models: Vec<Model>,
     extent: vk::Extent2D,
-    timeline: asche::TimelineSemaphore,
-    timeline_value: u64,
+    render_fence: asche::Fence,
+    render_semaphore: asche::BinarySemaphore,
+    presentation_semaphore: asche::BinarySemaphore,
+    transfer_timeline: asche::TimelineSemaphore,
+    transfer_timeline_value: u64,
     offscreen_attachment: Texture,
     renderpass: asche::RenderPass,
     postprocess_pipeline_layout: asche::PipelineLayout,
@@ -188,7 +191,7 @@ impl RayTracingApplication {
 
         // Utility
         let mut timeline_value = 0;
-        let timeline = device.create_timeline_semaphore("Render Timeline", timeline_value)?;
+        let timeline = device.create_timeline_semaphore("Transfer Timeline", timeline_value)?;
 
         let compute_pool = compute_queue.create_command_pool()?;
         let mut graphics_pool = graphics_queue.create_command_pool()?;
@@ -230,6 +233,10 @@ impl RayTracingApplication {
             &mut timeline_value,
         )?;
 
+        let render_fence = device.create_fence("Render Fence")?;
+        let render_semaphore = device.create_binary_semaphore("Render Semaphore")?;
+        let presentation_semaphore = device.create_binary_semaphore("Presentation Semaphore")?;
+
         Ok(Self {
             uniforms: vec![],
             sbt_stride_addresses,
@@ -238,8 +245,11 @@ impl RayTracingApplication {
             blas: vec![],
             models: vec![],
             extent,
-            timeline,
-            timeline_value,
+            render_fence,
+            render_semaphore,
+            presentation_semaphore,
+            transfer_timeline: timeline,
+            transfer_timeline_value: timeline_value,
             offscreen_attachment,
             postprocess_pipeline,
             postprocess_pipeline_layout,
@@ -843,10 +853,17 @@ impl RayTracingApplication {
             flags: None,
         })?;
 
-        let cmd = pool.create_command_buffer(timeline, *timeline_value, *timeline_value + 1)?;
         *timeline_value += 1;
+        let command_buffer = pool.create_command_buffer(
+            None,
+            &CommandBufferSemaphore::Timeline {
+                semaphore: timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: *timeline_value,
+            },
+        )?;
         {
-            let encoder = cmd.record()?;
+            let encoder = command_buffer.record()?;
             let image_barrier = vk::ImageMemoryBarrier2KHRBuilder::new()
                 .src_stage_mask(vk::PipelineStageFlags2KHR::NONE_KHR)
                 .src_access_mask(vk::AccessFlags2KHR::NONE_KHR)
@@ -866,7 +883,8 @@ impl RayTracingApplication {
                 &vk::DependencyInfoKHRBuilder::new().image_memory_barriers(&[image_barrier]),
             );
         }
-        queue.submit(&cmd)?;
+
+        queue.submit(&command_buffer, None)?;
         timeline.wait_for_value(*timeline_value)?;
 
         Ok(Texture { view, image })
@@ -1223,12 +1241,15 @@ impl RayTracingApplication {
 
     #[allow(unused_variables)]
     fn compact_blas(&mut self, max_sizes: &mut [u64], compacted_sizes: &[u64]) -> Result<()> {
+        self.transfer_timeline_value += 1;
         let command_buffer = self.compute_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
+            None,
+            &CommandBufferSemaphore::Timeline {
+                semaphore: &self.transfer_timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.transfer_timeline_value,
+            },
         )?;
-        self.timeline_value += 1;
 
         let mut compacted_blas = Vec::with_capacity(self.blas.len());
         {
@@ -1245,8 +1266,9 @@ impl RayTracingApplication {
             }
         }
 
-        self.compute_queue.submit(&command_buffer)?;
-        self.timeline.wait_for_value(self.timeline_value)?;
+        self.compute_queue.submit(&command_buffer, None)?;
+        self.transfer_timeline
+            .wait_for_value(self.transfer_timeline_value)?;
 
         self.blas = compacted_blas;
 
@@ -1308,11 +1330,18 @@ impl RayTracingApplication {
             Vec::with_capacity(self.models.len());
         for (id, _) in self.models.iter().enumerate() {
             let compute_buffer = self.compute_pool.create_command_buffer(
-                &self.timeline,
-                self.timeline_value,
-                self.timeline_value + 1,
+                Some(&CommandBufferSemaphore::Timeline {
+                    semaphore: &self.transfer_timeline,
+                    stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                    value: self.transfer_timeline_value,
+                }),
+                &CommandBufferSemaphore::Timeline {
+                    semaphore: &self.transfer_timeline,
+                    stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                    value: self.transfer_timeline_value + 1,
+                },
             )?;
-            self.timeline_value += 1;
+            self.transfer_timeline_value += 1;
 
             {
                 let encoder = compute_buffer.record()?;
@@ -1330,8 +1359,9 @@ impl RayTracingApplication {
         }
 
         // Submit the command buffers and wait for them finishing.
-        self.compute_queue.submit_all(&command_buffers)?;
-        self.timeline.wait_for_value(self.timeline_value)?;
+        self.compute_queue.submit_all(&command_buffers, None)?;
+        self.transfer_timeline
+            .wait_for_value(self.transfer_timeline_value)?;
 
         // Get the compacted sizes
         let size = self.models.len();
@@ -1461,19 +1491,24 @@ impl RayTracingApplication {
             .first_vertex(0)
             .build()];
 
+        self.transfer_timeline_value += 1;
         let compute_buffer = self.compute_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
+            None,
+            &CommandBufferSemaphore::Timeline {
+                semaphore: &self.transfer_timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.transfer_timeline_value,
+            },
         )?;
-        self.timeline_value += 1;
+
         {
             let encoder = compute_buffer.record()?;
             encoder.build_acceleration_structures(&geometry_infos, &ranges);
         }
 
-        self.compute_queue.submit(&compute_buffer)?;
-        self.timeline.wait_for_value(self.timeline_value)?;
+        self.compute_queue.submit(&compute_buffer, None)?;
+        self.transfer_timeline
+            .wait_for_value(self.transfer_timeline_value)?;
 
         self.tlas.push(TLAS {
             structure,
@@ -1486,12 +1521,14 @@ impl RayTracingApplication {
     }
 
     pub fn render(&mut self) -> Result<()> {
-        let frame = self.swapchain.next_frame()?;
+        let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let command_buffer = self.graphics_pool.create_command_buffer(
-            &self.timeline,
-            Timeline::RenderStart.with_offset(self.timeline_value),
-            Timeline::RenderEnd.with_offset(self.timeline_value),
+            None,
+            &CommandBufferSemaphore::Binary {
+                semaphore: &self.render_semaphore,
+                stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
+            },
         )?;
 
         {
@@ -1602,14 +1639,18 @@ impl RayTracingApplication {
             );
         }
 
-        self.graphics_queue.submit(&command_buffer)?;
-        self.timeline
-            .wait_for_value(Timeline::RenderEnd.with_offset(self.timeline_value))?;
+        self.graphics_queue
+            .submit(&command_buffer, Some(&self.render_fence))?;
+        self.swapchain.queue_frame(
+            &self.graphics_queue,
+            frame,
+            &[&self.presentation_semaphore, &self.render_semaphore],
+        )?;
+
+        self.render_fence.wait()?;
+        self.render_fence.reset()?;
 
         self.graphics_pool.reset()?;
-
-        self.swapchain.queue_frame(&self.graphics_queue, frame)?;
-        self.timeline_value += Timeline::RenderEnd as u64;
 
         Ok(())
     }
@@ -1676,18 +1717,6 @@ struct MaterialData {
 unsafe impl Pod for MaterialData {}
 
 unsafe impl Zeroable for MaterialData {}
-
-#[derive(Copy, Clone)]
-enum Timeline {
-    RenderStart = 0,
-    RenderEnd,
-}
-
-impl Timeline {
-    fn with_offset(&self, offset: u64) -> u64 {
-        *self as u64 + offset
-    }
-}
 
 /// Right-handed with the the x-axis pointing right, y-axis pointing up, and z-axis pointing out of the screen for Vulkan NDC.
 #[inline]

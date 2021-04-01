@@ -1,6 +1,6 @@
 use erupt::vk;
 
-use asche::{QueueConfiguration, Queues};
+use asche::{CommandBufferSemaphore, QueueConfiguration, Queues};
 
 fn main() -> Result<(), asche::AscheError> {
     // Asche doesn't support headless compute only setups!
@@ -160,9 +160,16 @@ impl Application {
         }
 
         let compute_buffer = self.compute_command_pool.create_command_buffer(
-            &self.timeline,
-            self.timeline_value,
-            self.timeline_value + 1,
+            Some(&CommandBufferSemaphore::Timeline {
+                semaphore: &self.timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.timeline_value,
+            }),
+            &CommandBufferSemaphore::Timeline {
+                semaphore: &self.timeline,
+                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                value: self.timeline_value + 1,
+            },
         )?;
 
         let set = self.descriptor_pool.create_descriptor_set(
@@ -188,7 +195,7 @@ impl Application {
             encoder.bind_descriptor_sets(self.pipeline_layout.raw, 0, &[set.raw], &[]);
             encoder.dispatch(1024, 1, 1);
         }
-        self.compute_queue.submit(&compute_buffer)?;
+        self.compute_queue.submit(&compute_buffer, None)?;
         self.timeline_value += 1;
         self.timeline.wait_for_value(self.timeline_value)?;
 

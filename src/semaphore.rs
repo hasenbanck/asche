@@ -7,6 +7,31 @@ use tracing::error;
 use crate::context::Context;
 use crate::{AscheError, Result};
 
+/// A binary semaphore.
+#[derive(Debug)]
+pub struct BinarySemaphore {
+    pub(crate) raw: vk::Semaphore,
+    context: Arc<Context>,
+}
+
+impl Drop for BinarySemaphore {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.device.destroy_semaphore(Some(self.raw), None);
+        };
+    }
+}
+
+impl BinarySemaphore {
+    /// Creates a new semaphore.
+    pub(crate) fn new(context: Arc<Context>, semaphore: vk::Semaphore) -> Self {
+        Self {
+            context,
+            raw: semaphore,
+        }
+    }
+}
+
 /// A semaphore that uses the timeline feature.
 #[derive(Debug)]
 pub struct TimelineSemaphore {

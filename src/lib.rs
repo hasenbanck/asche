@@ -9,19 +9,20 @@ pub use {
     acceleration_structure::AccelerationStructure,
     buffer::{Buffer, BufferView},
     command::{
-        ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool, GraphicsCommandBuffer,
-        GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder, TransferCommandBuffer,
-        TransferCommandEncoder, TransferCommandPool,
+        CommandBufferSemaphore, ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool,
+        GraphicsCommandBuffer, GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder,
+        TransferCommandBuffer, TransferCommandEncoder, TransferCommandPool,
     },
     deferred_operation::DeferredOperation,
     descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},
     device::{BarSupport, Device, DeviceConfiguration, QueueConfiguration, Queues},
     error::AscheError,
+    fence::Fence,
     image::{Image, ImageView, Sampler},
     instance::{Instance, InstanceConfiguration},
     query::QueryPool,
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
-    semaphore::TimelineSemaphore,
+    semaphore::{BinarySemaphore, TimelineSemaphore},
     swapchain::{Swapchain, SwapchainFrame},
     vk_alloc::MemoryLocation,
 };
@@ -36,6 +37,7 @@ pub(crate) mod deferred_operation;
 pub(crate) mod descriptor;
 pub(crate) mod device;
 pub(crate) mod error;
+pub(crate) mod fence;
 pub(crate) mod image;
 pub(crate) mod instance;
 pub(crate) mod query;
