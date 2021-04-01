@@ -277,7 +277,7 @@ macro_rules! impl_command_buffer {
             }
 
             /// Sets the wait and signal semaphores of the command buffer.
-            pub fn set_timeline_semaphore(
+            pub fn set_semaphores(
                 &mut self,
                 wait_semaphore: Option<&CommandBufferSemaphore>,
                 signal_semaphore: &CommandBufferSemaphore,
