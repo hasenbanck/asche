@@ -52,6 +52,8 @@ pub struct DeviceConfiguration<'a> {
     pub features_v1_1: Option<vk::PhysicalDeviceVulkan11FeaturesBuilder<'a>>,
     /// Vulkan 1.2 features
     pub features_v1_2: Option<vk::PhysicalDeviceVulkan12FeaturesBuilder<'a>>,
+    /// VK_EXT_robustness2 features
+    pub features_robustness2: Option<vk::PhysicalDeviceRobustness2FeaturesEXTBuilder<'a>>,
     /// VK_KHR_ray_tracing_pipeline features
     pub features_raytracing: Option<vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder<'a>>,
     /// VK_KHR_acceleration_structure features
@@ -75,6 +77,7 @@ impl<'a> Default for DeviceConfiguration<'a> {
             features_v1_0: None,
             features_v1_1: None,
             features_v1_2: None,
+            features_robustness2: None,
             features_raytracing: None,
             features_acceleration_structure: None,
         }

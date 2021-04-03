@@ -669,6 +669,11 @@ impl Instance {
         #[cfg(feature = "tracing")]
         Self::print_extensions("device", &device_extensions);
 
+        let robustness2_name = unsafe { CStr::from_ptr(vk::EXT_ROBUSTNESS_2_EXTENSION_NAME) };
+        let robustness2_enabled = device_extensions
+            .iter()
+            .any(|ext| unsafe { CStr::from_ptr(*ext) == robustness2_name });
+
         let raytracing_name =
             unsafe { CStr::from_ptr(vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) };
         let raytracing_enabled = device_extensions
@@ -686,10 +691,12 @@ impl Instance {
             physical_features11,
             physical_features12,
             physical_features_synchronization2,
+            physical_device_robustness2_features,
             physical_features_raytracing,
             physical_features_acceleration_structure,
         ) = self.collect_physical_device_features(
             physical_device,
+            robustness2_enabled,
             raytracing_enabled,
             acceleration_structure_enabled,
         );
@@ -709,6 +716,12 @@ impl Instance {
         } else {
             vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
         };
+        let mut device_robustness2_features =
+            if let Some(features) = configuration.features_robustness2.take() {
+                features
+            } else {
+                vk::PhysicalDeviceRobustness2FeaturesEXTBuilder::new()
+            };
         let mut features_raytracing =
             if let Some(features) = configuration.features_raytracing.take() {
                 features
@@ -734,12 +747,14 @@ impl Instance {
             &physical_features11,
             &physical_features12,
             &physical_features_synchronization2,
+            &physical_device_robustness2_features,
             &physical_features_raytracing,
             &physical_features_acceleration_structure,
             &features,
             &features11,
             &features12,
             &features_synchronization2,
+            &device_robustness2_features,
             &features_raytracing,
             &features_acceleration_structure,
         )?;
@@ -751,6 +766,12 @@ impl Instance {
             .extend_from(&mut features11)
             .extend_from(&mut features12)
             .extend_from(&mut features_synchronization2);
+
+        let device_create_info = if robustness2_enabled {
+            device_create_info.extend_from(&mut device_robustness2_features)
+        } else {
+            device_create_info
+        };
 
         let device_create_info = if raytracing_enabled {
             device_create_info.extend_from(&mut features_raytracing)
@@ -782,6 +803,7 @@ impl Instance {
     fn collect_physical_device_features(
         &self,
         physical_device: vk::PhysicalDevice,
+        robustness2_enabled: bool,
         raytracing_enabled: bool,
         acceleration_structure_enabled: bool,
     ) -> (
@@ -789,6 +811,7 @@ impl Instance {
         vk::PhysicalDeviceVulkan11FeaturesBuilder,
         vk::PhysicalDeviceVulkan12FeaturesBuilder,
         vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
+        vk::PhysicalDeviceRobustness2FeaturesEXTBuilder,
         vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder,
         vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder,
     ) {
@@ -796,6 +819,9 @@ impl Instance {
         let mut physical_features12 = vk::PhysicalDeviceVulkan12FeaturesBuilder::new();
         let mut physical_feature_synchronization2 =
             vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new();
+        let mut physical_device_robustness2_features =
+            vk::PhysicalDeviceRobustness2FeaturesEXTBuilder::new();
+
         let mut physical_features_raytracing =
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new();
         let mut physical_features_acceleration =
@@ -806,6 +832,12 @@ impl Instance {
                 .extend_from(&mut physical_features11)
                 .extend_from(&mut physical_features12)
                 .extend_from(&mut physical_feature_synchronization2);
+
+            let physical_features = if robustness2_enabled {
+                physical_features.extend_from(&mut physical_device_robustness2_features)
+            } else {
+                physical_features
+            };
 
             let physical_features = if raytracing_enabled {
                 physical_features.extend_from(&mut physical_features_raytracing)
@@ -828,6 +860,7 @@ impl Instance {
             physical_features11,
             physical_features12,
             physical_feature_synchronization2,
+            physical_device_robustness2_features,
             physical_features_raytracing,
             physical_features_acceleration,
         )
@@ -962,12 +995,14 @@ fn check_features(
     physical_features11: &vk::PhysicalDeviceVulkan11FeaturesBuilder,
     physical_features12: &vk::PhysicalDeviceVulkan12FeaturesBuilder,
     physical_features_synchronization2: &vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
+    physical_device_robustness2_features: &vk::PhysicalDeviceRobustness2FeaturesEXTBuilder,
     physical_features_raytracing: &vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder,
     physical_features_acceleration_structure: &vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder,
     features: &vk::PhysicalDeviceFeaturesBuilder,
     features11: &vk::PhysicalDeviceVulkan11FeaturesBuilder,
     features12: &vk::PhysicalDeviceVulkan12FeaturesBuilder,
     features_synchronization2: &vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder,
+    device_robustness2_features: &vk::PhysicalDeviceRobustness2FeaturesEXTBuilder,
     features_raytracing: &vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder,
     features_acceleration_structure: &vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder,
 ) -> Result<()> {
@@ -975,12 +1010,15 @@ fn check_features(
     let mut physical_features11_list: Vec<&str> = Vec::with_capacity(11);
     let mut physical_features12_list: Vec<&str> = Vec::with_capacity(46);
     let mut physical_features_synchronization2_list: Vec<&str> = Vec::with_capacity(1);
+    let mut physical_device_robustness2_features_list: Vec<&str> = Vec::with_capacity(3);
     let mut physical_features_raytracing_list: Vec<&str> = Vec::with_capacity(5);
     let mut physical_features_acceleration_structure_list: Vec<&str> = Vec::with_capacity(5);
+
     let mut features_list: Vec<&str> = Vec::with_capacity(54);
     let mut features11_list: Vec<&str> = Vec::with_capacity(11);
     let mut features12_list: Vec<&str> = Vec::with_capacity(46);
     let mut features_synchronization2_list: Vec<&str> = Vec::with_capacity(1);
+    let mut device_robustness2_features_list: Vec<&str> = Vec::with_capacity(3);
     let mut features_raytracing_list: Vec<&str> = Vec::with_capacity(5);
     let mut features_acceleration_structure_list: Vec<&str> = Vec::with_capacity(5);
 
@@ -1124,6 +1162,15 @@ fn check_features(
     );
 
     impl_feature_assemble!(
+        physical_device_robustness2_features, device_robustness2_features, physical_device_robustness2_features_list, device_robustness2_features_list;
+        {
+            robust_buffer_access2
+            robust_image_access2
+            null_descriptor
+        }
+    );
+
+    impl_feature_assemble!(
         physical_features_raytracing, features_raytracing, physical_features_raytracing_list, features_raytracing_list;
         {
             ray_tracing_pipeline
@@ -1217,6 +1264,25 @@ fn check_features(
             } else {
                 #[cfg(feature = "tracing")]
                 error!("Unable to find VK_KHR_synchronization2 feature: {}", wanted);
+                missing_features = true;
+                false
+            }
+        });
+    }
+
+    #[cfg(feature = "tracing")]
+    if !device_robustness2_features_list.is_empty() {
+        info!("Enabling VK_EXT_robustness2 features:");
+        device_robustness2_features_list.retain(|&wanted| {
+            let found = physical_device_robustness2_features_list
+                .iter()
+                .any(|present| *present == wanted);
+            if found {
+                info!("- {}", wanted);
+                true
+            } else {
+                #[cfg(feature = "tracing")]
+                error!("Unable to find VK_EXT_robustness2 feature: {}", wanted);
                 missing_features = true;
                 false
             }
