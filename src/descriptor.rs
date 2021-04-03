@@ -125,9 +125,9 @@ pub struct DescriptorSet {
 }
 
 impl DescriptorSet {
-    /// Resets the descriptor set. Needs to be created from a pool with the
+    /// Frees the descriptor set. Needs to be created from a pool with the
     /// `vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET` flag set.
-    pub fn reset(&mut self) -> Result<()> {
+    pub fn free(&mut self) -> Result<()> {
         let sets = [self.raw];
         unsafe { self.context.device.free_descriptor_sets(self.pool, &sets) }.map_err(|err| {
             #[cfg(feature = "tracing")]
