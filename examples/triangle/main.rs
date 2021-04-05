@@ -223,10 +223,10 @@ impl Application {
 
         let graphics_buffer = self.command_pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Binary {
+            Some(CommandBufferSemaphore::Binary {
                 semaphore: &self.render_semaphore,
                 stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
-            },
+            }),
         )?;
 
         {

@@ -63,51 +63,43 @@ macro_rules! impl_queue {
                     .command_buffer(command_buffer.raw)
                     .device_mask(1)];
 
-                let signal_semaphore = &command_buffer.signal_semaphore;
-                let signal_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = signal_semaphore.into();
-                let signal_semaphore_infos = [signal_semaphore];
-
                 let fence = if let Some(fence) = fence {
                     Some(fence.raw)
                 } else {
                     None
                 };
 
-                if let Some(wait_semaphore) = &command_buffer.wait_semaphore {
-                    let wait_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = wait_semaphore.into();
-                    let wait_semaphore_infos = [wait_semaphore];
-
-                    let submit_info = [vk::SubmitInfo2KHRBuilder::new()
-                        .command_buffer_infos(&command_buffer_infos)
-                        .wait_semaphore_infos(&wait_semaphore_infos)
-                        .signal_semaphore_infos(&signal_semaphore_infos)];
-
-                    unsafe {
-                        self.context
-                            .device
-                            .queue_submit2_khr(self.raw, &submit_info, fence)
-                    }
-                    .map_err(|err| {
-                        #[cfg(feature = "tracing")]
-                        error!("Unable to queue and submit a command buffer: {}", err);
-                        AscheError::VkResult(err)
-                    })?;
+                let wait_semaphore_info: vk::SemaphoreSubmitInfoKHRBuilder =
+                if let Some(wait_semaphore) = command_buffer.wait_semaphore.as_ref() {
+                    wait_semaphore.into()
                 } else {
-                     let submit_info = [vk::SubmitInfo2KHRBuilder::new()
-                        .command_buffer_infos(&command_buffer_infos)
-                        .signal_semaphore_infos(&signal_semaphore_infos)];
-
-                    unsafe {
-                        self.context
-                            .device
-                            .queue_submit2_khr(self.raw, &submit_info, fence)
-                    }
-                    .map_err(|err| {
-                        #[cfg(feature = "tracing")]
-                        error!("Unable to queue and submit a command buffer: {}", err);
-                        AscheError::VkResult(err)
-                    })?;
+                    vk::SemaphoreSubmitInfoKHRBuilder::new()
                 };
+
+                let signal_semaphore_info: vk::SemaphoreSubmitInfoKHRBuilder =
+                if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
+                    signal_semaphore.into()
+                } else {
+                    vk::SemaphoreSubmitInfoKHRBuilder::new()
+                };
+
+                let wait_semaphore_infos = [wait_semaphore_info];
+                let signal_semaphore_infos = [signal_semaphore_info];
+                let submit_info = [vk::SubmitInfo2KHRBuilder::new()
+                    .command_buffer_infos(&command_buffer_infos)
+                    .wait_semaphore_infos(&wait_semaphore_infos)
+                    .signal_semaphore_infos(&signal_semaphore_infos)];
+
+                unsafe {
+                    self.context
+                        .device
+                        .queue_submit2_khr(self.raw, &submit_info, fence)
+                }
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to queue and submit a command buffer: {}", err);
+                    AscheError::VkResult(err)
+                })?;
 
                 Ok(())
             }
@@ -148,9 +140,12 @@ macro_rules! impl_queue {
                     wait_semaphore_infos.collect::<Vec<vk::SemaphoreSubmitInfoKHRBuilder>>();
 
                 let signal_semaphore_infos = command_buffer.iter().map(|cb| {
-                    let signal_semaphore = &cb.signal_semaphore;
-                    let signal_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = signal_semaphore.into();
-                    signal_semaphore
+                    if let Some(signal_semaphore) = cb.signal_semaphore.as_ref() {
+                        let signal_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = signal_semaphore.into();
+                        signal_semaphore
+                    } else {
+                        vk::SemaphoreSubmitInfoKHRBuilder::new()
+                    }
                 });
 
                 #[cfg(feature = "smallvec")]

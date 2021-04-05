@@ -505,16 +505,16 @@ impl Application {
 
         let mut transfer_pool = self.transfer_queue.create_command_pool()?;
         let transfer_buffer = transfer_pool.create_command_buffer(
-            Some(&CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
             }),
-            &CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value + 1,
-            },
+            }),
         )?;
 
         {
@@ -618,16 +618,16 @@ impl Application {
 
         let mut transfer_pool = self.transfer_queue.create_command_pool()?;
         let transfer_buffer = transfer_pool.create_command_buffer(
-            Some(&CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
             }),
-            &CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value + 1,
-            },
+            }),
         )?;
 
         {
@@ -657,10 +657,10 @@ impl Application {
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Binary {
+            Some(CommandBufferSemaphore::Binary {
                 semaphore: &self.render_semaphore,
                 stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
-            },
+            }),
         )?;
 
         let m_matrix =

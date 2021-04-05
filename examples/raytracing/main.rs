@@ -856,11 +856,11 @@ impl RayTracingApplication {
         *timeline_value += 1;
         let command_buffer = pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: *timeline_value,
-            },
+            }),
         )?;
         {
             let encoder = command_buffer.record()?;
@@ -1244,11 +1244,11 @@ impl RayTracingApplication {
         self.transfer_timeline_value += 1;
         let command_buffer = self.compute_pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
-            },
+            }),
         )?;
 
         let mut compacted_blas = Vec::with_capacity(self.blas.len());
@@ -1330,16 +1330,16 @@ impl RayTracingApplication {
             Vec::with_capacity(self.models.len());
         for (id, _) in self.models.iter().enumerate() {
             let compute_buffer = self.compute_pool.create_command_buffer(
-                Some(&CommandBufferSemaphore::Timeline {
+                Some(CommandBufferSemaphore::Timeline {
                     semaphore: &self.transfer_timeline,
                     stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                     value: self.transfer_timeline_value,
                 }),
-                &CommandBufferSemaphore::Timeline {
+                Some(CommandBufferSemaphore::Timeline {
                     semaphore: &self.transfer_timeline,
                     stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                     value: self.transfer_timeline_value + 1,
-                },
+                }),
             )?;
             self.transfer_timeline_value += 1;
 
@@ -1494,11 +1494,11 @@ impl RayTracingApplication {
         self.transfer_timeline_value += 1;
         let compute_buffer = self.compute_pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
-            },
+            }),
         )?;
 
         {
@@ -1525,10 +1525,10 @@ impl RayTracingApplication {
 
         let command_buffer = self.graphics_pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Binary {
+            Some(CommandBufferSemaphore::Binary {
                 semaphore: &self.render_semaphore,
                 stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
-            },
+            }),
         )?;
 
         {

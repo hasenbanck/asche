@@ -66,11 +66,11 @@ impl Uploader {
         self.timeline_value += 1;
         let transfer_buffer = self.transfer_pool.create_command_buffer(
             None,
-            &CommandBufferSemaphore::Timeline {
+            Some(CommandBufferSemaphore::Timeline {
                 semaphore: &self.timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.timeline_value,
-            },
+            }),
         )?;
 
         {
