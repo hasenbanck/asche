@@ -69,31 +69,56 @@ macro_rules! impl_queue {
                     None
                 };
 
-                let wait_semaphore_info: vk::SemaphoreSubmitInfoKHRBuilder =
+                #[cfg(feature = "smallvec")]
+                let wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 1]> =
                 if let Some(wait_semaphore) = command_buffer.wait_semaphore.as_ref() {
-                    wait_semaphore.into()
+                    SmallVec::from_buf([wait_semaphore.into()])
                 } else {
-                    vk::SemaphoreSubmitInfoKHRBuilder::new()
+                    SmallVec::new()
                 };
 
-                let signal_semaphore_info: vk::SemaphoreSubmitInfoKHRBuilder =
+                #[cfg(not(feature = "smallvec"))]
+                let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> =
+                if let Some(wait_semaphore) = command_buffer.wait_semaphore.as_ref() {
+                    vec![wait_semaphore.into()]
+                } else {
+                    vec![]
+                };
+
+                #[cfg(feature = "smallvec")]
+                let signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 1]> =
                 if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
-                    signal_semaphore.into()
+                    SmallVec::from_buf([signal_semaphore.into()])
                 } else {
-                    vk::SemaphoreSubmitInfoKHRBuilder::new()
+                    SmallVec::new()
                 };
 
-                let wait_semaphore_infos = [wait_semaphore_info];
-                let signal_semaphore_infos = [signal_semaphore_info];
-                let submit_info = [vk::SubmitInfo2KHRBuilder::new()
-                    .command_buffer_infos(&command_buffer_infos)
-                    .wait_semaphore_infos(&wait_semaphore_infos)
-                    .signal_semaphore_infos(&signal_semaphore_infos)];
+                #[cfg(not(feature = "smallvec"))]
+                let signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 1]> =
+                if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
+                    vec![signal_semaphore.into()]
+                } else {
+                    vec![]
+                };
+
+                let mut submit_info = vk::SubmitInfo2KHRBuilder::new().command_buffer_infos(&command_buffer_infos);
+
+                submit_info = if signal_semaphore_infos.len() > 0 {
+                    submit_info.signal_semaphore_infos(signal_semaphore_infos.as_slice())
+                } else {
+                    submit_info
+                };
+
+                submit_info = if wait_semaphore_infos.len() > 0 {
+                    submit_info.wait_semaphore_infos(wait_semaphore_infos.as_slice())
+                } else {
+                    submit_info
+                };
 
                 unsafe {
                     self.context
                         .device
-                        .queue_submit2_khr(self.raw, &submit_info, fence)
+                        .queue_submit2_khr(self.raw, &[submit_info], fence)
                 }
                 .map_err(|err| {
                     #[cfg(feature = "tracing")]
@@ -127,7 +152,7 @@ macro_rules! impl_queue {
                         let wait_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = wait_semaphore.into();
                         wait_semaphore
                     } else {
-                        vk::SemaphoreSubmitInfoKHRBuilder::new()
+                        panic!("all command buffers must have wait semaphores")
                     }
                 });
 
@@ -144,7 +169,7 @@ macro_rules! impl_queue {
                         let signal_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = signal_semaphore.into();
                         signal_semaphore
                     } else {
-                        vk::SemaphoreSubmitInfoKHRBuilder::new()
+                        panic!("all command buffers must have signal semaphores")
                     }
                 });
 
