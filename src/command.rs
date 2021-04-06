@@ -335,6 +335,32 @@ impl_command_buffer!(
     TransferCommandBuffer => TransferCommandEncoder
 );
 
+/// Implements common command between all queues.
+pub trait CommonCommands {
+    /// Copies data between two buffer.
+    fn copy_buffer(
+        &self,
+        src_buffer: vk::Buffer,
+        dst_buffer: vk::Buffer,
+        src_offset: vk::DeviceSize,
+        dst_offset: vk::DeviceSize,
+        size: vk::DeviceSize,
+    );
+
+    /// Copies data from a buffer to an image.
+    fn copy_buffer_to_image(
+        &self,
+        src_buffer: vk::Buffer,
+        dst_image: vk::Image,
+        dst_image_layout: vk::ImageLayout,
+        region: vk::BufferImageCopyBuilder,
+    );
+
+    /// Insert a memory dependency.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
+    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR);
+}
+
 /// Used to encode command for a compute command buffer.
 #[derive(Debug)]
 pub struct ComputeCommandEncoder<'a> {
@@ -342,19 +368,9 @@ pub struct ComputeCommandEncoder<'a> {
     buffer: vk::CommandBuffer,
 }
 
-impl<'a> ComputeCommandEncoder<'a> {
-    /// Begins a command buffer.
-    fn begin(&self) -> Result<()> {
-        begin(self.context, self.buffer)
-    }
-
-    /// Ends a command buffer.
-    fn end(&self) -> Result<()> {
-        end(self.context, self.buffer)
-    }
-
+impl<'a> CommonCommands for ComputeCommandEncoder<'a> {
     /// Copies data between two buffer.
-    pub fn copy_buffer(
+    fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -374,7 +390,7 @@ impl<'a> ComputeCommandEncoder<'a> {
     }
 
     /// Copies data from a buffer to an image.
-    pub fn copy_buffer_to_image(
+    fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -389,6 +405,24 @@ impl<'a> ComputeCommandEncoder<'a> {
             dst_image_layout,
             region,
         )
+    }
+
+    /// Insert a memory dependency.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
+    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+        pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+}
+
+impl<'a> ComputeCommandEncoder<'a> {
+    /// Begins a command buffer.
+    fn begin(&self) -> Result<()> {
+        begin(self.context, self.buffer)
+    }
+
+    /// Ends a command buffer.
+    fn end(&self) -> Result<()> {
+        end(self.context, self.buffer)
     }
 
     /// Binds a pipeline.
@@ -439,12 +473,6 @@ impl<'a> ComputeCommandEncoder<'a> {
             offset,
             constants,
         );
-    }
-
-    /// Insert a memory dependency.
-    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
-    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
-        pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Dispatch compute work items.
@@ -650,19 +678,9 @@ pub struct GraphicsCommandEncoder<'a> {
     buffer: vk::CommandBuffer,
 }
 
-impl<'a> GraphicsCommandEncoder<'a> {
-    /// Begins a command buffer.
-    fn begin(&self) -> Result<()> {
-        begin(self.context, self.buffer)
-    }
-
-    /// Ends a command buffer.
-    fn end(&self) -> Result<()> {
-        end(self.context, self.buffer)
-    }
-
+impl<'a> CommonCommands for GraphicsCommandEncoder<'a> {
     /// Copies data between two buffer.
-    pub fn copy_buffer(
+    fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -682,7 +700,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Copies data from a buffer to an image.
-    pub fn copy_buffer_to_image(
+    fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -697,6 +715,24 @@ impl<'a> GraphicsCommandEncoder<'a> {
             dst_image_layout,
             region,
         )
+    }
+
+    /// Insert a memory dependency.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
+    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+        pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+}
+
+impl<'a> GraphicsCommandEncoder<'a> {
+    /// Begins a command buffer.
+    fn begin(&self) -> Result<()> {
+        begin(self.context, self.buffer)
+    }
+
+    /// Ends a command buffer.
+    fn end(&self) -> Result<()> {
+        end(self.context, self.buffer)
     }
 
     /// Returns a render pass encoder. Drop once finished recording.
@@ -822,12 +858,6 @@ impl<'a> GraphicsCommandEncoder<'a> {
         );
     }
 
-    /// Insert a memory dependency.
-    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
-    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
-        pipeline_barrier2(self.context, self.buffer, dependency_info);
-    }
-
     /// Set the dynamic stack size for a ray tracing pipeline
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html)"]
     pub fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
@@ -935,19 +965,9 @@ pub struct TransferCommandEncoder<'a> {
     buffer: vk::CommandBuffer,
 }
 
-impl<'a> TransferCommandEncoder<'a> {
-    /// Begins a command buffer.
-    fn begin(&self) -> Result<()> {
-        begin(self.context, self.buffer)
-    }
-
-    /// Ends a command buffer.
-    fn end(&self) -> Result<()> {
-        end(self.context, self.buffer)
-    }
-
+impl<'a> CommonCommands for TransferCommandEncoder<'a> {
     /// Copies data between two buffer.
-    pub fn copy_buffer(
+    fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -967,7 +987,7 @@ impl<'a> TransferCommandEncoder<'a> {
     }
 
     /// Copies data from a buffer to an image.
-    pub fn copy_buffer_to_image(
+    fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -986,8 +1006,20 @@ impl<'a> TransferCommandEncoder<'a> {
 
     /// Insert a memory dependency.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
-    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+}
+
+impl<'a> TransferCommandEncoder<'a> {
+    /// Begins a command buffer.
+    fn begin(&self) -> Result<()> {
+        begin(self.context, self.buffer)
+    }
+
+    /// Ends a command buffer.
+    fn end(&self) -> Result<()> {
+        end(self.context, self.buffer)
     }
 }
 

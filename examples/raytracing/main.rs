@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3, Vec4};
 #[cfg(feature = "tracing")]
 use tracing::info;
 
-use asche::{CommandBufferSemaphore, Queues};
+use asche::{CommandBufferSemaphore, CommonCommands, Queues};
 
 use crate::gltf::{Material, Mesh, Vertex};
 use crate::uploader::Uploader;

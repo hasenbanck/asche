@@ -2,7 +2,7 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::vk;
 use glam::{Mat4, Vec3, Vec4};
 
-use asche::{CommandBufferSemaphore, QueueConfiguration, Queues};
+use asche::{CommandBufferSemaphore, CommonCommands, QueueConfiguration, Queues};
 
 #[repr(C)]
 #[derive(Clone, Copy)]

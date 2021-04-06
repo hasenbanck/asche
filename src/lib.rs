@@ -9,9 +9,9 @@ pub use {
     acceleration_structure::AccelerationStructure,
     buffer::{Buffer, BufferView},
     command::{
-        CommandBufferSemaphore, ComputeCommandBuffer, ComputeCommandEncoder, ComputeCommandPool,
-        GraphicsCommandBuffer, GraphicsCommandEncoder, GraphicsCommandPool, RenderPassEncoder,
-        TransferCommandBuffer, TransferCommandEncoder, TransferCommandPool,
+        CommandBufferSemaphore, CommonCommands, ComputeCommandBuffer, ComputeCommandEncoder,
+        ComputeCommandPool, GraphicsCommandBuffer, GraphicsCommandEncoder, GraphicsCommandPool,
+        RenderPassEncoder, TransferCommandBuffer, TransferCommandEncoder, TransferCommandPool,
     },
     deferred_operation::DeferredOperation,
     descriptor::{DescriptorPool, DescriptorSet, DescriptorSetLayout},

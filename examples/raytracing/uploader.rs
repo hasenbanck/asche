@@ -1,6 +1,6 @@
 use erupt::vk;
 
-use asche::CommandBufferSemaphore;
+use asche::{CommandBufferSemaphore, CommonCommands};
 
 use crate::Result;
 
@@ -51,7 +51,7 @@ impl Uploader {
             .allocation
             .mapped_slice_mut()
             .expect("staging buffer allocation could not be not mapped");
-        staging_slice[..data_size].clone_from_slice(bytemuck::cast_slice(&buffer_data));
+        staging_slice[..data_size].clone_from_slice(buffer_data);
 
         let dst_buffer = device.create_buffer(&asche::BufferDescriptor {
             name,
