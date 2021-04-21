@@ -94,7 +94,7 @@ macro_rules! impl_queue {
                 };
 
                 #[cfg(not(feature = "smallvec"))]
-                let signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 1]> =
+                let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> =
                 if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
                     vec![signal_semaphore.into()]
                 } else {
@@ -140,24 +140,22 @@ macro_rules! impl_queue {
                 });
 
                 #[cfg(feature = "smallvec")]
-                let command_buffer_infos = command_buffer_infos
-                    .collect::<SmallVec<[vk::CommandBufferSubmitInfoKHRBuilder; 4]>>();
+                let command_buffer_infos = command_buffer_infos.collect::<SmallVec<[vk::CommandBufferSubmitInfoKHRBuilder; 4]>>();
 
                 #[cfg(not(feature = "smallvec"))]
-                let command_buffer_infos =
-                    command_buffer_infos.collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
+                let command_buffer_infos = command_buffer_infos.collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
 
                 #[cfg(feature = "smallvec")]
                 let mut wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = SmallVec::new();
 
                 #[cfg(not(feature = "smallvec"))]
-                let mut wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::withCapacity(4);
+                let mut wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
 
                 #[cfg(feature = "smallvec")]
                 let mut signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = SmallVec::new();
 
                 #[cfg(not(feature = "smallvec"))]
-                let mut signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::withCapacity(4);
+                let mut signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
 
                  for cb in command_buffer.iter() {
                     if let Some(wait_semaphore) = cb.wait_semaphore.as_ref() {
@@ -182,8 +180,7 @@ macro_rules! impl_queue {
                 });
 
                 #[cfg(feature = "smallvec")]
-                let submit_infos =
-                    submit_infos.collect::<SmallVec<[vk::SubmitInfo2KHRBuilder; 4]>>();
+                let submit_infos = submit_infos.collect::<SmallVec<[vk::SubmitInfo2KHRBuilder; 4]>>();
 
                 #[cfg(not(feature = "smallvec"))]
                 let submit_infos = submit_infos.collect::<Vec<vk::SubmitInfo2KHRBuilder>>();
