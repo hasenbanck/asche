@@ -725,7 +725,7 @@ impl Application {
                 vk::ShaderStageFlags::VERTEX,
                 0,
                 cast_slice(mvp_matrix.as_ref()),
-            );
+            )?;
 
             pass.draw_indexed(36, 1, 0, 0, 0);
         }
