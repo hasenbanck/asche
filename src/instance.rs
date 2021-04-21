@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -169,7 +170,7 @@ impl Instance {
         layers: &[*const c_char],
     ) -> Result<erupt::InstanceLoader> {
         #[cfg(feature = "tracing")]
-        Self::print_extensions("instance", instance_extensions);
+        Self::print_extensions("instance", instance_extensions)?;
 
         let create_info = vk::InstanceCreateInfoBuilder::new()
             .flags(vk::InstanceCreateFlags::empty())
@@ -358,6 +359,7 @@ impl Instance {
         )
     }
 
+    #[allow(clippy::as_conversions)]
     fn create_device_and_queues(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -374,6 +376,18 @@ impl Instance {
 
         if graphics_count + transfer_count + compute_count == 0 {
             return Err(AscheError::NoQueueConfigured);
+        }
+
+        if graphics_count > 64 {
+            return Err(AscheError::QueueCountTooHigh(graphics_count));
+        }
+
+        if transfer_count > 64 {
+            return Err(AscheError::QueueCountTooHigh(transfer_count));
+        }
+
+        if compute_count > 64 {
+            return Err(AscheError::QueueCountTooHigh(compute_count));
         }
 
         // If some queue families point to the same ID, we need to create only one
@@ -667,7 +681,7 @@ impl Instance {
         let device_extensions = self.create_device_extensions(physical_device, &configuration)?;
 
         #[cfg(feature = "tracing")]
-        Self::print_extensions("device", &device_extensions);
+        Self::print_extensions("device", &device_extensions)?;
 
         let robustness2_name = unsafe { CStr::from_ptr(vk::EXT_ROBUSTNESS_2_EXTENSION_NAME) };
         let robustness2_enabled = device_extensions
@@ -792,12 +806,13 @@ impl Instance {
     }
 
     #[cfg(feature = "tracing")]
-    fn print_extensions(what: &str, extensions: &[*const i8]) {
+    fn print_extensions(what: &str, extensions: &[*const i8]) -> Result<()> {
         info!("Loading {} extensions:", what);
         for extension in extensions.iter() {
-            let ext = unsafe { CStr::from_ptr(*extension).to_str().unwrap() };
+            let ext = unsafe { CStr::from_ptr(*extension).to_str() }?;
             info!("- {}", ext);
         }
+        Ok(())
     }
 
     fn collect_physical_device_features(
@@ -907,7 +922,7 @@ impl Instance {
             let surface_supported = unsafe {
                 self.raw.get_physical_device_surface_support_khr(
                     physical_device,
-                    id as u32,
+                    id.try_into()?,
                     self.surface,
                     Some(vk::TRUE),
                 )
@@ -924,7 +939,7 @@ impl Instance {
                         && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                         && surface_supported
                     {
-                        queue_id = Some(id as u32);
+                        queue_id = Some(id.try_into()?);
                     }
                 }
                 vk::QueueFlags::TRANSFER => {
@@ -934,7 +949,7 @@ impl Instance {
                             || !family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                                 && !family.queue_flags.contains(vk::QueueFlags::COMPUTE))
                     {
-                        queue_id = Some(id as u32);
+                        queue_id = Some(id.try_into()?);
                     }
                 }
                 vk::QueueFlags::COMPUTE => {
@@ -943,10 +958,10 @@ impl Instance {
                         && (queue_id.is_none()
                             || !family.queue_flags.contains(vk::QueueFlags::GRAPHICS))
                     {
-                        queue_id = Some(id as u32);
+                        queue_id = Some(id.try_into()?);
                     }
                 }
-                _ => panic!("Unhandled vk::QueueFlags value"),
+                _ => return Err(AscheError::QueueFamilyNotFound("unknown".to_string())),
             }
         }
 
@@ -966,7 +981,7 @@ impl Instance {
                 vk::QueueFlags::TRANSFER => {
                     Err(AscheError::QueueFamilyNotFound("transfer".to_string()))
                 }
-                _ => panic!("Unhandled vk::QueueFlags value"),
+                _ => Err(AscheError::QueueFamilyNotFound("unknown".to_string())),
             }
         }
     }

@@ -1,6 +1,6 @@
 [package]
 name = "asche"
-version = "1.2.5"
+version = "1.3.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 description = "Provides an abstraction layer above erupt to easier use Vulkan in Rust."
 license = "Zlib OR MIT OR Apache-2.0"
@@ -25,7 +25,7 @@ profiling = { version = "0.1", optional = true }
 raw-window-handle = "0.3"
 smallvec = { version = "1.6", features = ["union", "const_generics"], optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
-vk-alloc = { version = "1.1", features = ["vk-buffer-device-address"] }
+vk-alloc = { version = "1.2", features = ["vk-buffer-device-address"] }
 
 [dev-dependencies]
 bytemuck = "1.5"

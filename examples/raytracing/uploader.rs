@@ -49,7 +49,7 @@ impl Uploader {
         let staging_slice = self
             .staging_buffer
             .allocation
-            .mapped_slice_mut()
+            .mapped_slice_mut()?
             .expect("staging buffer allocation could not be not mapped");
         staging_slice[..data_size].clone_from_slice(buffer_data);
 

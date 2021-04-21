@@ -5,22 +5,25 @@ use erupt::vk;
 /// Errors that asche can throw.
 #[derive(Debug)]
 pub enum AscheError {
-    /// A std::io::Error.
+    /// A `std::io::Error`.
     IoError(std::io::Error),
-    /// A std::ffi::NulError.
+    /// A `std::ffi::NulError`.
     NulError(std::ffi::NulError),
-    /// A std::str::Utf8Error.
+    /// A `std::str::Utf8Error`.
     Utf8Error(std::str::Utf8Error),
-    /// A erupt::utils::loading::EntryLoaderError.
+    /// A `TryFromIntError`.
+    TryFromIntError(std::num::TryFromIntError),
+
+    /// A `erupt::utils::loading::EntryLoaderError`.
     EntryLoaderError(erupt::utils::loading::EntryLoaderError),
 
-    /// A erupt::LoaderError.
+    /// A `erupt::LoaderError`.
     LoaderError(erupt::LoaderError),
 
-    /// A vk_alloc::AllocatorError.
+    /// A `vk_alloc::AllocatorError`.
     VkAllocError(vk_alloc::AllocatorError),
 
-    /// A VKResult error.
+    /// A `VKResult` error.
     VkResult(vk::Result),
 
     /// Can't load the debug utils extension.
@@ -49,6 +52,15 @@ pub enum AscheError {
 
     /// No queue was configured.
     NoQueueConfigured,
+
+    /// Queue count too high.
+    QueueCountTooHigh(usize),
+
+    /// Missing wait semaphore,
+    MissingWaitSemaphore,
+
+    /// Missing signal semaphore,
+    MissingSignalSemaphore,
 }
 
 impl std::fmt::Display for AscheError {
@@ -70,6 +82,9 @@ impl std::fmt::Display for AscheError {
                 write!(f, "{:?}", err.source())
             }
             AscheError::VkAllocError(err) => {
+                write!(f, "{:?}", err.source())
+            }
+            AscheError::TryFromIntError(err) => {
                 write!(f, "{:?}", err.source())
             }
             AscheError::VkResult(err) => {
@@ -102,6 +117,15 @@ impl std::fmt::Display for AscheError {
             AscheError::NoQueueConfigured => {
                 write!(f, "no queue was configured")
             }
+            AscheError::QueueCountTooHigh(count) => {
+                write!(f, "queue count too high. Only support the creation of up to 64 queues. Requests queue count: {}", count)
+            }
+            AscheError::MissingWaitSemaphore => {
+                write!(f, "command buffer is missing a wait semaphore")
+            }
+            AscheError::MissingSignalSemaphore => {
+                write!(f, "command buffer is missing a signal semaphore")
+            }
         }
     }
 }
@@ -109,9 +133,14 @@ impl std::fmt::Display for AscheError {
 impl std::error::Error for AscheError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match *self {
+            AscheError::IoError(ref e) => Some(e),
             AscheError::NulError(ref e) => Some(e),
             AscheError::Utf8Error(ref e) => Some(e),
+            AscheError::TryFromIntError(ref e) => Some(e),
             AscheError::EntryLoaderError(ref e) => Some(e),
+            AscheError::LoaderError(ref e) => Some(e),
+            AscheError::VkAllocError(ref e) => Some(e),
+            AscheError::VkResult(ref e) => Some(e),
             _ => None,
         }
     }
@@ -156,5 +185,11 @@ impl From<erupt::utils::loading::EntryLoaderError> for AscheError {
 impl From<vk_alloc::AllocatorError> for AscheError {
     fn from(err: vk_alloc::AllocatorError) -> AscheError {
         AscheError::VkAllocError(err)
+    }
+}
+
+impl From<std::num::TryFromIntError> for AscheError {
+    fn from(err: std::num::TryFromIntError) -> AscheError {
+        AscheError::TryFromIntError(err)
     }
 }

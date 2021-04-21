@@ -1,4 +1,9 @@
 #![warn(missing_docs)]
+#![forbid(unused_results)]
+#![deny(clippy::as_conversions)]
+#![deny(clippy::panic)]
+#![deny(clippy::unwrap_used)]
+
 //! Provides an abstraction layer above erupt to easier use Vulkan in Rust.
 
 use std::sync::Arc;

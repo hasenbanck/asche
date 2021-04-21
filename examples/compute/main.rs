@@ -153,7 +153,7 @@ impl Application {
         {
             let data_slice = buffer
                 .allocation
-                .mapped_slice_mut()
+                .mapped_slice_mut()?
                 .expect("data buffer allocation was not mapped");
             data_slice[..].clone_from_slice(bytemuck::cast_slice(&data));
             self.device.flush_mapped_memory(&buffer.allocation)?;

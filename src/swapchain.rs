@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::hash::Hasher;
 use std::sync::Arc;
 
@@ -125,7 +126,7 @@ impl Swapchain {
         #[cfg(feature = "tracing")]
         info!("Swapchain has {} image(s)", image_count);
 
-        self.swapchain.replace(swapchain);
+        let _ = self.swapchain.replace(swapchain);
 
         Ok(())
     }
@@ -248,7 +249,7 @@ impl Swapchain {
         };
 
         if created {
-            self.framebuffers.insert(hash, framebuffer);
+            let _ = self.framebuffers.insert(hash, framebuffer);
         }
 
         Ok(framebuffer)
@@ -427,7 +428,7 @@ impl SwapchainInner {
                 error!("Unable to acquire the next frame image: {}", err);
                 AscheError::VkResult(err)
             })?;
-        let view = self.image_views[index as usize].raw;
+        let view = self.image_views[usize::try_from(index)?].raw;
         Ok(SwapchainFrame { index, view })
     }
 

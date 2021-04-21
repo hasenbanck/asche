@@ -31,6 +31,7 @@ impl QueryPool {
         stride: u64,
         flags: Option<vk::QueryResultFlags>,
     ) -> Result<()> {
+        #[allow(clippy::as_conversions)]
         unsafe {
             self.context.device.get_query_pool_results(
                 self.raw,

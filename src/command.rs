@@ -1,5 +1,6 @@
 //! Implements command pools and command buffers.
 
+use std::convert::TryInto;
 use std::ffi::c_void;
 use std::sync::Arc;
 
@@ -173,6 +174,7 @@ macro_rules! impl_command_pool {
                         },
                     )?;
 
+                #[allow(clippy::as_conversions)]
                 self.context.set_object_name(
                     &format!(
                         "Command Buffer {} {}",
@@ -464,7 +466,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         stage_flags: vk::ShaderStageFlags,
         offset: u32,
         constants: &[u8],
-    ) {
+    ) -> Result<()> {
         push_constants(
             self.context,
             self.buffer,
@@ -472,7 +474,7 @@ impl<'a> ComputeCommandEncoder<'a> {
             stage_flags,
             offset,
             constants,
-        );
+        )
     }
 
     /// Dispatch compute work items.
@@ -529,6 +531,7 @@ impl<'a> ComputeCommandEncoder<'a> {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
+        #[allow(clippy::as_conversions)]
         let build_range_infos = build_range_infos
             .iter()
             .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
@@ -757,10 +760,10 @@ impl<'a> GraphicsCommandEncoder<'a> {
         )?;
 
         #[cfg(feature = "smallvec")]
-        let mut clear_values: SmallVec<[ClearValue; 4]> = SmallVec::new();
+        let mut clear_values: SmallVec<[ClearValue; 6]> = SmallVec::new();
 
         #[cfg(not(feature = "smallvec"))]
-        let mut clear_values: Vec<ClearValue> = Vec::with_capacity(4);
+        let mut clear_values: Vec<ClearValue> = Vec::with_capacity(6);
 
         color_attachments.iter().for_each(|x| {
             if let Some(clear_value) = x.clear_value {
@@ -779,6 +782,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
     }
 
     /// Sets the viewport and the scissor rectangle.
+    #[allow(clippy::as_conversions)]
     pub fn set_viewport_and_scissor(&self, rect: vk::Rect2DBuilder) {
         let viewport = vk::ViewportBuilder::new()
             .x(rect.offset.x as f32)
@@ -847,7 +851,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
         stage_flags: vk::ShaderStageFlags,
         offset: u32,
         constants: &[u8],
-    ) {
+    ) -> Result<()> {
         push_constants(
             self.context,
             self.buffer,
@@ -855,7 +859,7 @@ impl<'a> GraphicsCommandEncoder<'a> {
             stage_flags,
             offset,
             constants,
-        );
+        )
     }
 
     /// Set the dynamic stack size for a ray tracing pipeline
@@ -1136,7 +1140,7 @@ impl<'a> RenderPassEncoder<'a> {
         stage_flags: vk::ShaderStageFlags,
         offset: u32,
         constants: &[u8],
-    ) {
+    ) -> Result<()> {
         push_constants(
             self.context,
             self.buffer,
@@ -1144,7 +1148,7 @@ impl<'a> RenderPassEncoder<'a> {
             stage_flags,
             offset,
             constants,
-        );
+        )
     }
 
     /// Insert a memory dependency.
@@ -1389,21 +1393,24 @@ fn push_constants(
     stage_flags: vk::ShaderStageFlags,
     offset: u32,
     constants: &[u8],
-) {
+) -> Result<()> {
+    let size: u32 = constants.len().try_into()?;
+
+    #[allow(clippy::as_conversions)]
     unsafe {
         context.device.cmd_push_constants(
             buffer,
             layout,
             stage_flags,
             offset,
-            constants.len() as u32,
+            size,
             constants.as_ptr() as *mut c_void,
         )
     };
+    Ok(())
 }
 
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn pipeline_barrier2(
     context: &Context,
     command_buffer: vk::CommandBuffer,

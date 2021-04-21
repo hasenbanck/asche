@@ -451,7 +451,7 @@ impl Application {
 
         let stagging_slice = stagging_buffer
             .allocation
-            .mapped_slice_mut()
+            .mapped_slice_mut()?
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..dds.data.len()].clone_from_slice(bytemuck::cast_slice(&dds.data));
         self.device
@@ -602,7 +602,7 @@ impl Application {
 
         let stagging_slice = stagging_buffer
             .allocation
-            .mapped_slice_mut()
+            .mapped_slice_mut()?
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
 

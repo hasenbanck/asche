@@ -52,13 +52,14 @@ impl AccelerationStructure {
         stride: usize,
     ) -> Result<()> {
         let acceleration_structures = [self.raw];
+        #[allow(clippy::as_conversions)]
         unsafe {
             self.context
                 .device
                 .write_acceleration_structures_properties_khr(
                     &acceleration_structures,
                     query_type,
-                    data.len() as usize,
+                    data.len(),
                     data.as_ptr() as *mut c_void,
                     stride,
                 )

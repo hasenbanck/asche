@@ -77,6 +77,7 @@ impl DeferredOperation {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
+        #[allow(clippy::as_conversions)]
         let build_range_infos = build_range_infos
             .iter()
             .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);

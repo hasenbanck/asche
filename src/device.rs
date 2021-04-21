@@ -200,7 +200,7 @@ impl Device {
             &instance.raw,
             physical_device,
             &vk_alloc::AllocatorDescriptor::default(),
-        );
+        )?;
 
         let compute_queue_family_index = family_ids[0];
         let graphic_queue_family_index = family_ids[1];
@@ -216,6 +216,7 @@ impl Device {
             configuration.swapchain_color_space,
         )?;
 
+        #[allow(clippy::as_conversions)]
         let compute_queues = queues[0]
             .iter()
             .enumerate()
@@ -234,6 +235,7 @@ impl Device {
             })
             .collect::<_>();
 
+        #[allow(clippy::as_conversions)]
         let graphics_queues = queues[1]
             .iter()
             .enumerate()
@@ -252,6 +254,7 @@ impl Device {
             })
             .collect::<_>();
 
+        #[allow(clippy::as_conversions)]
         let transfer_queues = queues[2]
             .iter()
             .enumerate()
@@ -296,11 +299,6 @@ impl Device {
         name: &str,
         renderpass_info: vk::RenderPassCreateInfo2Builder,
     ) -> Result<RenderPass> {
-        debug_assert!(
-            renderpass_info.attachment_count <= 4,
-            "Maximum size of attachments reached. This limit is artificial for the RenderpassEncoder.begin_render_pass() method."
-        );
-
         let renderpass = unsafe {
             self.context
                 .device
@@ -898,6 +896,7 @@ impl Device {
         group_count: u32,
         data: &[u8],
     ) -> Result<()> {
+        #[allow(clippy::as_conversions)]
         unsafe {
             self.context
                 .device
@@ -930,6 +929,7 @@ impl Device {
         group_count: u32,
         data: &[u8],
     ) -> Result<()> {
+        #[allow(clippy::as_conversions)]
         unsafe {
             self.context
                 .device
@@ -1009,6 +1009,7 @@ impl Device {
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) -> Result<()> {
+        #[allow(clippy::as_conversions)]
         let build_range_infos = build_range_infos
             .iter()
             .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
@@ -1205,6 +1206,7 @@ fn query_support_resizable_bar(
             .map(|t| t.heap_index)
             .collect();
 
+        #[allow(clippy::as_conversions)]
         for index in heap_indices.iter() {
             let property = memory_properties.memory_properties.memory_heaps[*index as usize];
             // Normally BAR is at most 256 MiB, everything more must be resizable BAR.

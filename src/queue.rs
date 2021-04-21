@@ -147,39 +147,32 @@ macro_rules! impl_queue {
                 let command_buffer_infos =
                     command_buffer_infos.collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
 
-                let wait_semaphore_infos = command_buffer.iter().map(|cb| {
+                #[cfg(feature = "smallvec")]
+                let mut wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = SmallVec::new();
+
+                #[cfg(not(feature = "smallvec"))]
+                let mut wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::withCapacity(4);
+
+                #[cfg(feature = "smallvec")]
+                let mut signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = SmallVec::new();
+
+                #[cfg(not(feature = "smallvec"))]
+                let mut signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::withCapacity(4);
+
+                 for cb in command_buffer.iter() {
                     if let Some(wait_semaphore) = cb.wait_semaphore.as_ref() {
                         let wait_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = wait_semaphore.into();
-                        wait_semaphore
+                        wait_semaphore_infos.push(wait_semaphore);
                     } else {
-                        panic!("all command buffers must have wait semaphores")
-                    }
-                });
-
-                #[cfg(feature = "smallvec")]
-                let wait_semaphore_infos = wait_semaphore_infos
-                    .collect::<SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]>>();
-
-                #[cfg(not(feature = "smallvec"))]
-                let wait_semaphore_infos =
-                    wait_semaphore_infos.collect::<Vec<vk::SemaphoreSubmitInfoKHRBuilder>>();
-
-                let signal_semaphore_infos = command_buffer.iter().map(|cb| {
+                        return Err(AscheError::MissingWaitSemaphore);
+                    };
                     if let Some(signal_semaphore) = cb.signal_semaphore.as_ref() {
                         let signal_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = signal_semaphore.into();
-                        signal_semaphore
+                        signal_semaphore_infos.push(signal_semaphore);
                     } else {
-                        panic!("all command buffers must have signal semaphores")
-                    }
-                });
-
-                #[cfg(feature = "smallvec")]
-                let signal_semaphore_infos = signal_semaphore_infos
-                    .collect::<SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]>>();
-
-                #[cfg(not(feature = "smallvec"))]
-                let signal_semaphore_infos =
-                    signal_semaphore_infos.collect::<Vec<vk::SemaphoreSubmitInfoKHRBuilder>>();
+                        return Err(AscheError::MissingSignalSemaphore);
+                    };
+                };
 
                 let submit_infos = command_buffer.iter().enumerate().map(|(id, _)| {
                     vk::SubmitInfo2KHRBuilder::new()
