@@ -126,7 +126,7 @@ impl Swapchain {
         #[cfg(feature = "tracing")]
         info!("Swapchain has {} image(s)", image_count);
 
-        let _ = self.swapchain.replace(swapchain);
+        self.swapchain.replace(swapchain);
 
         Ok(())
     }
@@ -249,7 +249,7 @@ impl Swapchain {
         };
 
         if created {
-            let _ = self.framebuffers.insert(hash, framebuffer);
+            self.framebuffers.insert(hash, framebuffer);
         }
 
         Ok(framebuffer)

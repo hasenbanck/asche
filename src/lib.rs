@@ -1,5 +1,4 @@
 #![warn(missing_docs)]
-#![forbid(unused_results)]
 #![deny(clippy::as_conversions)]
 #![deny(clippy::panic)]
 #![deny(clippy::unwrap_used)]
