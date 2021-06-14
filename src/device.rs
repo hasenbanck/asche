@@ -3,10 +3,8 @@ use std::os::raw::c_char;
 use std::sync::Arc;
 
 use erupt::{vk, ExtendableFrom};
-#[cfg(feature = "smallvec")]
-use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
-use tracing::{error, info};
+use tracing1::{error, info};
 
 use crate::context::Context;
 use crate::instance::Instance;
@@ -48,7 +46,7 @@ pub struct DeviceConfiguration<'a> {
     pub extensions: Vec<*const c_char>,
     /// Vulkan 1.0 features.
     pub features_v1_0: Option<vk::PhysicalDeviceFeaturesBuilder<'a>>,
-    /// Vulkan 1.0 features.
+    /// Vulkan 1.1 features.
     pub features_v1_1: Option<vk::PhysicalDeviceVulkan11FeaturesBuilder<'a>>,
     /// Vulkan 1.2 features
     pub features_v1_2: Option<vk::PhysicalDeviceVulkan12FeaturesBuilder<'a>>,
@@ -518,10 +516,6 @@ impl Device {
             return Err(AscheError::BufferZeroSize);
         }
 
-        #[cfg(feature = "smallvec")]
-        let mut families: SmallVec<[u32; 3]> = SmallVec::new();
-
-        #[cfg(not(feature = "smallvec"))]
         let mut families: Vec<u32> = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
@@ -616,10 +610,6 @@ impl Device {
 
     /// Creates a new image.
     pub fn create_image(&self, descriptor: &ImageDescriptor) -> Result<Image> {
-        #[cfg(feature = "smallvec")]
-        let mut families: SmallVec<[u32; 3]> = SmallVec::new();
-
-        #[cfg(not(feature = "smallvec"))]
         let mut families: Vec<u32> = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
@@ -1012,15 +1002,8 @@ impl Device {
         #[allow(clippy::as_conversions)]
         let build_range_infos = build_range_infos
             .iter()
-            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
-
-        #[cfg(feature = "smallvec")]
-        let build_range_infos = build_range_infos
-            .collect::<SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]>>();
-
-        #[cfg(not(feature = "smallvec"))]
-        let build_range_infos =
-            build_range_infos.collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
+            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
+            .collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
 
         unsafe {
             self.context

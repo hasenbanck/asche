@@ -2,7 +2,7 @@
 
 use erupt::vk;
 #[cfg(feature = "tracing")]
-use tracing::{debug, error, info, warn};
+use tracing1::{debug, error, info, warn};
 
 /// Callback function for the debug utils logging.
 pub(crate) unsafe extern "system" fn debug_utils_callback(

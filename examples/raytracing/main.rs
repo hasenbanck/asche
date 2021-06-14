@@ -2,7 +2,7 @@ use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use erupt::{vk, ExtendableFrom};
 use glam::{Mat4, Vec3, Vec4};
 #[cfg(feature = "tracing")]
-use tracing::info;
+use tracing1::info;
 
 use asche::{CommandBufferSemaphore, CommonCommands, Queues};
 

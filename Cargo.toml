@@ -1,6 +1,6 @@
 [package]
 name = "asche"
-version = "1.3.1"
+version = "1.4.1"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 description = "Provides an abstraction layer above erupt to easier use Vulkan in Rust."
 license = "Zlib OR MIT OR Apache-2.0"
@@ -11,8 +11,10 @@ keywords = ["vulkan", "erupt"]
 edition = "2018"
 
 [features]
-default = ["logging", "smallvec"]
-logging = ["tracing", "vk-alloc/tracing"]
+default = ["tracing"]
+tracing = ["tracing1", "vk-alloc/tracing"]
+vk-buffer-device-address = ["vk-alloc/vk-buffer-device-address"]
+vk-timeline-semaphores = []
 profile-with-puffin = ["profiling/profile-with-puffin", "vk-alloc/profile-with-puffin"]
 profile-with-optick = ["profiling/profile-with-optick", "vk-alloc/profile-with-optick"]
 profile-with-superluminal = ["profiling/profile-with-superluminal", "vk-alloc/profile-with-superluminal"]
@@ -23,9 +25,8 @@ profile-with-tracy = ["profiling/profile-with-tracy", "vk-alloc/profile-with-tra
 erupt = { version = "0.18", features = ["bytemuck"] }
 profiling = { version = "0.1", optional = true }
 raw-window-handle = "0.3"
-smallvec = { version = "1.6", features = ["union", "const_generics"], optional = true }
-tracing = { version = "0.1", default-features = false, optional = true }
-vk-alloc = { version = "1.2", features = ["vk-buffer-device-address"] }
+tracing1 = { version = "0.1", package = "tracing", default-features = false, optional = true }
+vk-alloc = "1.2"
 
 [dev-dependencies]
 bytemuck = "1.5"
@@ -33,4 +34,5 @@ ddsfile = "0.4"
 gltf = "0.15"
 glam = "0.13"
 tracing-subscriber = { version = "0.2", default-features = false, features = ["fmt", "ansi", "env-filter"] }
+vk-alloc = { version = "1.2", features = ["vk-buffer-device-address"] }
 winit = "0.24"

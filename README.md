@@ -15,21 +15,16 @@ No validation and a lot of pain. You most likely want to use
 
 ## Requirements
 
-Vulkan 1.2.
-
-Used features:
-
-- "buffer device address"
-- "timeline_semaphores"
+Vulkan 1.0+ with the `VK_KHR_synchronization2` extension.
 
 ## Features
 
-* `logging` Adds logging using [tracing](https://github.com/tokio-rs/tracing).
+* `tracing` Adds logging using [tracing](https://github.com/tokio-rs/tracing).
 * `profiling` Adds support for [profiling](https://github.com/aclysma/profiling).
-* `smallvec` Uses the crate [smallvec](https://github.com/servo/smallvec)
-  for vectors in the hot path to reduce pressure on the heap.
+* `vk-buffer-device-address` Uses the buffer device address Vulkan feature. Mainly useful when using
+  the raytracing extension.
 
-`logging` and `smallvec` are on by default.
+`tracing` is on by default.
 
 ## Examples
 

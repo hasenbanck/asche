@@ -4,7 +4,7 @@ use std::os::raw::c_char;
 
 use erupt::{vk, ExtendableFrom};
 #[cfg(feature = "tracing")]
-use tracing::{error, info, warn};
+use tracing1::{error, info, warn};
 
 use crate::device::Queues;
 #[cfg(debug_assertions)]
@@ -51,7 +51,7 @@ impl Instance {
             .application_name(&app_name)
             .application_version(configuration.app_version)
             .engine_name(&engine_name)
-            .engine_version(vk::make_version(0, 1, 0))
+            .engine_version(vk::make_version(1, 4, 0))
             .api_version(vk::make_version(1, 2, 0));
 
         // Activate all needed instance layers and extensions.
@@ -135,8 +135,8 @@ impl Instance {
     fn vulkan_log_level() -> vk::DebugUtilsMessageSeverityFlagsEXT {
         #[cfg(feature = "tracing")]
         {
-            use tracing::level_filters::LevelFilter;
-            match tracing::level_filters::STATIC_MAX_LEVEL {
+            use tracing1::level_filters::LevelFilter;
+            match tracing1::level_filters::STATIC_MAX_LEVEL {
                 LevelFilter::OFF => vk::DebugUtilsMessageSeverityFlagsEXT::empty(),
                 LevelFilter::ERROR => vk::DebugUtilsMessageSeverityFlagsEXT::ERROR_EXT,
                 LevelFilter::WARN => {
@@ -832,8 +832,10 @@ impl Instance {
     ) {
         let mut physical_features11 = vk::PhysicalDeviceVulkan11FeaturesBuilder::new();
         let mut physical_features12 = vk::PhysicalDeviceVulkan12FeaturesBuilder::new();
+
         let mut physical_feature_synchronization2 =
             vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new();
+
         let mut physical_device_robustness2_features =
             vk::PhysicalDeviceRobustness2FeaturesEXTBuilder::new();
 

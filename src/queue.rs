@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
 use erupt::vk;
-#[cfg(feature = "smallvec")]
-use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
-use tracing::error;
+use tracing1::error;
 
 use crate::context::Context;
 use crate::{
@@ -63,21 +61,8 @@ macro_rules! impl_queue {
                     .command_buffer(command_buffer.raw)
                     .device_mask(1)];
 
-                let fence = if let Some(fence) = fence {
-                    Some(fence.raw)
-                } else {
-                    None
-                };
+                let fence = fence.map(|fence| fence.raw);
 
-                #[cfg(feature = "smallvec")]
-                let wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 1]> =
-                if let Some(wait_semaphore) = command_buffer.wait_semaphore.as_ref() {
-                    SmallVec::from_buf([wait_semaphore.into()])
-                } else {
-                    SmallVec::new()
-                };
-
-                #[cfg(not(feature = "smallvec"))]
                 let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> =
                 if let Some(wait_semaphore) = command_buffer.wait_semaphore.as_ref() {
                     vec![wait_semaphore.into()]
@@ -85,15 +70,6 @@ macro_rules! impl_queue {
                     vec![]
                 };
 
-                #[cfg(feature = "smallvec")]
-                let signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 1]> =
-                if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
-                    SmallVec::from_buf([signal_semaphore.into()])
-                } else {
-                    SmallVec::new()
-                };
-
-                #[cfg(not(feature = "smallvec"))]
                 let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> =
                 if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
                     vec![signal_semaphore.into()]
@@ -137,24 +113,10 @@ macro_rules! impl_queue {
                     vk::CommandBufferSubmitInfoKHRBuilder::new()
                         .command_buffer(cb.raw)
                         .device_mask(1)
-                });
+                })
+                .collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
 
-                #[cfg(feature = "smallvec")]
-                let command_buffer_infos = command_buffer_infos.collect::<SmallVec<[vk::CommandBufferSubmitInfoKHRBuilder; 4]>>();
-
-                #[cfg(not(feature = "smallvec"))]
-                let command_buffer_infos = command_buffer_infos.collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
-
-                #[cfg(feature = "smallvec")]
-                let mut wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = SmallVec::new();
-
-                #[cfg(not(feature = "smallvec"))]
                 let mut wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
-
-                #[cfg(feature = "smallvec")]
-                let mut signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfoKHRBuilder; 4]> = SmallVec::new();
-
-                #[cfg(not(feature = "smallvec"))]
                 let mut signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
 
                  for cb in command_buffer.iter() {
@@ -177,19 +139,10 @@ macro_rules! impl_queue {
                         .command_buffer_infos(&command_buffer_infos[id..id + 1])
                         .wait_semaphore_infos(&wait_semaphore_infos[id..id + 1])
                         .signal_semaphore_infos(&signal_semaphore_infos[id..id + 1])
-                });
+                })
+                .collect::<Vec<vk::SubmitInfo2KHRBuilder>>();
 
-                #[cfg(feature = "smallvec")]
-                let submit_infos = submit_infos.collect::<SmallVec<[vk::SubmitInfo2KHRBuilder; 4]>>();
-
-                #[cfg(not(feature = "smallvec"))]
-                let submit_infos = submit_infos.collect::<Vec<vk::SubmitInfo2KHRBuilder>>();
-
-                let fence = if let Some(fence) = fence {
-                    Some(fence.raw)
-                } else {
-                    None
-                };
+                let fence = fence.map(|fence| fence.raw);
 
                 unsafe {
                     self.context

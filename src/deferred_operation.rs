@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
 use erupt::vk;
-#[cfg(feature = "smallvec")]
-use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
-use tracing::error;
+use tracing1::error;
 
 use crate::context::Context;
 use crate::{AscheError, Result};
@@ -80,15 +78,8 @@ impl DeferredOperation {
         #[allow(clippy::as_conversions)]
         let build_range_infos = build_range_infos
             .iter()
-            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
-
-        #[cfg(feature = "smallvec")]
-        let build_range_infos = build_range_infos
-            .collect::<SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]>>();
-
-        #[cfg(not(feature = "smallvec"))]
-        let build_range_infos =
-            build_range_infos.collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
+            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
+            .collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
 
         unsafe {
             self.context.device.build_acceleration_structures_khr(

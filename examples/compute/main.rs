@@ -203,7 +203,8 @@ impl Application {
             let data_slice = buffer
                 .allocation
                 .mapped_slice()
-                .expect("data buffer allocation was not mapped");
+                .expect("data buffer allocation was not mapped")
+                .unwrap();
             data[..].clone_from_slice(bytemuck::cast_slice(&data_slice));
         }
 

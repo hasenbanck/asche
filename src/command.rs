@@ -6,10 +6,8 @@ use std::sync::Arc;
 
 use erupt::vk;
 use erupt::vk::ClearValue;
-#[cfg(feature = "smallvec")]
-use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
-use tracing::error;
+use tracing1::error;
 
 use crate::context::Context;
 use crate::semaphore::TimelineSemaphore;
@@ -534,15 +532,8 @@ impl<'a> ComputeCommandEncoder<'a> {
         #[allow(clippy::as_conversions)]
         let build_range_infos = build_range_infos
             .iter()
-            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR);
-
-        #[cfg(feature = "smallvec")]
-        let build_range_infos = build_range_infos
-            .collect::<SmallVec<[*const vk::AccelerationStructureBuildRangeInfoKHR; 4]>>();
-
-        #[cfg(not(feature = "smallvec"))]
-        let build_range_infos =
-            build_range_infos.collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
+            .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
+            .collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
 
         unsafe {
             self.context.device.cmd_build_acceleration_structures_khr(
@@ -759,10 +750,6 @@ impl<'a> GraphicsCommandEncoder<'a> {
             extent,
         )?;
 
-        #[cfg(feature = "smallvec")]
-        let mut clear_values: SmallVec<[ClearValue; 6]> = SmallVec::new();
-
-        #[cfg(not(feature = "smallvec"))]
         let mut clear_values: Vec<ClearValue> = Vec::with_capacity(6);
 
         color_attachments.iter().for_each(|x| {

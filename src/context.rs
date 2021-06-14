@@ -1,7 +1,7 @@
 //! Implements the internal context.
 use erupt::vk;
 #[cfg(feature = "tracing")]
-use tracing::error;
+use tracing1::error;
 
 use crate::{AscheError, Instance, Result};
 
@@ -37,10 +37,10 @@ impl Context {
         allocator: vk_alloc::Allocator,
     ) -> Self {
         Self {
-            instance,
+            allocator,
             device,
             physical_device,
-            allocator,
+            instance,
         }
     }
 

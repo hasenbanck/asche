@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use erupt::vk;
 #[cfg(feature = "tracing")]
-use tracing::error;
+use tracing1::error;
 
 use crate::context::Context;
 use crate::{AscheError, Result};

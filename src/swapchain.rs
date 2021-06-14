@@ -5,10 +5,8 @@ use std::hash::Hasher;
 use std::sync::Arc;
 
 use erupt::vk;
-#[cfg(feature = "smallvec")]
-use smallvec::SmallVec;
 #[cfg(feature = "tracing")]
-use tracing::{error, info};
+use tracing1::{error, info};
 
 use crate::context::Context;
 use crate::{
@@ -265,13 +263,8 @@ impl Swapchain {
         let attachments = color_attachments
             .iter()
             .map(|x| x.attachment)
-            .chain(depth_attachment.iter().map(|x| x.attachment));
-
-        #[cfg(feature = "smallvec")]
-        let attachments = attachments.collect::<SmallVec<[vk::ImageView; 4]>>();
-
-        #[cfg(not(feature = "smallvec"))]
-        let attachments = attachments.collect::<Vec<vk::ImageView>>();
+            .chain(depth_attachment.iter().map(|x| x.attachment))
+            .collect::<Vec<vk::ImageView>>();
 
         let framebuffer_info = vk::FramebufferCreateInfoBuilder::new()
             .render_pass(render_pass.raw)
@@ -439,13 +432,10 @@ impl SwapchainInner {
         graphic_queue: vk::Queue,
         wait_semaphores: &[&BinarySemaphore],
     ) -> Result<()> {
-        let wait_semaphores = wait_semaphores.iter().map(|s| s.raw);
-
-        #[cfg(feature = "smallvec")]
-        let wait_semaphores = wait_semaphores.collect::<SmallVec<[vk::Semaphore; 4]>>();
-
-        #[cfg(not(feature = "smallvec"))]
-        let wait_semaphores = wait_semaphores.collect::<Vec<vk::Semaphore>>();
+        let wait_semaphores = wait_semaphores
+            .iter()
+            .map(|s| s.raw)
+            .collect::<Vec<vk::Semaphore>>();
 
         let swapchains = [self.raw];
         let image_indices = [frame.index];
