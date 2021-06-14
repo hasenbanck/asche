@@ -2,7 +2,7 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use erupt::vk;
 use glam::{Mat4, Vec3, Vec4};
 
-use asche::{CommandBufferSemaphore, CommonCommands, QueueConfiguration, Queues, VulkanApiVersion};
+use asche::{CommandBufferSemaphore, CommonCommands, QueueConfiguration, Queues};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -35,7 +35,6 @@ fn main() -> Result<(), asche::AscheError> {
         asche::InstanceConfiguration {
             app_name: "cube example",
             app_version: erupt::vk::make_version(1, 0, 0),
-            api_version: VulkanApiVersion::Version1_2,
             extensions: vec![],
         },
     )?;

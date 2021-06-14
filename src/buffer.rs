@@ -40,6 +40,7 @@ impl Buffer {
     }
 
     /// Query an address of a buffer.
+    #[cfg(feature = "vk-buffer-device-address")]
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetBufferDeviceAddress.html)"]
     pub fn device_address(&self) -> vk::DeviceAddress {
         let info = vk::BufferDeviceAddressInfoBuilder::new().buffer(self.raw);

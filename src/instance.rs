@@ -749,9 +749,12 @@ impl Instance {
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
             };
 
-        features12 = features12
-            .buffer_device_address(true)
-            .timeline_semaphore(true);
+        features12 = features12.timeline_semaphore(true);
+
+        #[cfg(feature = "vk-buffer-device-address")]
+        {
+            features12 = features12.buffer_device_address(true);
+        }
 
         let mut features_synchronization2 =
             vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new().synchronization2(true);

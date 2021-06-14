@@ -15,7 +15,7 @@ No validation and a lot of pain. You most likely want to use
 
 ## Requirements
 
-Vulkan 1.0+ with the `VK_KHR_synchronization2` extension.
+Vulkan 1.2+ driver.
 
 ## Features
 
@@ -24,7 +24,7 @@ Vulkan 1.0+ with the `VK_KHR_synchronization2` extension.
 * `vk-buffer-device-address` Uses the buffer device address Vulkan feature. Mainly useful when using
   the raytracing extension.
 
-`tracing` is on by default.
+`tracing` and `vk-buffer-device-address` are enabled by default.
 
 ## Examples
 
