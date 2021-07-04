@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::os::raw::c_char;
 use std::sync::Arc;
 
-use erupt::{vk, ExtendableFrom};
+use erupt::{vk, ExtendableFromConst};
 #[cfg(feature = "tracing")]
 use tracing1::{error, info};
 
@@ -300,7 +300,7 @@ impl Device {
         let renderpass = unsafe {
             self.context
                 .device
-                .create_render_pass2(&renderpass_info, None, None)
+                .create_render_pass2(&renderpass_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -326,7 +326,7 @@ impl Device {
         let pipeline_layout = unsafe {
             self.context
                 .device
-                .create_pipeline_layout(&pipeline_layout_info, None, None)
+                .create_pipeline_layout(&pipeline_layout_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -446,16 +446,12 @@ impl Device {
             pool_info
         };
 
-        let pool = unsafe {
-            self.context
-                .device
-                .create_descriptor_pool(&pool_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a descriptor pool: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let pool = unsafe { self.context.device.create_descriptor_pool(&pool_info, None) }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a descriptor pool: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context
             .set_object_name(descriptor.name, vk::ObjectType::DESCRIPTOR_POOL, pool.0)?;
@@ -472,7 +468,7 @@ impl Device {
         let layout = unsafe {
             self.context
                 .device
-                .create_descriptor_set_layout(&layout_info, None, None)
+                .create_descriptor_set_layout(&layout_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -490,16 +486,12 @@ impl Device {
     pub fn create_shader_module(&self, name: &str, shader_data: &[u8]) -> Result<ShaderModule> {
         let code = erupt::utils::decode_spv(shader_data)?;
         let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(&code);
-        let module = unsafe {
-            self.context
-                .device
-                .create_shader_module(&create_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a shader module: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let module = unsafe { self.context.device.create_shader_module(&create_info, None) }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a shader module: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SHADER_MODULE, module.0)?;
@@ -544,13 +536,12 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe { self.context.device.create_buffer(&create_info, None, None) }.map_err(
-            |err| {
+        let raw =
+            unsafe { self.context.device.create_buffer(&create_info, None) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a buffer: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -590,16 +581,13 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe {
-            self.context
-                .device
-                .create_buffer_view(&create_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create an buffer view: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let raw = unsafe { self.context.device.create_buffer_view(&create_info, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create an buffer view: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -645,13 +633,12 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe { self.context.device.create_image(&create_info, None, None) }.map_err(
-            |err| {
+        let raw =
+            unsafe { self.context.device.create_image(&create_info, None) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create an image: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -692,16 +679,13 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe {
-            self.context
-                .device
-                .create_image_view(&create_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create an image view: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let raw = unsafe { self.context.device.create_image_view(&create_info, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create an image view: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -744,13 +728,12 @@ impl Device {
             create_info
         };
 
-        let raw = unsafe { self.context.device.create_sampler(&create_info, None, None) }.map_err(
-            |err| {
+        let raw =
+            unsafe { self.context.device.create_sampler(&create_info, None) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a sampler: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -762,13 +745,12 @@ impl Device {
     /// Creates a fence.
     pub fn create_fence(&self, name: &str) -> Result<Fence> {
         let fence_info = vk::FenceCreateInfoBuilder::new();
-        let raw = unsafe { self.context.device.create_fence(&fence_info, None, None) }.map_err(
-            |err| {
+        let raw =
+            unsafe { self.context.device.create_fence(&fence_info, None) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a fence: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::FENCE, raw.0)?;
@@ -781,16 +763,13 @@ impl Device {
         let mut create_info =
             vk::SemaphoreTypeCreateInfoBuilder::new().semaphore_type(vk::SemaphoreType::BINARY);
         let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut create_info);
-        let raw = unsafe {
-            self.context
-                .device
-                .create_semaphore(&semaphore_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a binary semaphore: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let raw = unsafe { self.context.device.create_semaphore(&semaphore_info, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a binary semaphore: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
@@ -808,16 +787,13 @@ impl Device {
             .semaphore_type(vk::SemaphoreType::TIMELINE)
             .initial_value(initial_value);
         let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut create_info);
-        let raw = unsafe {
-            self.context
-                .device
-                .create_semaphore(&semaphore_info, None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a timeline semaphore: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let raw = unsafe { self.context.device.create_semaphore(&semaphore_info, None) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a timeline semaphore: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
@@ -832,8 +808,8 @@ impl Device {
         query_pool_info: vk::QueryPoolCreateInfoBuilder,
     ) -> Result<QueryPool> {
         let info = query_pool_info.build();
-        let query_pool = unsafe { self.context.device.create_query_pool(&info, None, None) }
-            .map_err(|err| {
+        let query_pool =
+            unsafe { self.context.device.create_query_pool(&info, None) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a query pool: {}", err);
                 AscheError::VkResult(err)
@@ -975,16 +951,12 @@ impl Device {
     /// Create a deferred operation handle.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html)"]
     pub fn create_deferred_operation(&self, name: &str) -> Result<DeferredOperation> {
-        let operation = unsafe {
-            self.context
-                .device
-                .create_deferred_operation_khr(None, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a deferred operation handle: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let operation = unsafe { self.context.device.create_deferred_operation_khr(None) }
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a deferred operation handle: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::DEFERRED_OPERATION_KHR, operation.0)?;
@@ -1030,7 +1002,7 @@ impl Device {
         let structure = unsafe {
             self.context
                 .device
-                .create_acceleration_structure_khr(create_info, None, None)
+                .create_acceleration_structure_khr(create_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -1065,7 +1037,6 @@ impl Device {
                     build_type,
                     build_info,
                     max_primitive_counts,
-                    None,
                 )
         }
     }
@@ -1075,12 +1046,11 @@ impl Device {
     pub fn device_acceleration_structure_compatibility(
         &self,
         version_info: &vk::AccelerationStructureVersionInfoKHR,
-        compatibility: Option<vk::AccelerationStructureCompatibilityKHR>,
     ) -> vk::AccelerationStructureCompatibilityKHR {
         unsafe {
             self.context
                 .device
-                .get_device_acceleration_structure_compatibility_khr(version_info, compatibility)
+                .get_device_acceleration_structure_compatibility_khr(version_info)
         }
     }
 

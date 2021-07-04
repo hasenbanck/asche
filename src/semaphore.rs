@@ -58,16 +58,13 @@ impl TimelineSemaphore {
 
     /// Query the timeline value.
     pub fn query_value(&self) -> Result<u64> {
-        let value = unsafe {
-            self.context
-                .device
-                .get_semaphore_counter_value(self.raw, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get a semaphore counter value: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let value = unsafe { self.context.device.get_semaphore_counter_value(self.raw) }.map_err(
+            |err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to get a semaphore counter value: {}", err);
+                AscheError::VkResult(err)
+            },
+        )?;
         Ok(value)
     }
 

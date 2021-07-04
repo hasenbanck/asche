@@ -21,7 +21,7 @@ fn main() -> Result<(), asche::AscheError> {
         &window,
         asche::InstanceConfiguration {
             app_name: "triangle example",
-            app_version: erupt::vk::make_version(1, 0, 0),
+            app_version: erupt::vk::make_api_version(0, 1, 0, 0),
             extensions: vec![],
         },
     )?;

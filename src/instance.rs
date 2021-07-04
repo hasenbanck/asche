@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-use erupt::{vk, ExtendableFrom};
+use erupt::{vk, ExtendableFromConst, ExtendableFromMut};
 #[cfg(feature = "tracing")]
 use tracing1::{error, info, warn};
 
@@ -30,7 +30,7 @@ pub struct Instance {
     debug_messenger: vk::DebugUtilsMessengerEXT,
     /// The raw Vulkan instance.
     pub raw: erupt::InstanceLoader,
-    _entry: erupt::DefaultEntryLoader,
+    _entry: erupt::EntryLoader,
 }
 
 impl Instance {
@@ -51,8 +51,8 @@ impl Instance {
             .application_name(&app_name)
             .application_version(configuration.app_version)
             .engine_name(&engine_name)
-            .engine_version(vk::make_version(1, 4, 0))
-            .api_version(vk::make_version(1, 2, 0));
+            .engine_version(vk::make_api_version(0, 1, 4, 0))
+            .api_version(vk::make_api_version(0, 1, 2, 0));
 
         // Activate all needed instance layers and extensions.
         let instance_extensions =
@@ -119,12 +119,13 @@ impl Instance {
                 .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
                 .pfn_user_callback(Some(debug_utils_callback));
 
-            let utils = unsafe { instance.create_debug_utils_messenger_ext(&info, None, None) }
-                .map_err(|err| {
+            let utils = unsafe { instance.create_debug_utils_messenger_ext(&info, None) }.map_err(
+                |err| {
                     #[cfg(feature = "tracing")]
                     error!("Unable to create the debug utils messenger: {}", err);
                     AscheError::VkResult(err)
-                })?;
+                },
+            )?;
             Ok(utils)
         } else {
             Err(AscheError::DebugUtilsMissing)
@@ -164,7 +165,7 @@ impl Instance {
     }
 
     fn create_instance(
-        entry: &erupt::DefaultEntryLoader,
+        entry: &erupt::EntryLoader,
         app_info: &vk::ApplicationInfoBuilder,
         instance_extensions: &[*const c_char],
         layers: &[*const c_char],
@@ -178,7 +179,7 @@ impl Instance {
             .enabled_layer_names(layers)
             .enabled_extension_names(instance_extensions);
 
-        erupt::InstanceLoader::new(&entry, &create_info, None).map_err(|err| {
+        unsafe { erupt::InstanceLoader::new(&entry, &create_info, None) }.map_err(|err| {
             #[cfg(feature = "tracing")]
             error!("Unable to create Vulkan instance: {}", err);
             AscheError::LoaderError(err)
@@ -424,21 +425,15 @@ impl Instance {
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
 
             let g_q = (0..graphics_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let t_q = (graphics_count..graphics_count + transfer_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let c_q = (0..compute_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(compute_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(compute_queue_family_id, i as u32) })
                 .collect::<_>();
 
             Ok((
@@ -480,21 +475,15 @@ impl Instance {
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
             let g_q = (0..graphics_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let t_q = (0..transfer_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(transfer_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let c_q = (transfer_count..transfer_count + compute_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(transfer_queue_family_id, i as u32) })
                 .collect::<_>();
 
             Ok((
@@ -537,21 +526,15 @@ impl Instance {
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
 
             let g_q = (0..graphics_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let c_q = (graphics_count..graphics_count + compute_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let t_q = (0..transfer_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(transfer_queue_family_id, i as u32) })
                 .collect::<_>();
 
             Ok((
@@ -578,22 +561,16 @@ impl Instance {
             let device =
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
             let g_q = (0..graphics_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let t_q = (graphics_count..graphics_count + transfer_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let c_q = (graphics_count + transfer_count
                 ..graphics_count + transfer_count + compute_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             Ok((
@@ -643,21 +620,15 @@ impl Instance {
                 self.create_logical_device(physical_device, configuration, &queue_infos)?;
 
             let g_q = (0..graphics_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(graphics_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(graphics_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let t_q = (0..transfer_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(transfer_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(transfer_queue_family_id, i as u32) })
                 .collect::<_>();
 
             let c_q = (0..compute_count)
-                .map(|i| unsafe {
-                    device.get_device_queue(compute_queue_family_id, i as u32, None)
-                })
+                .map(|i| unsafe { device.get_device_queue(compute_queue_family_id, i as u32) })
                 .collect::<_>();
 
             Ok((
@@ -802,8 +773,9 @@ impl Instance {
             device_create_info
         };
 
-        let device =
-            erupt::DeviceLoader::new(&self.raw, physical_device, &device_create_info, None)?;
+        let device = unsafe {
+            erupt::DeviceLoader::new(&self.raw, physical_device, &device_create_info, None)
+        }?;
 
         Ok(device)
     }
@@ -929,7 +901,6 @@ impl Instance {
                     physical_device,
                     id.try_into()?,
                     self.surface,
-                    Some(vk::TRUE),
                 )
             }
             .map_err(|err| {

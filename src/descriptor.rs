@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use erupt::{vk, ExtendableFrom};
+use erupt::{vk, ExtendableFromConst};
 #[cfg(feature = "tracing")]
 use tracing1::error;
 

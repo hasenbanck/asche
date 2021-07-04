@@ -127,12 +127,8 @@ macro_rules! impl_command_pool {
                 let command_pool_info =
                     vk::CommandPoolCreateInfoBuilder::new().queue_family_index(family_index);
 
-                let raw = unsafe {
-                    context
-                        .device
-                        .create_command_pool(&command_pool_info, None, None)
-                }
-                .map_err(|err| {
+                let raw = unsafe { context.device.create_command_pool(&command_pool_info, None) }
+                    .map_err(|err| {
                     #[cfg(feature = "tracing")]
                     error!("Unable to create a command pool: {}", err);
                     AscheError::VkResult(err)

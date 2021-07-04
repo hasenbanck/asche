@@ -1,5 +1,5 @@
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use erupt::{vk, ExtendableFrom};
+use erupt::{vk, ExtendableFromConst, ExtendableFromMut};
 use glam::{Mat4, Vec3, Vec4};
 #[cfg(feature = "tracing")]
 use tracing1::info;
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
         &window,
         asche::InstanceConfiguration {
             app_name: "raytracing example",
-            app_version: erupt::vk::make_version(1, 0, 0),
+            app_version: erupt::vk::make_api_version(0, 1, 0, 0),
             extensions: vec![],
         },
     )?;

@@ -155,7 +155,6 @@ impl Swapchain {
                 .get_physical_device_surface_capabilities_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
-                    None,
                 )
         }
         .map_err(|err| {
@@ -276,7 +275,7 @@ impl Swapchain {
         let framebuffer = unsafe {
             self.context
                 .device
-                .create_framebuffer(&framebuffer_info, None, None)
+                .create_framebuffer(&framebuffer_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -368,7 +367,7 @@ impl SwapchainInner {
         let swapchain = unsafe {
             context
                 .device
-                .create_swapchain_khr(&swapchain_create_info, None, None)
+                .create_swapchain_khr(&swapchain_create_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -391,7 +390,7 @@ impl SwapchainInner {
         let present_complete_semaphore = unsafe {
             context
                 .device
-                .create_semaphore(&semaphore_create_info, None, None)
+                .create_semaphore(&semaphore_create_info, None)
         }
         .map_err(|err| {
             #[cfg(feature = "tracing")]
@@ -416,7 +415,7 @@ impl SwapchainInner {
             .timeout(u64::MAX);
 
         let index =
-            unsafe { self.context.device.acquire_next_image2_khr(&info, None) }.map_err(|err| {
+            unsafe { self.context.device.acquire_next_image2_khr(&info) }.map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to acquire the next frame image: {}", err);
                 AscheError::VkResult(err)
@@ -487,7 +486,7 @@ impl SwapchainInner {
             let raw = unsafe {
                 context
                     .device
-                    .create_image_view(&imageview_create_info, None, None)
+                    .create_image_view(&imageview_create_info, None)
             }
             .map_err(|err| {
                 #[cfg(feature = "tracing")]
