@@ -28,7 +28,7 @@ pub use {
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     semaphore::{BinarySemaphore, TimelineSemaphore},
     swapchain::{Swapchain, SwapchainFrame},
-    vk_alloc::MemoryLocation,
+    vk_alloc::{AllocatorError, MemoryLocation},
 };
 
 use crate::context::Context;
