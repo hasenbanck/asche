@@ -22,7 +22,17 @@ fn main() -> Result<(), asche::AscheError> {
         &window,
         asche::InstanceConfiguration {
             app_name: "compute example",
-            app_version: erupt::vk::make_api_version(0, 1, 0, 0),
+            app_version: asche::Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            engine_name: "engine example",
+            engine_version: asche::Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             extensions: vec![],
         },
     )?;

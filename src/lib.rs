@@ -23,7 +23,7 @@ pub use {
     error::AscheError,
     fence::Fence,
     image::{Image, ImageView, Sampler},
-    instance::{Instance, InstanceConfiguration},
+    instance::{Instance, InstanceConfiguration, Version},
     query::QueryPool,
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
     semaphore::{BinarySemaphore, TimelineSemaphore},

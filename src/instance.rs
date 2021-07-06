@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 use std::ffi::CStr;
+use std::fmt::Formatter;
 use std::os::raw::c_char;
 
 use erupt::{vk, ExtendableFromConst, ExtendableFromMut};
@@ -16,10 +17,37 @@ use crate::{AscheError, Device, DeviceConfiguration, Result, Swapchain};
 pub struct InstanceConfiguration<'a> {
     /// Name of the application.
     pub app_name: &'a str,
-    /// Version of the application. Use `ash::vk::make_version()` to create the version number.
-    pub app_version: u32,
+    /// Version of the application.
+    pub app_version: Version,
+    /// Name of the engine.
+    pub engine_name: &'a str,
+    /// Version of the engine.
+    pub engine_version: Version,
     /// Instance extensions to load.
     pub extensions: Vec<*const c_char>,
+}
+
+/// A version number.
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub struct Version {
+    /// The version major.
+    pub major: u32,
+    /// The version minor.
+    pub minor: u32,
+    /// The version patch.
+    pub patch: u32,
+}
+
+impl From<Version> for u32 {
+    fn from(v: Version) -> Self {
+        vk::make_api_version(0, v.major, v.minor, v.patch)
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
 }
 
 /// Initializes the all Vulkan resources needed to create a device.
@@ -41,17 +69,23 @@ impl Instance {
     ) -> Result<Instance> {
         let entry = erupt::EntryLoader::new()?;
 
-        let engine_name = std::ffi::CString::new("asche")?;
         let app_name = std::ffi::CString::new(configuration.app_name.to_owned())?;
+        let engine_name = std::ffi::CString::new(configuration.engine_name.to_owned())?;
 
         #[cfg(feature = "tracing")]
-        info!("Requesting Vulkan API version: 1.2");
+        {
+            info!("Application name: {}", configuration.app_name);
+            info!("Application version: {}", configuration.app_version);
+            info!("Engine name: {}", configuration.engine_name);
+            info!("Engine version: {}", configuration.engine_version);
+            info!("Requesting Vulkan API version: 1.2.0");
+        }
 
         let app_info = vk::ApplicationInfoBuilder::new()
             .application_name(&app_name)
-            .application_version(configuration.app_version)
+            .application_version(configuration.app_version.into())
             .engine_name(&engine_name)
-            .engine_version(vk::make_api_version(0, 1, 4, 0))
+            .engine_version(configuration.engine_version.into())
             .api_version(vk::make_api_version(0, 1, 2, 0));
 
         // Activate all needed instance layers and extensions.
