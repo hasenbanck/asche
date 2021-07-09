@@ -48,11 +48,11 @@ impl DescriptorPool {
             .descriptor_pool(self.raw)
             .set_layouts(&layouts);
 
-        let mut variable_info = vk::DescriptorSetVariableDescriptorCountAllocateInfoBuilder::new()
+        let variable_info = vk::DescriptorSetVariableDescriptorCountAllocateInfoBuilder::new()
             .descriptor_counts(&counts);
 
         let info = if descriptor_count.is_some() {
-            info.extend_from(&mut variable_info)
+            info.extend_from(&variable_info)
         } else {
             info
         };

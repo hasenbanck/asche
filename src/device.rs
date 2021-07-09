@@ -760,9 +760,9 @@ impl Device {
 
     /// Creates a new binary semaphore.
     pub fn create_binary_semaphore(&self, name: &str) -> Result<BinarySemaphore> {
-        let mut create_info =
+        let create_info =
             vk::SemaphoreTypeCreateInfoBuilder::new().semaphore_type(vk::SemaphoreType::BINARY);
-        let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut create_info);
+        let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&create_info);
         let raw = unsafe { self.context.device.create_semaphore(&semaphore_info, None) }.map_err(
             |err| {
                 #[cfg(feature = "tracing")]
@@ -783,10 +783,10 @@ impl Device {
         name: &str,
         initial_value: u64,
     ) -> Result<TimelineSemaphore> {
-        let mut create_info = vk::SemaphoreTypeCreateInfoBuilder::new()
+        let create_info = vk::SemaphoreTypeCreateInfoBuilder::new()
             .semaphore_type(vk::SemaphoreType::TIMELINE)
             .initial_value(initial_value);
-        let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut create_info);
+        let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&create_info);
         let raw = unsafe { self.context.device.create_semaphore(&semaphore_info, None) }.map_err(
             |err| {
                 #[cfg(feature = "tracing")]

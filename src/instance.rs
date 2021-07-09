@@ -725,7 +725,7 @@ impl Instance {
         } else {
             vk::PhysicalDeviceFeaturesBuilder::new()
         };
-        let mut features11 = if let Some(features) = configuration.features_v1_1.take() {
+        let features11 = if let Some(features) = configuration.features_v1_1.take() {
             features
         } else {
             vk::PhysicalDeviceVulkan11FeaturesBuilder::new()
@@ -735,19 +735,18 @@ impl Instance {
         } else {
             vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
         };
-        let mut device_robustness2_features =
+        let device_robustness2_features =
             if let Some(features) = configuration.features_robustness2.take() {
                 features
             } else {
                 vk::PhysicalDeviceRobustness2FeaturesEXTBuilder::new()
             };
-        let mut features_raytracing =
-            if let Some(features) = configuration.features_raytracing.take() {
-                features
-            } else {
-                vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
-            };
-        let mut features_acceleration_structure =
+        let features_raytracing = if let Some(features) = configuration.features_raytracing.take() {
+            features
+        } else {
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
+        };
+        let features_acceleration_structure =
             if let Some(features) = configuration.features_acceleration_structure.take() {
                 features
             } else {
@@ -761,7 +760,7 @@ impl Instance {
             features12 = features12.buffer_device_address(true);
         }
 
-        let mut features_synchronization2 =
+        let features_synchronization2 =
             vk::PhysicalDeviceSynchronization2FeaturesKHRBuilder::new().synchronization2(true);
 
         check_features(
@@ -785,24 +784,24 @@ impl Instance {
             .queue_create_infos(queue_infos)
             .enabled_extension_names(&device_extensions)
             .enabled_features(&features)
-            .extend_from(&mut features11)
-            .extend_from(&mut features12)
-            .extend_from(&mut features_synchronization2);
+            .extend_from(&features11)
+            .extend_from(&features12)
+            .extend_from(&features_synchronization2);
 
         let device_create_info = if robustness2_enabled {
-            device_create_info.extend_from(&mut device_robustness2_features)
+            device_create_info.extend_from(&device_robustness2_features)
         } else {
             device_create_info
         };
 
         let device_create_info = if raytracing_enabled {
-            device_create_info.extend_from(&mut features_raytracing)
+            device_create_info.extend_from(&features_raytracing)
         } else {
             device_create_info
         };
 
         let device_create_info = if acceleration_structure_enabled {
-            device_create_info.extend_from(&mut features_acceleration_structure)
+            device_create_info.extend_from(&features_acceleration_structure)
         } else {
             device_create_info
         };
