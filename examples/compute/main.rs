@@ -170,16 +170,16 @@ impl Application {
         }
 
         let compute_buffer = self.compute_command_pool.create_command_buffer(
-            Some(CommandBufferSemaphore::Timeline {
+            &[CommandBufferSemaphore::Timeline {
                 semaphore: &self.timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.timeline_value,
-            }),
-            Some(CommandBufferSemaphore::Timeline {
+            }],
+            &[CommandBufferSemaphore::Timeline {
                 semaphore: &self.timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.timeline_value + 1,
-            }),
+            }],
         )?;
 
         let set = self.descriptor_pool.create_descriptor_set(

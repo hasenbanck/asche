@@ -52,13 +52,13 @@ pub(crate) enum CommandBufferSemaphoreInner {
     },
 }
 
-impl From<CommandBufferSemaphore<'_>> for CommandBufferSemaphoreInner {
-    fn from(s: CommandBufferSemaphore<'_>) -> Self {
+impl From<&CommandBufferSemaphore<'_>> for CommandBufferSemaphoreInner {
+    fn from(s: &CommandBufferSemaphore<'_>) -> Self {
         match s {
             CommandBufferSemaphore::Binary { semaphore, stage } => {
                 CommandBufferSemaphoreInner::Binary {
                     semaphore: semaphore.raw,
-                    stage,
+                    stage: *stage,
                 }
             }
             CommandBufferSemaphore::Timeline {
@@ -67,8 +67,8 @@ impl From<CommandBufferSemaphore<'_>> for CommandBufferSemaphoreInner {
                 value,
             } => CommandBufferSemaphoreInner::Timeline {
                 semaphore: semaphore.raw,
-                stage,
-                value,
+                stage: *stage,
+                value: *value,
             },
         }
     }
@@ -151,8 +151,8 @@ macro_rules! impl_command_pool {
             /// Creates a new command buffer.
             pub fn create_command_buffer(
                 &mut self,
-                wait_semaphore: Option<CommandBufferSemaphore>,
-                signal_semaphore: Option<CommandBufferSemaphore>,
+                wait_semaphores: &[CommandBufferSemaphore],
+                signal_semaphores: &[CommandBufferSemaphore],
             ) -> Result<$buffer_name> {
                 let info = vk::CommandBufferAllocateInfoBuilder::new()
                     .command_pool(self.raw)
@@ -178,26 +178,17 @@ macro_rules! impl_command_pool {
                     command_buffers[0].0 as u64,
                 )?;
 
-                let wait_semaphore = if let Some(wait_semaphore) = wait_semaphore {
-                    let wait_semaphore: CommandBufferSemaphoreInner = wait_semaphore.into();
-                    Some(wait_semaphore)
-                } else {
-                    None
-                };
-
-                let signal_semaphore = if let Some(signal_semaphore) = signal_semaphore {
-                    let signal_semaphore: CommandBufferSemaphoreInner = signal_semaphore.into();
-                    Some(signal_semaphore)
-                } else {
-                    None
-                };
+                let wait_semaphores: Vec<CommandBufferSemaphoreInner> =
+                    wait_semaphores.iter().map(|s| s.into()).collect();
+                let signal_semaphores: Vec<CommandBufferSemaphoreInner> =
+                    signal_semaphores.iter().map(|s| s.into()).collect();
 
                 let command_buffer = $buffer_name::new(
                     self.context.clone(),
                     self.raw,
                     command_buffers[0],
-                    wait_semaphore.into(),
-                    signal_semaphore.into(),
+                    wait_semaphores,
+                    signal_semaphores,
                 );
 
                 self.command_buffer_counter += 1;
@@ -246,8 +237,8 @@ macro_rules! impl_command_buffer {
         pub struct $buffer_name {
             /// The raw Vulkan command buffer.
             pub(crate) raw: vk::CommandBuffer,
-            pub(crate) wait_semaphore: Option<CommandBufferSemaphoreInner>,
-            pub(crate) signal_semaphore: Option<CommandBufferSemaphoreInner>,
+            pub(crate) wait_semaphores: Vec<CommandBufferSemaphoreInner>,
+            pub(crate) signal_semaphores: Vec<CommandBufferSemaphoreInner>,
             pool: vk::CommandPool,
             context: Arc<Context>,
         }
@@ -257,15 +248,15 @@ macro_rules! impl_command_buffer {
                 context: Arc<Context>,
                 pool: vk::CommandPool,
                 buffer: vk::CommandBuffer,
-                wait_semaphore: Option<CommandBufferSemaphoreInner>,
-                signal_semaphore: Option<CommandBufferSemaphoreInner>,
+                wait_semaphores: Vec<CommandBufferSemaphoreInner>,
+                signal_semaphores: Vec<CommandBufferSemaphoreInner>,
             ) -> Self {
                 Self {
                     context,
                     pool,
                     raw: buffer,
-                    wait_semaphore,
-                    signal_semaphore,
+                    wait_semaphores,
+                    signal_semaphores,
                 }
             }
 
@@ -282,25 +273,11 @@ macro_rules! impl_command_buffer {
             /// Sets the wait and signal semaphores of the command buffer.
             pub fn set_semaphores(
                 &mut self,
-                wait_semaphore: Option<CommandBufferSemaphore>,
-                signal_semaphore: Option<CommandBufferSemaphore>,
+                wait_semaphores: &[CommandBufferSemaphore],
+                signal_semaphores: &[CommandBufferSemaphore],
             ) {
-                let wait_semaphore = if let Some(wait_semaphore) = wait_semaphore {
-                    let wait_semaphore: CommandBufferSemaphoreInner = wait_semaphore.into();
-                    Some(wait_semaphore)
-                } else {
-                    None
-                };
-
-                let signal_semaphore = if let Some(signal_semaphore) = signal_semaphore {
-                    let signal_semaphore: CommandBufferSemaphoreInner = signal_semaphore.into();
-                    Some(signal_semaphore)
-                } else {
-                    None
-                };
-
-                self.wait_semaphore = wait_semaphore;
-                self.signal_semaphore = signal_semaphore;
+                self.wait_semaphores = wait_semaphores.iter().map(|s| s.into()).collect();
+                self.signal_semaphores = signal_semaphores.iter().map(|s| s.into()).collect();
             }
         }
 

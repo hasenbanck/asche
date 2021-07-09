@@ -232,11 +232,11 @@ impl Application {
         let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let graphics_buffer = self.command_pool.create_command_buffer(
-            None,
-            Some(CommandBufferSemaphore::Binary {
+            &[],
+            &[CommandBufferSemaphore::Binary {
                 semaphore: &self.render_semaphore,
                 stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
-            }),
+            }],
         )?;
 
         {

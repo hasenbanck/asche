@@ -63,29 +63,18 @@ macro_rules! impl_queue {
 
                 let fence = fence.map(|fence| fence.raw);
 
-                let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> =
-                if let Some(wait_semaphore) = command_buffer.wait_semaphore.as_ref() {
-                    vec![wait_semaphore.into()]
-                } else {
-                    vec![]
-                };
-
-                let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> =
-                if let Some(signal_semaphore) = command_buffer.signal_semaphore.as_ref() {
-                    vec![signal_semaphore.into()]
-                } else {
-                    vec![]
-                };
+                let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer.wait_semaphores.iter().map(|s| s.into()).collect();
+                let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer.signal_semaphores.iter().map(|s| s.into()).collect();
 
                 let mut submit_info = vk::SubmitInfo2KHRBuilder::new().command_buffer_infos(&command_buffer_infos);
 
-                submit_info = if signal_semaphore_infos.len() > 0 {
+                submit_info = if !signal_semaphore_infos.is_empty() {
                     submit_info.signal_semaphore_infos(signal_semaphore_infos.as_slice())
                 } else {
                     submit_info
                 };
 
-                submit_info = if wait_semaphore_infos.len() > 0 {
+                submit_info = if !wait_semaphore_infos.is_empty() {
                     submit_info.wait_semaphore_infos(wait_semaphore_infos.as_slice())
                 } else {
                     submit_info
@@ -105,30 +94,29 @@ macro_rules! impl_queue {
                 Ok(())
             }
 
-
             /// Submit command buffers to a queue.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html)"]
             pub fn submit_all(&mut self, command_buffer: &[$buffer_name], fence: Option<&Fence>) -> Result<()> {
-                let command_buffer_infos = command_buffer.iter().map(|cb| {
+                let command_buffer_infos: Vec<vk::CommandBufferSubmitInfoKHRBuilder> = command_buffer.iter().map(|cb| {
                     vk::CommandBufferSubmitInfoKHRBuilder::new()
                         .command_buffer(cb.raw)
                         .device_mask(1)
                 })
-                .collect::<Vec<vk::CommandBufferSubmitInfoKHRBuilder>>();
+                .collect();
 
                 let mut wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
                 let mut signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
 
                  for cb in command_buffer.iter() {
-                    if let Some(wait_semaphore) = cb.wait_semaphore.as_ref() {
-                        let wait_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = wait_semaphore.into();
-                        wait_semaphore_infos.push(wait_semaphore);
+                    if !cb.wait_semaphores.is_empty() {
+                        let mut infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = cb.wait_semaphores.iter().map(|s| s.into()).collect();
+                        wait_semaphore_infos.append(&mut infos);
                     } else {
                         return Err(AscheError::MissingWaitSemaphore);
                     };
-                    if let Some(signal_semaphore) = cb.signal_semaphore.as_ref() {
-                        let signal_semaphore: vk::SemaphoreSubmitInfoKHRBuilder = signal_semaphore.into();
-                        signal_semaphore_infos.push(signal_semaphore);
+                    if !cb.signal_semaphores.is_empty() {
+                        let mut infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = cb.signal_semaphores.iter().map(|s| s.into()).collect();
+                        signal_semaphore_infos.append(&mut infos);
                     } else {
                         return Err(AscheError::MissingSignalSemaphore);
                     };

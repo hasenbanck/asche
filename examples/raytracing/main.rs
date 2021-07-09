@@ -865,12 +865,12 @@ impl RayTracingApplication {
 
         *timeline_value += 1;
         let command_buffer = pool.create_command_buffer(
-            None,
-            Some(CommandBufferSemaphore::Timeline {
+            &[],
+            &[CommandBufferSemaphore::Timeline {
                 semaphore: timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: *timeline_value,
-            }),
+            }],
         )?;
         {
             let encoder = command_buffer.record()?;
@@ -1101,21 +1101,27 @@ impl RayTracingApplication {
                 &self.device,
                 &format!("Model {} Vertex Buffer", id),
                 cast_slice(mesh.vertices.as_slice()),
-                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
             let index_buffer = self.uploader.create_buffer_with_data(
                 &self.device,
                 &format!("Model {} Index Buffer", id),
                 cast_slice(mesh.indices.as_slice()),
-                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
             let transform_buffer = self.uploader.create_buffer_with_data(
                 &self.device,
                 &format!("Model {} Transform Buffer", id),
                 cast_slice(&transform.matrix),
-                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             )?;
 
@@ -1253,12 +1259,12 @@ impl RayTracingApplication {
     fn compact_blas(&mut self, max_sizes: &mut [u64], compacted_sizes: &[u64]) -> Result<()> {
         self.transfer_timeline_value += 1;
         let command_buffer = self.compute_pool.create_command_buffer(
-            None,
-            Some(CommandBufferSemaphore::Timeline {
+            &[],
+            &[CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
-            }),
+            }],
         )?;
 
         let mut compacted_blas = Vec::with_capacity(self.blas.len());
@@ -1340,16 +1346,16 @@ impl RayTracingApplication {
             Vec::with_capacity(self.models.len());
         for (id, _) in self.models.iter().enumerate() {
             let compute_buffer = self.compute_pool.create_command_buffer(
-                Some(CommandBufferSemaphore::Timeline {
+                &[CommandBufferSemaphore::Timeline {
                     semaphore: &self.transfer_timeline,
                     stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                     value: self.transfer_timeline_value,
-                }),
-                Some(CommandBufferSemaphore::Timeline {
+                }],
+                &[CommandBufferSemaphore::Timeline {
                     semaphore: &self.transfer_timeline,
                     stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                     value: self.transfer_timeline_value + 1,
-                }),
+                }],
             )?;
             self.transfer_timeline_value += 1;
 
@@ -1421,7 +1427,8 @@ impl RayTracingApplication {
             &self.device,
             "Model TLAS Instances",
             &cast_slice(instance_data.as_slice()),
-            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
         )?;
@@ -1503,12 +1510,12 @@ impl RayTracingApplication {
 
         self.transfer_timeline_value += 1;
         let compute_buffer = self.compute_pool.create_command_buffer(
-            None,
-            Some(CommandBufferSemaphore::Timeline {
+            &[],
+            &[CommandBufferSemaphore::Timeline {
                 semaphore: &self.transfer_timeline,
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
-            }),
+            }],
         )?;
 
         {
@@ -1534,11 +1541,11 @@ impl RayTracingApplication {
         let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let command_buffer = self.graphics_pool.create_command_buffer(
-            None,
-            Some(CommandBufferSemaphore::Binary {
+            &[],
+            &[CommandBufferSemaphore::Binary {
                 semaphore: &self.render_semaphore,
                 stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
-            }),
+            }],
         )?;
 
         {
