@@ -66,19 +66,10 @@ macro_rules! impl_queue {
                 let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer.wait_semaphores.iter().map(|s| s.into()).collect();
                 let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer.signal_semaphores.iter().map(|s| s.into()).collect();
 
-                let mut submit_info = vk::SubmitInfo2KHRBuilder::new().command_buffer_infos(&command_buffer_infos);
-
-                submit_info = if !signal_semaphore_infos.is_empty() {
-                    submit_info.signal_semaphore_infos(signal_semaphore_infos.as_slice())
-                } else {
-                    submit_info
-                };
-
-                submit_info = if !wait_semaphore_infos.is_empty() {
-                    submit_info.wait_semaphore_infos(wait_semaphore_infos.as_slice())
-                } else {
-                    submit_info
-                };
+                let submit_info = vk::SubmitInfo2KHRBuilder::new()
+                    .command_buffer_infos(&command_buffer_infos)
+                    .wait_semaphore_infos(wait_semaphore_infos.as_slice())
+                    .signal_semaphore_infos(signal_semaphore_infos.as_slice());
 
                 unsafe {
                     self.context
@@ -104,31 +95,21 @@ macro_rules! impl_queue {
                 })
                 .collect();
 
-                let mut wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
-                let mut signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = Vec::with_capacity(4);
+                let wait_semaphore_infos: Vec<Vec<vk::SemaphoreSubmitInfoKHRBuilder>> = command_buffer.iter().map(|cb| {
+                    cb.wait_semaphores.iter().map(|s| s.into()).collect()
+                }).collect();
 
-                 for cb in command_buffer.iter() {
-                    if !cb.wait_semaphores.is_empty() {
-                        let mut infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = cb.wait_semaphores.iter().map(|s| s.into()).collect();
-                        wait_semaphore_infos.append(&mut infos);
-                    } else {
-                        return Err(AscheError::MissingWaitSemaphore);
-                    };
-                    if !cb.signal_semaphores.is_empty() {
-                        let mut infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = cb.signal_semaphores.iter().map(|s| s.into()).collect();
-                        signal_semaphore_infos.append(&mut infos);
-                    } else {
-                        return Err(AscheError::MissingSignalSemaphore);
-                    };
-                };
+                let signal_semaphore_infos: Vec<Vec<vk::SemaphoreSubmitInfoKHRBuilder>> = command_buffer.iter().map(|cb| {
+                    cb.signal_semaphores.iter().map(|s| s.into()).collect()
+                }).collect();
 
-                let submit_infos = command_buffer.iter().enumerate().map(|(id, _)| {
+                let submit_infos: Vec<vk::SubmitInfo2KHRBuilder> = command_buffer.iter().enumerate().map(|(id, _)| {
                     vk::SubmitInfo2KHRBuilder::new()
                         .command_buffer_infos(&command_buffer_infos[id..id + 1])
-                        .wait_semaphore_infos(&wait_semaphore_infos[id..id + 1])
-                        .signal_semaphore_infos(&signal_semaphore_infos[id..id + 1])
+                        .wait_semaphore_infos(&wait_semaphore_infos[id])
+                        .signal_semaphore_infos(&signal_semaphore_infos[id])
                 })
-                .collect::<Vec<vk::SubmitInfo2KHRBuilder>>();
+                .collect();
 
                 let fence = fence.map(|fence| fence.raw);
 
