@@ -145,8 +145,8 @@ struct RayTracingApplication {
     uniforms: Vec<asche::Buffer>,
     sbt_stride_addresses: Vec<vk::StridedDeviceAddressRegionKHR>,
     _sbt: asche::Buffer,
-    tlas: Vec<TLAS>,
-    blas: Vec<BLAS>,
+    tlas: Vec<Tlas>,
+    blas: Vec<Blas>,
     models: Vec<Model>,
     extent: vk::Extent2D,
     render_fence: asche::Fence,
@@ -386,11 +386,11 @@ impl RayTracingApplication {
             vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
                 | vk::DescriptorBindingFlags::PARTIALLY_BOUND,
         ];
-        let mut layout_flags =
+        let layout_flags =
             vk::DescriptorSetLayoutBindingFlagsCreateInfoBuilder::new().binding_flags(&flags);
         let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new()
             .bindings(&bindings)
-            .extend_from(&mut layout_flags);
+            .extend_from(&layout_flags);
         let raytracing_descriptor_set_layout =
             device.create_descriptor_set_layout("RT Descriptor Set Layout", layout_info)?;
 
@@ -404,11 +404,11 @@ impl RayTracingApplication {
         ];
         let flags = [vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
             | vk::DescriptorBindingFlags::PARTIALLY_BOUND];
-        let mut layout_flags =
+        let layout_flags =
             vk::DescriptorSetLayoutBindingFlagsCreateInfoBuilder::new().binding_flags(&flags);
         let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new()
             .bindings(&vertex_bindings)
-            .extend_from(&mut layout_flags);
+            .extend_from(&layout_flags);
         let vertex_descriptor_set_layout =
             device.create_descriptor_set_layout("Vertex Descriptor Set Layout", layout_info)?;
 
@@ -422,11 +422,11 @@ impl RayTracingApplication {
         ];
         let flags = [vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
             | vk::DescriptorBindingFlags::PARTIALLY_BOUND];
-        let mut layout_flags =
+        let layout_flags =
             vk::DescriptorSetLayoutBindingFlagsCreateInfoBuilder::new().binding_flags(&flags);
         let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new()
             .bindings(&index_bindings)
-            .extend_from(&mut layout_flags);
+            .extend_from(&layout_flags);
         let index_descriptor_set_layout =
             device.create_descriptor_set_layout("Index Descriptor Set Layout", layout_info)?;
 
@@ -967,14 +967,14 @@ impl RayTracingApplication {
         let structures: Vec<vk::AccelerationStructureKHR> =
             self.tlas.iter().map(|x| x.structure.raw).collect();
 
-        let mut structure_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
+        let structure_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
             .acceleration_structures(&structures)
             .build();
         let mut tlas_write = vk::WriteDescriptorSetBuilder::new()
             .dst_set(self.raytracing_descriptor_set.raw)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-            .extend_from(&mut structure_info);
+            .extend_from(&structure_info);
         tlas_write.descriptor_count = 1;
 
         // Camera Uniform
@@ -1302,7 +1302,7 @@ impl RayTracingApplication {
         Ok(())
     }
 
-    fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<BLAS> {
+    fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<Blas> {
         let buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name: &format!("Model {} BLAS Buffer", id),
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
@@ -1323,7 +1323,7 @@ impl RayTracingApplication {
             .device
             .create_acceleration_structure("Model {} BLAS", &creation_info)?;
 
-        Ok(BLAS {
+        Ok(Blas {
             structure,
             _buffer: buffer,
         })
@@ -1527,7 +1527,7 @@ impl RayTracingApplication {
         self.transfer_timeline
             .wait_for_value(self.transfer_timeline_value)?;
 
-        self.tlas.push(TLAS {
+        self.tlas.push(Tlas {
             structure,
             _buffer: buffer,
         });
@@ -1673,12 +1673,12 @@ impl RayTracingApplication {
     }
 }
 
-struct TLAS {
+struct Tlas {
     structure: asche::AccelerationStructure,
     _buffer: asche::Buffer,
 }
 
-struct BLAS {
+struct Blas {
     structure: asche::AccelerationStructure,
     _buffer: asche::Buffer,
 }

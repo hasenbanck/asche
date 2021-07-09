@@ -30,9 +30,9 @@ impl Uploader {
 
         Ok(Self {
             staging_buffer,
-            transfer_pool,
             timeline,
             timeline_value,
+            transfer_pool,
             transfer_queue,
         })
     }
