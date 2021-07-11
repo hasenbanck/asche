@@ -1130,6 +1130,16 @@ impl Device {
                 .update_descriptor_sets(descriptor_writes, descriptor_copies)
         }
     }
+
+    /// Wait for a device to become idle.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeviceWaitIdle.html)"]
+    pub fn wait_idle(&self) -> Result<()> {
+        unsafe { self.context.device.device_wait_idle() }.map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to wait for the device to become idle: {}", err);
+            AscheError::VkResult(err)
+        })
+    }
 }
 
 fn query_support_resizable_bar(
