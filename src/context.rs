@@ -21,7 +21,6 @@ pub(crate) struct Context {
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
-            self.device.device_wait_idle().unwrap();
             self.allocator.cleanup(&self.device);
             self.device.destroy_device(None);
         };

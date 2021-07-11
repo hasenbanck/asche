@@ -25,14 +25,6 @@ macro_rules! impl_queue {
             context: Arc<Context>,
         }
 
-        impl Drop for $queue_name {
-            fn drop(&mut self) {
-                unsafe {
-                    self.context.device.queue_wait_idle(self.raw).unwrap();
-                };
-            }
-        }
-
         impl $queue_name {
             pub(crate) fn new(context: Arc<Context>, family_index: u32, queue: vk::Queue) -> Self {
                 Self {
@@ -125,6 +117,16 @@ macro_rules! impl_queue {
                 })?;
 
                 Ok(())
+            }
+
+            /// Wait for a queue to become idle.
+            #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueWaitIdle.html)"]
+            pub fn wait_idle(&self) -> Result<()> {
+                unsafe { self.context.device.queue_wait_idle(self.raw) }.map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to wait for the queue to become idle: {}", err);
+                    AscheError::VkResult(err)
+                })
             }
         }
     };

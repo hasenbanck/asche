@@ -181,6 +181,14 @@ struct RayTracingApplication {
     device: asche::Device,
 }
 
+impl Drop for RayTracingApplication {
+    fn drop(&mut self) {
+        self.device
+            .wait_idle()
+            .expect("couldn't wait for device to become idle while dropping")
+    }
+}
+
 impl RayTracingApplication {
     fn new(
         device: asche::Device,

@@ -93,7 +93,15 @@ struct Application {
     command_pool: asche::GraphicsCommandPool,
     queue: asche::GraphicsQueue,
     swapchain: asche::Swapchain,
-    _device: asche::Device,
+    device: asche::Device,
+}
+
+impl Drop for Application {
+    fn drop(&mut self) {
+        self.device
+            .wait_idle()
+            .expect("couldn't wait for device to become idle while dropping")
+    }
 }
 
 impl Application {
@@ -214,7 +222,7 @@ impl Application {
         let render_semaphore = device.create_binary_semaphore("Render Semaphore")?;
 
         Ok(Self {
-            _device: device,
+            device,
             queue: graphics_queue,
             command_pool: graphics_command_pool,
             extent,

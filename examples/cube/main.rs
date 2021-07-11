@@ -127,6 +127,14 @@ struct Application {
     device: asche::Device,
 }
 
+impl Drop for Application {
+    fn drop(&mut self) {
+        self.device
+            .wait_idle()
+            .expect("couldn't wait for device to become idle while dropping")
+    }
+}
+
 impl Application {
     fn new(
         device: asche::Device,
