@@ -10,27 +10,26 @@ use erupt::vk::ClearValue;
 use tracing1::error;
 
 use crate::context::Context;
-use crate::semaphore::TimelineSemaphore;
 use crate::{
-    AscheError, BinarySemaphore, ComputePipeline, GraphicsPipeline, QueueType, RayTracingPipeline,
-    RenderPass, RenderPassColorAttachmentDescriptor, RenderPassDepthAttachmentDescriptor, Result,
-    Swapchain,
+    AscheError, BinarySemaphoreHandle, ComputePipeline, GraphicsPipeline, QueueType,
+    RayTracingPipeline, RenderPass, RenderPassColorAttachmentDescriptor,
+    RenderPassDepthAttachmentDescriptor, Result, Swapchain, TimelineSemaphoreHandle,
 };
 
 /// Defines the semaphore a command buffer will use on wait and signal.
 #[derive(Debug)]
-pub enum CommandBufferSemaphore<'a> {
+pub enum CommandBufferSemaphore {
     /// A binary semaphore.
     Binary {
-        /// Reference to the binary semaphore.
-        semaphore: &'a BinarySemaphore,
+        /// Handle of the binary semaphore.
+        semaphore: BinarySemaphoreHandle,
         /// The stage for this semaphore.
         stage: vk::PipelineStageFlags2KHR,
     },
     /// A timeline semaphore.
     Timeline {
-        /// Reference to the timeline semaphore.
-        semaphore: &'a TimelineSemaphore,
+        /// Handle of the timeline semaphore.
+        semaphore: TimelineSemaphoreHandle,
         /// The stage for this semaphore.
         stage: vk::PipelineStageFlags2KHR,
         /// The timeline value to wait / signal.
@@ -52,12 +51,12 @@ pub(crate) enum CommandBufferSemaphoreInner {
     },
 }
 
-impl From<&CommandBufferSemaphore<'_>> for CommandBufferSemaphoreInner {
-    fn from(s: &CommandBufferSemaphore<'_>) -> Self {
+impl From<&CommandBufferSemaphore> for CommandBufferSemaphoreInner {
+    fn from(s: &CommandBufferSemaphore) -> Self {
         match s {
             CommandBufferSemaphore::Binary { semaphore, stage } => {
                 CommandBufferSemaphoreInner::Binary {
-                    semaphore: semaphore.raw,
+                    semaphore: semaphore.0,
                     stage: *stage,
                 }
             }
@@ -66,7 +65,7 @@ impl From<&CommandBufferSemaphore<'_>> for CommandBufferSemaphoreInner {
                 stage,
                 value,
             } => CommandBufferSemaphoreInner::Timeline {
-                semaphore: semaphore.raw,
+                semaphore: semaphore.0,
                 stage: *stage,
                 value: *value,
             },

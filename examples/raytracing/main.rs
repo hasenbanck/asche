@@ -875,7 +875,7 @@ impl RayTracingApplication {
         let command_buffer = pool.create_command_buffer(
             &[],
             &[CommandBufferSemaphore::Timeline {
-                semaphore: timeline,
+                semaphore: timeline.handle(),
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: *timeline_value,
             }],
@@ -1269,7 +1269,7 @@ impl RayTracingApplication {
         let command_buffer = self.compute_pool.create_command_buffer(
             &[],
             &[CommandBufferSemaphore::Timeline {
-                semaphore: &self.transfer_timeline,
+                semaphore: self.transfer_timeline.handle(),
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
             }],
@@ -1355,12 +1355,12 @@ impl RayTracingApplication {
         for (id, _) in self.models.iter().enumerate() {
             let compute_buffer = self.compute_pool.create_command_buffer(
                 &[CommandBufferSemaphore::Timeline {
-                    semaphore: &self.transfer_timeline,
+                    semaphore: self.transfer_timeline.handle(),
                     stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                     value: self.transfer_timeline_value,
                 }],
                 &[CommandBufferSemaphore::Timeline {
-                    semaphore: &self.transfer_timeline,
+                    semaphore: self.transfer_timeline.handle(),
                     stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                     value: self.transfer_timeline_value + 1,
                 }],
@@ -1520,7 +1520,7 @@ impl RayTracingApplication {
         let compute_buffer = self.compute_pool.create_command_buffer(
             &[],
             &[CommandBufferSemaphore::Timeline {
-                semaphore: &self.transfer_timeline,
+                semaphore: self.transfer_timeline.handle(),
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.transfer_timeline_value,
             }],
@@ -1551,7 +1551,7 @@ impl RayTracingApplication {
         let command_buffer = self.graphics_pool.create_command_buffer(
             &[],
             &[CommandBufferSemaphore::Binary {
-                semaphore: &self.render_semaphore,
+                semaphore: self.render_semaphore.handle(),
                 stage: vk::PipelineStageFlags2KHR::COLOR_ATTACHMENT_OUTPUT_KHR,
             }],
         )?;

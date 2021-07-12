@@ -7,8 +7,16 @@ use tracing1::error;
 use crate::context::Context;
 use crate::{AscheError, Result};
 
+/// A handle of a binary semaphore.
+#[derive(Debug, Clone, Copy)]
+pub struct BinarySemaphoreHandle(pub(crate) vk::Semaphore);
+
+/// A handle of a timeline semaphore.
+#[derive(Debug, Clone, Copy)]
+pub struct TimelineSemaphoreHandle(pub(crate) vk::Semaphore);
+
 /// A binary semaphore.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinarySemaphore {
     pub(crate) raw: vk::Semaphore,
     context: Arc<Context>,
@@ -29,6 +37,11 @@ impl BinarySemaphore {
             context,
             raw: semaphore,
         }
+    }
+
+    /// Returns the handle of the binary semaphore.
+    pub fn handle(&self) -> BinarySemaphoreHandle {
+        return BinarySemaphoreHandle(self.raw);
     }
 }
 
@@ -54,6 +67,11 @@ impl TimelineSemaphore {
             context,
             raw: semaphore,
         }
+    }
+
+    /// Returns the handle of the timeline semaphore.
+    pub fn handle(&self) -> TimelineSemaphoreHandle {
+        return TimelineSemaphoreHandle(self.raw);
     }
 
     /// Query the timeline value.

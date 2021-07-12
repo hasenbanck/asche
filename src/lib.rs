@@ -26,7 +26,9 @@ pub use {
     instance::{Instance, InstanceConfiguration, Version},
     query::QueryPool,
     queue::{ComputeQueue, GraphicsQueue, TransferQueue},
-    semaphore::{BinarySemaphore, TimelineSemaphore},
+    semaphore::{
+        BinarySemaphore, BinarySemaphoreHandle, TimelineSemaphore, TimelineSemaphoreHandle,
+    },
     swapchain::{Swapchain, SwapchainFrame},
     vk_alloc::{AllocatorError, MemoryLocation},
 };

@@ -179,12 +179,12 @@ impl Application {
 
         let compute_buffer = self.compute_command_pool.create_command_buffer(
             &[CommandBufferSemaphore::Timeline {
-                semaphore: &self.timeline,
+                semaphore: self.timeline.handle(),
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.timeline_value,
             }],
             &[CommandBufferSemaphore::Timeline {
-                semaphore: &self.timeline,
+                semaphore: self.timeline.handle(),
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.timeline_value + 1,
             }],

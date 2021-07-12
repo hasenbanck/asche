@@ -67,7 +67,7 @@ impl Uploader {
         let transfer_buffer = self.transfer_pool.create_command_buffer(
             &[],
             &[CommandBufferSemaphore::Timeline {
-                semaphore: &self.timeline,
+                semaphore: self.timeline.handle(),
                 stage: vk::PipelineStageFlags2KHR::NONE_KHR,
                 value: self.timeline_value,
             }],
