@@ -223,7 +223,7 @@ impl Application {
                 .mapped_slice()
                 .expect("data buffer allocation was not mapped")
                 .unwrap();
-            data[..].clone_from_slice(bytemuck::cast_slice(&data_slice));
+            data[..].clone_from_slice(bytemuck::cast_slice(data_slice));
         }
 
         data.iter()

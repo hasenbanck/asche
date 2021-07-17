@@ -209,11 +209,11 @@ impl Instance {
 
         let create_info = vk::InstanceCreateInfoBuilder::new()
             .flags(vk::InstanceCreateFlags::empty())
-            .application_info(&app_info)
+            .application_info(app_info)
             .enabled_layer_names(layers)
             .enabled_extension_names(instance_extensions);
 
-        unsafe { erupt::InstanceLoader::new(&entry, &create_info, None) }.map_err(|err| {
+        unsafe { erupt::InstanceLoader::new(entry, &create_info, None) }.map_err(|err| {
             #[cfg(feature = "tracing")]
             error!("Unable to create Vulkan instance: {}", err);
             AscheError::LoaderError(err)

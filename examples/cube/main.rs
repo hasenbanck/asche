@@ -429,13 +429,13 @@ impl Application {
         let (vertex_data, index_data) = create_cube_data();
         let index_buffer = app.create_buffer(
             "Index Buffer",
-            &bytemuck::cast_slice(&index_data),
+            bytemuck::cast_slice(&index_data),
             vk::BufferUsageFlags::INDEX_BUFFER,
         )?;
 
         let vertex_buffer = app.create_buffer(
             "Vertex Buffer",
-            &bytemuck::cast_slice(&vertex_data),
+            bytemuck::cast_slice(&vertex_data),
             vk::BufferUsageFlags::VERTEX_BUFFER,
         )?;
 
@@ -622,7 +622,7 @@ impl Application {
             .allocation
             .mapped_slice_mut()?
             .expect("staging buffer allocation was not mapped");
-        stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(&buffer_data));
+        stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(buffer_data));
 
         let dst_buffer = self.device.create_buffer(&asche::BufferDescriptor {
             name,

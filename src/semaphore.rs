@@ -41,7 +41,7 @@ impl BinarySemaphore {
 
     /// Returns the handle of the binary semaphore.
     pub fn handle(&self) -> BinarySemaphoreHandle {
-        return BinarySemaphoreHandle(self.raw);
+        BinarySemaphoreHandle(self.raw)
     }
 }
 
@@ -71,7 +71,7 @@ impl TimelineSemaphore {
 
     /// Returns the handle of the timeline semaphore.
     pub fn handle(&self) -> TimelineSemaphoreHandle {
-        return TimelineSemaphoreHandle(self.raw);
+        TimelineSemaphoreHandle(self.raw)
     }
 
     /// Query the timeline value.

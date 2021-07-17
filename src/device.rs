@@ -545,7 +545,7 @@ impl Device {
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::BUFFER, raw.0)?;
+            .set_object_name(descriptor.name, vk::ObjectType::BUFFER, raw.0)?;
 
         let allocation = self.context.allocator.allocate_memory_for_buffer(
             &self.context.device,
@@ -591,7 +591,7 @@ impl Device {
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::BUFFER_VIEW, raw.0)?;
+            .set_object_name(descriptor.name, vk::ObjectType::BUFFER_VIEW, raw.0)?;
 
         Ok(BufferView::new(raw, self.context.clone()))
     }
@@ -642,7 +642,7 @@ impl Device {
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE, raw.0)?;
+            .set_object_name(descriptor.name, vk::ObjectType::IMAGE, raw.0)?;
 
         let allocation = self.context.allocator.allocate_memory_for_image(
             &self.context.device,
@@ -689,7 +689,7 @@ impl Device {
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.0)?;
+            .set_object_name(descriptor.name, vk::ObjectType::IMAGE_VIEW, raw.0)?;
 
         Ok(ImageView::new(raw, self.context.clone()))
     }
@@ -737,7 +737,7 @@ impl Device {
 
         #[cfg(debug_assertions)]
         self.context
-            .set_object_name(&descriptor.name, vk::ObjectType::SAMPLER, raw.0)?;
+            .set_object_name(descriptor.name, vk::ObjectType::SAMPLER, raw.0)?;
 
         Ok(Sampler::new(raw, self.context.clone()))
     }

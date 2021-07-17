@@ -1434,7 +1434,7 @@ impl RayTracingApplication {
         let instance_buffer = self.uploader.create_buffer_with_data(
             &self.device,
             "Model TLAS Instances",
-            &cast_slice(instance_data.as_slice()),
+            cast_slice(instance_data.as_slice()),
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                 | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
