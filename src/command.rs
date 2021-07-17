@@ -1,7 +1,7 @@
 //! Implements command pools and command buffers.
 
 use std::convert::TryInto;
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 use std::sync::Arc;
 
 use erupt::vk;
@@ -331,6 +331,18 @@ pub trait CommonCommands {
     /// Insert a memory dependency.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR);
+
+    /// Open a command buffer debug label region.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBeginDebugUtilsLabelEXT.html)"]
+    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()>;
+
+    /// Close a command buffer label region.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdEndDebugUtilsLabelEXT.html)"]
+    fn end_debug_utils_label(&self);
+
+    /// Insert a label into a command buffer.
+    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdInsertDebugUtilsLabelEXT.html)"]
+    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()>;
 }
 
 /// Used to encode command for a compute command buffer.
@@ -380,9 +392,23 @@ impl<'a> CommonCommands for ComputeCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+
+    /// Insert a memory dependency.
+    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+        begin_debug_utils_label(self.context, self.buffer, label, color)
+    }
+
+    /// Close a command buffer label region.
+    fn end_debug_utils_label(&self) {
+        end_debug_utils_label(self.context, self.buffer);
+    }
+
+    /// Insert a label into a command buffer.
+    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+        insert_debug_utils_label(self.context, self.buffer, label, color)
     }
 }
 
@@ -684,9 +710,23 @@ impl<'a> CommonCommands for GraphicsCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+
+    /// Insert a memory dependency.
+    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+        begin_debug_utils_label(self.context, self.buffer, label, color)
+    }
+
+    /// Close a command buffer label region.
+    fn end_debug_utils_label(&self) {
+        end_debug_utils_label(self.context, self.buffer);
+    }
+
+    /// Insert a label into a command buffer.
+    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+        insert_debug_utils_label(self.context, self.buffer, label, color)
     }
 }
 
@@ -967,10 +1007,24 @@ impl<'a> CommonCommands for TransferCommandEncoder<'a> {
         )
     }
 
-    /// Insert a memory dependency.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
     fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
+    }
+
+    /// Insert a memory dependency.
+    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+        begin_debug_utils_label(self.context, self.buffer, label, color)
+    }
+
+    /// Close a command buffer label region.
+    fn end_debug_utils_label(&self) {
+        end_debug_utils_label(self.context, self.buffer);
+    }
+
+    /// Insert a label into a command buffer.
+    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+        insert_debug_utils_label(self.context, self.buffer, label, color)
     }
 }
 
@@ -1380,4 +1434,47 @@ fn pipeline_barrier2(
             .device
             .cmd_pipeline_barrier2_khr(command_buffer, dependency_info)
     };
+}
+
+#[inline]
+fn begin_debug_utils_label(
+    context: &Context,
+    command_buffer: vk::CommandBuffer,
+    label: &str,
+    color: [f32; 4],
+) -> Result<()> {
+    let label = CString::new(label.to_string())?;
+    unsafe {
+        context.device.cmd_begin_debug_utils_label_ext(
+            command_buffer,
+            &vk::DebugUtilsLabelEXTBuilder::new()
+                .label_name(label.as_c_str())
+                .color(color),
+        )
+    }
+    Ok(())
+}
+
+#[inline]
+fn end_debug_utils_label(context: &Context, command_buffer: vk::CommandBuffer) {
+    unsafe { context.device.cmd_end_debug_utils_label_ext(command_buffer) };
+}
+
+#[inline]
+fn insert_debug_utils_label(
+    context: &Context,
+    command_buffer: vk::CommandBuffer,
+    label: &str,
+    color: [f32; 4],
+) -> Result<()> {
+    let label = CString::new(label.to_string())?;
+    unsafe {
+        context.device.cmd_insert_debug_utils_label_ext(
+            command_buffer,
+            &vk::DebugUtilsLabelEXTBuilder::new()
+                .label_name(label.as_c_str())
+                .color(color),
+        )
+    }
+    Ok(())
 }

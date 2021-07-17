@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::sync::Arc;
 
 use erupt::vk;
@@ -127,6 +128,42 @@ macro_rules! impl_queue {
                     error!("Unable to wait for the queue to become idle: {}", err);
                     AscheError::VkResult(err)
                 })
+            }
+
+            /// Open a queue debug label region.
+            #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueBeginDebugUtilsLabelEXT.html)"]
+            pub fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+                let label = CString::new(label.to_owned())?;
+                unsafe {
+                    self.context.device.queue_begin_debug_utils_label_ext(
+                        self.raw,
+                        &vk::DebugUtilsLabelEXTBuilder::new()
+                            .label_name(label.as_c_str())
+                            .color(color),
+                    )
+                }
+                Ok(())
+            }
+
+            /// Close a queue debug label region.
+            #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueEndDebugUtilsLabelEXT.html)"]
+            pub fn end_debug_utils_label(&self) {
+                unsafe { self.context.device.queue_end_debug_utils_label_ext(self.raw) };
+            }
+
+            /// Insert a label into a queue.
+            #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueInsertDebugUtilsLabelEXT.html)"]
+            pub fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+                let label = CString::new(label.to_owned())?;
+                unsafe {
+                    self.context.device.queue_insert_debug_utils_label_ext(
+                        self.raw,
+                        &vk::DebugUtilsLabelEXTBuilder::new()
+                            .label_name(label.as_c_str())
+                            .color(color),
+                    )
+                }
+                Ok(())
             }
         }
     };
