@@ -316,7 +316,7 @@ impl<'a> Default for SamplerDescriptor<'a> {
             mip_lod_bias: vk::SamplerMipmapMode::NEAREST,
             anisotropy_enable: false,
             max_anisotropy: 0.0,
-            compare_op: Some(vk::CompareOp::NEVER),
+            compare_op: None,
             min_lod: 0.0,
             max_lod: f32::MAX,
             border_color: None,
