@@ -56,7 +56,7 @@ pub struct Instance {
     pub(crate) surface: vk::SurfaceKHR,
     #[cfg(debug_assertions)]
     debug_messenger: vk::DebugUtilsMessengerEXT,
-    raw: Box<erupt::InstanceLoader>,
+    raw: erupt::InstanceLoader,
     _entry: erupt::EntryLoader,
 }
 
@@ -121,7 +121,7 @@ impl Instance {
 
         Ok(Self {
             _entry: entry,
-            raw: Box::new(instance),
+            raw: instance,
             surface,
             #[cfg(debug_assertions)]
             debug_messenger,
