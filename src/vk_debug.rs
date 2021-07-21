@@ -16,25 +16,24 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
     }
 
     let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
-    let ty = format!("{:?}", message_types);
 
     #[cfg(feature = "tracing")]
     {
         match message_severity {
             vk::DebugUtilsMessageSeverityFlagBitsEXT::ERROR_EXT => {
-                error!("{} - {:?}", ty, message)
+                error!("{:?} - {:?}", message_types, message)
             }
             vk::DebugUtilsMessageSeverityFlagBitsEXT::WARNING_EXT => {
-                warn!("{} - {:?}", ty, message)
+                warn!("{:?} - {:?}", message_types, message)
             }
             vk::DebugUtilsMessageSeverityFlagBitsEXT::INFO_EXT => {
-                info!("{} - {:?}", ty, message)
+                info!("{:?} - {:?}", message_types, message)
             }
             vk::DebugUtilsMessageSeverityFlagBitsEXT::VERBOSE_EXT => {
-                debug!("{} - {:?}", ty, message)
+                debug!("{:?} - {:?}", message_types, message)
             }
             _ => {
-                warn!("{} - {:?}", ty, message);
+                warn!("{:?} - {:?}", message_types, message);
             }
         }
     }
@@ -43,19 +42,19 @@ pub(crate) unsafe extern "system" fn debug_utils_callback(
     {
         match message_severity {
             vk::DebugUtilsMessageSeverityFlagBitsEXT::ERROR_EXT => {
-                println!("ERROR: {} - {:?}", ty, message)
+                println!("ERROR: {:?} - {:?}", message_types, message)
             }
             vk::DebugUtilsMessageSeverityFlagBitsEXT::WARNING_EXT => {
-                println!("WARN: {} - {:?}", ty, message)
+                println!("WARN: {:?} - {:?}", message_types, message)
             }
             vk::DebugUtilsMessageSeverityFlagBitsEXT::INFO_EXT => {
-                println!("INFO: {} - {:?}", ty, message)
+                println!("INFO: {:?} - {:?}", message_types, message)
             }
             vk::DebugUtilsMessageSeverityFlagBitsEXT::VERBOSE_EXT => {
-                println!("DEBUG: {} - {:?}", ty, message)
+                println!("DEBUG: {:?} - {:?}", message_types, message)
             }
             _ => {
-                println!("WARN: {} - {:?}", ty, message);
+                println!("WARN: {:?} - {:?}", message_types, message);
             }
         }
     }
