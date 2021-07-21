@@ -93,7 +93,7 @@ impl Application {
 
         let compute_shader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::COMPUTE)
-            .module(comp_module.raw)
+            .module(comp_module.raw())
             .name(&mainfunctionname);
 
         // Descriptor set layout
@@ -119,14 +119,14 @@ impl Application {
         })?;
 
         // Pipeline layout
-        let layouts = [descriptor_set_layout.raw];
+        let layouts = [descriptor_set_layout.raw()];
         let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new().set_layouts(&layouts);
         let pipeline_layout =
             device.create_pipeline_layout("Compute Pipeline Layout", pipeline_layout)?;
 
         // Pipeline
         let pipeline_info = vk::ComputePipelineCreateInfoBuilder::new()
-            .layout(pipeline_layout.raw)
+            .layout(pipeline_layout.raw())
             .stage(compute_shader_stage.build());
 
         let pipeline = device.create_compute_pipeline("Compute Pipeline", pipeline_info)?;
@@ -170,11 +170,10 @@ impl Application {
 
         {
             let data_slice = buffer
-                .allocation
                 .mapped_slice_mut()?
                 .expect("data buffer allocation was not mapped");
             data_slice[..].clone_from_slice(bytemuck::cast_slice(&data));
-            self.device.flush_mapped_memory(&buffer.allocation)?;
+            buffer.flush()?;
         }
 
         let compute_buffer = self.compute_command_pool.create_command_buffer(
@@ -197,11 +196,11 @@ impl Application {
         )?;
 
         let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-            .buffer(buffer.raw)
+            .buffer(buffer.raw())
             .offset(0)
             .range(DATA_SIZE)];
         let write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(set.raw)
+            .dst_set(set.raw())
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&buffer_info);
@@ -210,7 +209,7 @@ impl Application {
         {
             let encoder = compute_buffer.record()?;
             encoder.bind_pipeline(&self.pipeline);
-            encoder.bind_descriptor_sets(self.pipeline_layout.raw, 0, &[set.raw], &[]);
+            encoder.bind_descriptor_sets(self.pipeline_layout.raw(), 0, &[set.raw()], &[]);
             encoder.dispatch(1024, 1, 1);
         }
         self.compute_queue.submit(&compute_buffer, None)?;
@@ -219,7 +218,6 @@ impl Application {
 
         {
             let data_slice = buffer
-                .allocation
                 .mapped_slice()
                 .expect("data buffer allocation was not mapped")
                 .unwrap();

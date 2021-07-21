@@ -129,11 +129,11 @@ impl Application {
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let vertexshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::VERTEX)
-            .module(vert_module.raw)
+            .module(vert_module.raw())
             .name(&mainfunctionname);
         let fragmentshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::FRAGMENT)
-            .module(frag_module.raw)
+            .module(frag_module.raw())
             .name(&mainfunctionname);
 
         // Renderpass
@@ -210,8 +210,8 @@ impl Application {
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
-            .layout(pipeline_layout.raw)
-            .render_pass(render_pass.raw)
+            .layout(pipeline_layout.raw())
+            .render_pass(render_pass.raw())
             .subpass(0);
         let pipeline = device.create_graphics_pipeline("Triangle Pipeline", pipeline_info)?;
 
@@ -260,7 +260,7 @@ impl Application {
                     &mut self.swapchain,
                     &self.render_pass,
                     &[asche::RenderPassColorAttachmentDescriptor {
-                        attachment: frame.view,
+                        attachment: frame.view(),
                         clear_value: Some(vk::ClearValue {
                             color: vk::ClearColorValue {
                                 float32: [1.0, 0.0, 1.0, 1.0],

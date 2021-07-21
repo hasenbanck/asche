@@ -11,8 +11,7 @@ use crate::{AscheError, Result};
 /// Wraps an acceleration structure.
 #[derive(Debug)]
 pub struct AccelerationStructure {
-    /// The raw Vulkan acceleration structure.
-    pub raw: vk::AccelerationStructureKHR,
+    raw: vk::AccelerationStructureKHR,
     context: Arc<Context>,
 }
 
@@ -29,6 +28,12 @@ impl Drop for AccelerationStructure {
 impl AccelerationStructure {
     pub(crate) fn new(raw: vk::AccelerationStructureKHR, context: Arc<Context>) -> Self {
         Self { raw, context }
+    }
+
+    /// The raw Vulkan acceleration structure handle.
+    #[inline]
+    pub fn raw(&self) -> vk::AccelerationStructureKHR {
+        self.raw
     }
 
     /// Query an address of a acceleration structure.

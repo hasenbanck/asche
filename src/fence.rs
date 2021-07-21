@@ -10,7 +10,7 @@ use crate::{AscheError, Result};
 /// A fence.
 #[derive(Debug)]
 pub struct Fence {
-    pub(crate) raw: vk::Fence,
+    raw: vk::Fence,
     context: Arc<Context>,
 }
 
@@ -29,6 +29,12 @@ impl Fence {
             context,
             raw: fence,
         }
+    }
+
+    /// The raw Vulkan fence handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Fence {
+        self.raw
     }
 
     /// Wait for the fence.

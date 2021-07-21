@@ -161,11 +161,11 @@ impl Application {
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let vertexshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::VERTEX)
-            .module(vert_module.raw)
+            .module(vert_module.raw())
             .name(&mainfunctionname);
         let fragmentshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::FRAGMENT)
-            .module(frag_module.raw)
+            .module(frag_module.raw())
             .name(&mainfunctionname);
 
         // Depth image
@@ -294,7 +294,7 @@ impl Application {
             .offset(0)
             .size(64)];
 
-        let layouts = [descriptor_set_layout.raw];
+        let layouts = [descriptor_set_layout.raw()];
         let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new()
             .push_constant_ranges(&push_constants_ranges)
             .set_layouts(&layouts);
@@ -375,8 +375,8 @@ impl Application {
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
             .depth_stencil_state(&depth_stencil_state)
-            .layout(pipeline_layout.raw)
-            .render_pass(render_pass.raw)
+            .layout(pipeline_layout.raw())
+            .render_pass(render_pass.raw())
             .subpass(0);
 
         let pipeline = device.create_graphics_pipeline("Cube Pipeline", pipeline_info)?;
@@ -468,12 +468,10 @@ impl Application {
         })?;
 
         let stagging_slice = stagging_buffer
-            .allocation
             .mapped_slice_mut()?
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..dds.data.len()].clone_from_slice(bytemuck::cast_slice(&dds.data));
-        self.device
-            .flush_mapped_memory(&stagging_buffer.allocation)?;
+        stagging_buffer.flush()?;
 
         let extent = vk::Extent3D {
             width: dds.header.width,
@@ -540,7 +538,7 @@ impl Application {
             let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::UNDEFINED)
                 .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .image(image.raw)
+                .image(image.raw())
                 .subresource_range(subresource_range)
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
@@ -555,8 +553,8 @@ impl Application {
             encoder.pipeline_barrier2(&dependency_info);
 
             encoder.copy_buffer_to_image(
-                stagging_buffer.raw,
-                image.raw,
+                stagging_buffer.raw(),
+                image.raw(),
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 vk::BufferImageCopyBuilder::new()
                     .buffer_offset(0)
@@ -575,7 +573,7 @@ impl Application {
             let barrier = [vk::ImageMemoryBarrier2KHRBuilder::new()
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image(image.raw)
+                .image(image.raw())
                 .subresource_range(subresource_range)
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
@@ -619,7 +617,6 @@ impl Application {
         })?;
 
         let stagging_slice = stagging_buffer
-            .allocation
             .mapped_slice_mut()?
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(buffer_data));
@@ -630,7 +627,7 @@ impl Application {
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
-            size: stagging_buffer.allocation.size,
+            size: buffer_data.len() as u64,
             flags: None,
         })?;
 
@@ -651,8 +648,8 @@ impl Application {
         {
             let encoder = transfer_buffer.record()?;
             encoder.copy_buffer(
-                stagging_buffer.raw,
-                dst_buffer.raw,
+                stagging_buffer.raw(),
+                dst_buffer.raw(),
                 0,
                 0,
                 buffer_data.len() as u64,
@@ -692,11 +689,11 @@ impl Application {
         )?;
 
         let image_info = [vk::DescriptorImageInfoBuilder::new()
-            .sampler(self.sampler.raw)
-            .image_view(self.textures[0].view.raw)
+            .sampler(self.sampler.raw())
+            .image_view(self.textures[0].view.raw())
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
         let write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(set.raw)
+            .dst_set(set.raw())
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .image_info(&image_info);
@@ -714,7 +711,7 @@ impl Application {
                 &mut self.swapchain,
                 &self.render_pass,
                 &[asche::RenderPassColorAttachmentDescriptor {
-                    attachment: frame.view,
+                    attachment: frame.view(),
                     clear_value: Some(vk::ClearValue {
                         color: vk::ClearColorValue {
                             float32: [1.0, 0.0, 1.0, 1.0],
@@ -722,7 +719,7 @@ impl Application {
                     }),
                 }],
                 Some(asche::RenderPassDepthAttachmentDescriptor {
-                    attachment: self.depth_texture.view.raw,
+                    attachment: self.depth_texture.view.raw(),
                     clear_value: Some(vk::ClearValue {
                         color: vk::ClearColorValue {
                             float32: [1.0, 0.0, 1.0, 1.0],
@@ -733,13 +730,13 @@ impl Application {
             )?;
 
             pass.bind_pipeline(&self.pipeline);
-            pass.bind_descriptor_sets(self.pipeline_layout.raw, 0, &[set.raw], &[]);
+            pass.bind_descriptor_sets(self.pipeline_layout.raw(), 0, &[set.raw()], &[]);
 
-            pass.bind_index_buffer(self.index_buffer[0].raw, 0, vk::IndexType::UINT32);
-            pass.bind_vertex_buffers(0, &[self.vertex_buffer[0].raw], &[0]);
+            pass.bind_index_buffer(self.index_buffer[0].raw(), 0, vk::IndexType::UINT32);
+            pass.bind_vertex_buffers(0, &[self.vertex_buffer[0].raw()], &[0]);
 
             pass.push_constants(
-                self.pipeline_layout.raw,
+                self.pipeline_layout.raw(),
                 vk::ShaderStageFlags::VERTEX,
                 0,
                 cast_slice(mvp_matrix.as_ref()),

@@ -338,15 +338,15 @@ impl RayTracingApplication {
 
         let raygen_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::RAYGEN_KHR)
-            .module(raygen_module.raw)
+            .module(raygen_module.raw())
             .name(&mainfunctionname);
         let miss_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::MISS_KHR)
-            .module(miss_module.raw)
+            .module(miss_module.raw())
             .name(&mainfunctionname);
         let close_hit_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::CLOSEST_HIT_KHR)
-            .module(close_hit_module.raw)
+            .module(close_hit_module.raw())
             .name(&mainfunctionname);
 
         let shader_stages = vec![raygen_stage, miss_stage, close_hit_stage];
@@ -495,9 +495,9 @@ impl RayTracingApplication {
 
         // RT pipeline layout
         let layouts = [
-            raytracing_descriptor_set_layout.raw,
-            vertex_descriptor_set_layout.raw,
-            index_descriptor_set_layout.raw,
+            raytracing_descriptor_set_layout.raw(),
+            vertex_descriptor_set_layout.raw(),
+            index_descriptor_set_layout.raw(),
         ];
         let layout_info = vk::PipelineLayoutCreateInfoBuilder::new().set_layouts(&layouts);
         let raytracing_pipeline_layout =
@@ -533,7 +533,7 @@ impl RayTracingApplication {
             .stages(&shader_stages)
             .groups(&groups)
             .max_pipeline_ray_recursion_depth(max_bounce)
-            .layout(raytracing_pipeline_layout.raw);
+            .layout(raytracing_pipeline_layout.raw());
 
         let raytracing_pipeline =
             device.create_raytracing_pipeline("RT Pipeline", None, rt_pipeline_info)?;
@@ -598,7 +598,7 @@ impl RayTracingApplication {
 
         let mut handle_data: Vec<u8> = vec![0; handle_data_size as usize];
         device.ray_tracing_shader_group_handles(
-            raytracing_pipeline.raw,
+            raytracing_pipeline.raw(),
             0,
             group_count,
             handle_data.as_mut_slice(),
@@ -694,11 +694,11 @@ impl RayTracingApplication {
 
         let frag_module_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::FRAGMENT)
-            .module(frag_module.raw)
+            .module(frag_module.raw())
             .name(&mainfunctionname);
         let vert_module_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(vk::ShaderStageFlagBits::VERTEX)
-            .module(vert_module.raw)
+            .module(vert_module.raw())
             .name(&mainfunctionname);
 
         // Postprocess renderpass
@@ -756,7 +756,7 @@ impl RayTracingApplication {
         )?;
 
         // Postprocess pipeline layout
-        let layouts = [postprocess_descriptor_set_layout.raw];
+        let layouts = [postprocess_descriptor_set_layout.raw()];
         let layout_info = vk::PipelineLayoutCreateInfoBuilder::new().set_layouts(&layouts);
         let postprocess_pipeline_layout =
             device.create_pipeline_layout("Postprocess Pipeline Layout", layout_info)?;
@@ -805,8 +805,8 @@ impl RayTracingApplication {
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
-            .layout(postprocess_pipeline_layout.raw)
-            .render_pass(postprocess_renderpass.raw)
+            .layout(postprocess_pipeline_layout.raw())
+            .render_pass(postprocess_renderpass.raw())
             .subpass(0);
 
         let postprocess_pipeline =
@@ -889,7 +889,7 @@ impl RayTracingApplication {
                 .dst_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
                 .dst_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
                 .new_layout(vk::ImageLayout::GENERAL)
-                .image(image.raw)
+                .image(image.raw())
                 .subresource_range(vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     base_mip_level: 0,
@@ -961,11 +961,11 @@ impl RayTracingApplication {
         // Postprocessing Renderpass
         // Offscreen Image
         let image_info = [vk::DescriptorImageInfoBuilder::new()
-            .sampler(self.sampler.raw)
-            .image_view(self.offscreen_attachment.view.raw)
+            .sampler(self.sampler.raw())
+            .image_view(self.offscreen_attachment.view.raw())
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
         let postprocess_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.postprocess_descriptor_set.raw)
+            .dst_set(self.postprocess_descriptor_set.raw())
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .image_info(&image_info);
@@ -973,13 +973,13 @@ impl RayTracingApplication {
         // RT Renderpass
         // TLAS
         let structures: Vec<vk::AccelerationStructureKHR> =
-            self.tlas.iter().map(|x| x.structure.raw).collect();
+            self.tlas.iter().map(|x| x.structure.raw()).collect();
 
         let structure_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
             .acceleration_structures(&structures)
             .build();
         let mut tlas_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
+            .dst_set(self.raytracing_descriptor_set.raw())
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
             .extend_from(&structure_info);
@@ -987,32 +987,32 @@ impl RayTracingApplication {
 
         // Camera Uniform
         let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-            .buffer(self.uniforms[0].raw)
+            .buffer(self.uniforms[0].raw())
             .offset(0)
             .range(std::mem::size_of::<CameraUniforms>() as u64)];
         let camera_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
+            .dst_set(self.raytracing_descriptor_set.raw())
             .dst_binding(1)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(&buffer_info);
 
         // Offscreen Image
         let image_info = [vk::DescriptorImageInfoBuilder::new()
-            .image_view(self.offscreen_attachment.view.raw)
+            .image_view(self.offscreen_attachment.view.raw())
             .image_layout(vk::ImageLayout::GENERAL)];
         let offscreen_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
+            .dst_set(self.raytracing_descriptor_set.raw())
             .dst_binding(2)
             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
             .image_info(&image_info);
 
         // Light Uniform
         let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-            .buffer(self.uniforms[1].raw)
+            .buffer(self.uniforms[1].raw())
             .offset(0)
             .range(std::mem::size_of::<LightUniforms>() as u64)];
         let light_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
+            .dst_set(self.raytracing_descriptor_set.raw())
             .dst_binding(3)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(&buffer_info);
@@ -1027,38 +1027,38 @@ impl RayTracingApplication {
 
         for model in self.models.iter() {
             let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                .buffer(model.material_buffer.raw)
+                .buffer(model.material_buffer.raw())
                 .offset(0)
                 .range(std::mem::size_of::<MaterialData>() as u64);
             material_buffers.push(buffer_info);
 
             let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                .buffer(model.vertex_buffer.raw)
+                .buffer(model.vertex_buffer.raw())
                 .offset(0)
                 .range(model.vertex_count as u64 * std::mem::size_of::<Vertex>() as u64);
             vertex_buffers.push(buffer_info);
 
             let buffer_info = vk::DescriptorBufferInfoBuilder::new()
-                .buffer(model.index_buffer.raw)
+                .buffer(model.index_buffer.raw())
                 .offset(0)
                 .range(model.index_count as u64 * std::mem::size_of::<u32>() as u64);
             index_buffers.push(buffer_info);
         }
 
         let material_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.raytracing_descriptor_set.raw)
+            .dst_set(self.raytracing_descriptor_set.raw())
             .dst_binding(4)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&material_buffers);
 
         let vertex_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.vertex_descriptor_set.raw)
+            .dst_set(self.vertex_descriptor_set.raw())
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&vertex_buffers);
 
         let index_write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.index_descriptor_set.raw)
+            .dst_set(self.index_descriptor_set.raw())
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&index_buffers);
@@ -1242,7 +1242,7 @@ impl RayTracingApplication {
                 .scratch_data(vk::DeviceOrHostAddressKHR {
                     device_address: scratch_pad_device_address,
                 })
-                .dst_acceleration_structure(blas.structure.raw);
+                .dst_acceleration_structure(blas.structure.raw());
 
             let range = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
                 .primitive_count(model.index_count / 3)
@@ -1284,8 +1284,8 @@ impl RayTracingApplication {
 
                 let info = vk::CopyAccelerationStructureInfoKHRBuilder::new()
                     .mode(vk::CopyAccelerationStructureModeKHR::COMPACT_KHR)
-                    .src(blas.structure.raw)
-                    .dst(compacted_blas[compacted_blas.len() - 1].structure.raw);
+                    .src(blas.structure.raw())
+                    .dst(compacted_blas[compacted_blas.len() - 1].structure.raw());
                 encoder.copy_acceleration_structure(&info);
             }
         }
@@ -1323,7 +1323,7 @@ impl RayTracingApplication {
         })?;
 
         let creation_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
-            .buffer(buffer.raw)
+            .buffer(buffer.raw())
             .size(compacted)
             ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR);
 
@@ -1370,11 +1370,11 @@ impl RayTracingApplication {
             {
                 let encoder = compute_buffer.record()?;
                 encoder.build_acceleration_structures(&infos[id..id + 1], &ranges[id..id + 1]);
-                encoder.reset_query_pool(query_pool.raw, id as u32, 1);
+                encoder.reset_query_pool(query_pool.raw(), id as u32, 1);
                 encoder.write_acceleration_structures_properties(
-                    &[self.blas[id].structure.raw],
+                    &[self.blas[id].structure.raw()],
                     vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                    query_pool.raw,
+                    query_pool.raw(),
                     id as u32,
                 )
             }
@@ -1490,7 +1490,7 @@ impl RayTracingApplication {
         })?;
 
         let creation_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
-            .buffer(buffer.raw)
+            .buffer(buffer.raw())
             .size(size_info.acceleration_structure_size)
             ._type(vk::AccelerationStructureTypeKHR::TOP_LEVEL_KHR);
 
@@ -1504,7 +1504,7 @@ impl RayTracingApplication {
             .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
             ._type(vk::AccelerationStructureTypeKHR::TOP_LEVEL_KHR)
             .src_acceleration_structure(vk::AccelerationStructureKHR::null())
-            .dst_acceleration_structure(structure.raw)
+            .dst_acceleration_structure(structure.raw())
             .scratch_data(vk::DeviceOrHostAddressKHR {
                 device_address: scratchpad.device_address(),
             })];
@@ -1567,23 +1567,23 @@ impl RayTracingApplication {
             encoder.bind_raytrace_pipeline(&self.raytracing_pipeline);
             encoder.bind_descriptor_set(
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
-                self.raytracing_pipeline_layout.raw,
+                self.raytracing_pipeline_layout.raw(),
                 0,
-                &[self.raytracing_descriptor_set.raw],
+                &[self.raytracing_descriptor_set.raw()],
                 &[],
             );
             encoder.bind_descriptor_set(
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
-                self.raytracing_pipeline_layout.raw,
+                self.raytracing_pipeline_layout.raw(),
                 1,
-                &[self.vertex_descriptor_set.raw],
+                &[self.vertex_descriptor_set.raw()],
                 &[],
             );
             encoder.bind_descriptor_set(
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
-                self.raytracing_pipeline_layout.raw,
+                self.raytracing_pipeline_layout.raw(),
                 2,
-                &[self.index_descriptor_set.raw],
+                &[self.index_descriptor_set.raw()],
                 &[],
             );
 
@@ -1604,7 +1604,7 @@ impl RayTracingApplication {
                 .dst_stage_mask(vk::PipelineStageFlags2KHR::FRAGMENT_SHADER_KHR)
                 .dst_access_mask(vk::AccessFlags2KHR::SHADER_READ_KHR)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image(self.offscreen_attachment.image.raw)
+                .image(self.offscreen_attachment.image.raw())
                 .subresource_range(vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     base_mip_level: 0,
@@ -1621,7 +1621,7 @@ impl RayTracingApplication {
                     &mut self.swapchain,
                     &self.renderpass,
                     &[asche::RenderPassColorAttachmentDescriptor {
-                        attachment: frame.view,
+                        attachment: frame.view(),
                         clear_value: Some(vk::ClearValue {
                             color: vk::ClearColorValue {
                                 float32: [1.0, 0.0, 1.0, 1.0],
@@ -1634,9 +1634,9 @@ impl RayTracingApplication {
 
                 pass.bind_pipeline(&self.postprocess_pipeline);
                 pass.bind_descriptor_sets(
-                    self.postprocess_pipeline_layout.raw,
+                    self.postprocess_pipeline_layout.raw(),
                     0,
-                    &[self.postprocess_descriptor_set.raw],
+                    &[self.postprocess_descriptor_set.raw()],
                     &[],
                 );
 
@@ -1651,7 +1651,7 @@ impl RayTracingApplication {
                 .dst_stage_mask(vk::PipelineStageFlags2KHR::RAY_TRACING_SHADER_KHR)
                 .dst_access_mask(vk::AccessFlags2KHR::SHADER_WRITE_KHR)
                 .new_layout(vk::ImageLayout::GENERAL)
-                .image(self.offscreen_attachment.image.raw)
+                .image(self.offscreen_attachment.image.raw())
                 .subresource_range(vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     base_mip_level: 0,

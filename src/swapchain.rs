@@ -17,16 +17,26 @@ use crate::{
 /// Swapchain frame.
 #[derive(Debug)]
 pub struct SwapchainFrame {
+    index: u32,
+    view: vk::ImageView,
+}
+
+impl SwapchainFrame {
     /// The index of the swapchain.
-    pub index: u32,
-    /// The Vulkan image view.
-    pub view: vk::ImageView,
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+
+    /// The Vulkan image view of the swapchain.
+    #[inline]
+    pub fn view(&self) -> vk::ImageView {
+        self.view
+    }
 }
 
 /// Abstracts a Vulkan swapchain.
 #[derive(Debug)]
 pub struct Swapchain {
-    /// The framebuffer.
     framebuffers: HashMap<u64, vk::Framebuffer>,
     graphic_queue_family_index: u32,
     presentation_mode: vk::PresentModeKHR,
@@ -133,7 +143,7 @@ impl Swapchain {
         unsafe {
             self.context
                 .instance
-                .raw
+                .raw()
                 .get_physical_device_surface_formats_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
@@ -151,7 +161,7 @@ impl Swapchain {
         unsafe {
             self.context
                 .instance
-                .raw
+                .raw()
                 .get_physical_device_surface_capabilities_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
@@ -171,7 +181,7 @@ impl Swapchain {
         unsafe {
             self.context
                 .instance
-                .raw
+                .raw()
                 .get_physical_device_surface_present_modes_khr(
                     self.context.physical_device,
                     self.context.instance.surface,
@@ -215,7 +225,7 @@ impl Swapchain {
         self.swapchain
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
-            .queue_frame(frame, graphics_queue.raw, wait_semaphores)
+            .queue_frame(frame, graphics_queue.raw(), wait_semaphores)
     }
 
     /// Re-uses a cached framebuffer or creates a new one.
@@ -409,7 +419,7 @@ impl SwapchainInner {
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
     fn get_next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
         let info = vk::AcquireNextImageInfoKHRBuilder::new()
-            .semaphore(signal_semaphore.raw)
+            .semaphore(signal_semaphore.raw())
             .device_mask(1)
             .swapchain(self.raw)
             .timeout(u64::MAX);
@@ -420,7 +430,7 @@ impl SwapchainInner {
                 error!("Unable to acquire the next frame image: {}", err);
                 AscheError::VkResult(err)
             })?;
-        let view = self.image_views[usize::try_from(index)?].raw;
+        let view = self.image_views[usize::try_from(index)?].raw();
         Ok(SwapchainFrame { index, view })
     }
 
@@ -433,7 +443,7 @@ impl SwapchainInner {
     ) -> Result<()> {
         let wait_semaphores = wait_semaphores
             .iter()
-            .map(|s| s.raw)
+            .map(|s| s.raw())
             .collect::<Vec<vk::Semaphore>>();
 
         let swapchains = [self.raw];

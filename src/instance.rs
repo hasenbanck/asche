@@ -56,8 +56,7 @@ pub struct Instance {
     pub(crate) surface: vk::SurfaceKHR,
     #[cfg(debug_assertions)]
     debug_messenger: vk::DebugUtilsMessengerEXT,
-    /// The raw Vulkan instance.
-    pub raw: erupt::InstanceLoader,
+    raw: Box<erupt::InstanceLoader>,
     _entry: erupt::EntryLoader,
 }
 
@@ -122,11 +121,17 @@ impl Instance {
 
         Ok(Self {
             _entry: entry,
-            raw: instance,
+            raw: Box::new(instance),
             surface,
             #[cfg(debug_assertions)]
             debug_messenger,
         })
+    }
+
+    /// The raw Vulkan instance handle.
+    #[inline]
+    pub(crate) fn raw(&self) -> &erupt::InstanceLoader {
+        &self.raw
     }
 
     /// Requests a new Vulkan device. Returns a device, a swapchain and the queues created.

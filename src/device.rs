@@ -123,10 +123,8 @@ pub struct Device {
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
     transfer_queue_family_index: u32,
-    /// The type of the physical device.
-    pub device_type: vk::PhysicalDeviceType,
-    /// Shows if the device support access to the device memory using the base address register.
-    pub resizable_bar_support: BarSupport,
+    device_type: vk::PhysicalDeviceType,
+    resizable_bar_support: BarSupport,
     context: Arc<Context>,
 }
 
@@ -195,7 +193,7 @@ impl Device {
         info!("Creating Vulkan memory allocator");
 
         let allocator = vk_alloc::Allocator::new(
-            &instance.raw,
+            instance.raw(),
             physical_device,
             &vk_alloc::AllocatorDescriptor::default(),
         )?;
@@ -225,7 +223,7 @@ impl Device {
                     .set_object_name(
                         &format!("Compute Queue ({})", i),
                         vk::ObjectType::QUEUE,
-                        q.raw.0 as u64,
+                        q.raw().0 as u64,
                     )
                     .expect("can't set compute queue name");
 
@@ -244,7 +242,7 @@ impl Device {
                     .set_object_name(
                         &format!("Graphics Queue ({})", i),
                         vk::ObjectType::QUEUE,
-                        q.raw.0 as u64,
+                        q.raw().0 as u64,
                     )
                     .expect("can't set graphics queue name");
 
@@ -263,7 +261,7 @@ impl Device {
                     .set_object_name(
                         &format!("Transfer Queue ({})", i),
                         vk::ObjectType::QUEUE,
-                        q.raw.0 as u64,
+                        q.raw().0 as u64,
                     )
                     .expect("can't set graphics queue name");
 
@@ -289,6 +287,16 @@ impl Device {
                 transfer_queues,
             },
         ))
+    }
+
+    /// The type of the physical device.
+    pub fn device_type(&self) -> vk::PhysicalDeviceType {
+        self.device_type
+    }
+
+    /// Shows if the device support access to the device memory using the base address register.
+    pub fn resizable_bar_support(&self) -> BarSupport {
+        self.resizable_bar_support
     }
 
     /// Creates a new render pass.
@@ -570,7 +578,7 @@ impl Device {
     /// Creates a new buffer view.
     pub fn create_buffer_view(&self, descriptor: &BufferViewDescriptor) -> Result<BufferView> {
         let create_info = vk::BufferViewCreateInfoBuilder::new()
-            .buffer(descriptor.buffer.raw)
+            .buffer(descriptor.buffer.raw())
             .format(descriptor.format)
             .offset(descriptor.offset)
             .range(descriptor.range);
@@ -667,7 +675,7 @@ impl Device {
     /// Creates a new image.
     pub fn create_image_view(&self, descriptor: &ImageViewDescriptor) -> Result<ImageView> {
         let create_info = vk::ImageViewCreateInfoBuilder::new()
-            .image(descriptor.image.raw)
+            .image(descriptor.image.raw())
             .view_type(descriptor.view_type)
             .format(descriptor.format)
             .components(descriptor.components)
@@ -821,38 +829,6 @@ impl Device {
         Ok(QueryPool::new(query_pool, self.context.clone()))
     }
 
-    /// Flush mapped memory. Used for CPU->GPU transfers.
-    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkFlushMappedMemoryRanges.html)"]
-    pub fn flush_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
-        let ranges = [vk::MappedMemoryRangeBuilder::new()
-            .memory(allocation.device_memory)
-            .size(allocation.size)
-            .offset(allocation.offset)];
-        unsafe { self.context.device.flush_mapped_memory_ranges(&ranges) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to flush a mapped memory range: {}", err);
-            AscheError::VkResult(err)
-        })?;
-
-        Ok(())
-    }
-
-    /// Invalidate mapped memory. Used for GPU->CPU transfers.
-    #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkInvalidateMappedMemoryRanges.html)"]
-    pub fn invalidate_mapped_memory(&self, allocation: &vk_alloc::Allocation) -> Result<()> {
-        let ranges = [vk::MappedMemoryRangeBuilder::new()
-            .memory(allocation.device_memory)
-            .size(allocation.size)
-            .offset(allocation.offset)];
-        unsafe { self.context.device.invalidate_mapped_memory_ranges(&ranges) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to invalidate a mapped memory range: {}", err);
-            AscheError::VkResult(err)
-        })?;
-
-        Ok(())
-    }
-
     /// Query ray tracing capture replay pipeline shader group handles.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html)"]
     pub fn ray_tracing_capture_replay_shader_group_handles(
@@ -941,7 +917,7 @@ impl Device {
         properties: vk::PhysicalDeviceProperties2Builder,
     ) -> vk::PhysicalDeviceProperties2 {
         unsafe {
-            self.context.instance.raw.get_physical_device_properties2(
+            self.context.instance.raw().get_physical_device_properties2(
                 self.context.physical_device,
                 Some(properties.build()),
             )
@@ -1151,7 +1127,7 @@ fn query_support_resizable_bar(
         let memory_properties = vk::PhysicalDeviceMemoryProperties2Builder::new().build();
         let memory_properties = unsafe {
             instance
-                .raw
+                .raw()
                 .get_physical_device_memory_properties2(device, Some(memory_properties))
         };
 

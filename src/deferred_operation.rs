@@ -10,8 +10,7 @@ use crate::{AscheError, Result};
 /// Wraps a deferred operation.
 #[derive(Debug)]
 pub struct DeferredOperation {
-    /// The raw Vulkan deferred operation.
-    pub raw: vk::DeferredOperationKHR,
+    raw: vk::DeferredOperationKHR,
     context: Arc<Context>,
 }
 
@@ -28,6 +27,12 @@ impl Drop for DeferredOperation {
 impl DeferredOperation {
     pub(crate) fn new(raw: vk::DeferredOperationKHR, context: Arc<Context>) -> Self {
         Self { raw, context }
+    }
+
+    /// The raw Vulkan deferred operation handle.
+    #[inline]
+    pub fn raw(&self) -> vk::DeferredOperationKHR {
+        self.raw
     }
 
     /// Assign a thread to a deferred operation.

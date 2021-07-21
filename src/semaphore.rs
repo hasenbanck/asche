@@ -18,7 +18,7 @@ pub struct TimelineSemaphoreHandle(pub(crate) vk::Semaphore);
 /// A binary semaphore.
 #[derive(Debug, Clone)]
 pub struct BinarySemaphore {
-    pub(crate) raw: vk::Semaphore,
+    raw: vk::Semaphore,
     context: Arc<Context>,
 }
 
@@ -42,6 +42,12 @@ impl BinarySemaphore {
     /// Returns the handle of the binary semaphore.
     pub fn handle(&self) -> BinarySemaphoreHandle {
         BinarySemaphoreHandle(self.raw)
+    }
+
+    /// The raw Vulkan semaphore handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Semaphore {
+        self.raw
     }
 }
 

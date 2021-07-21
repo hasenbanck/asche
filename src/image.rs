@@ -7,8 +7,7 @@ use crate::context::Context;
 /// Wraps an image.
 #[derive(Debug)]
 pub struct Image {
-    /// The raw Vulkan image.
-    pub raw: vk::Image,
+    raw: vk::Image,
     allocation: vk_alloc::Allocation,
     context: Arc<Context>,
 }
@@ -37,13 +36,18 @@ impl Image {
             context,
         }
     }
+
+    /// The raw Vulkan image handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Image {
+        self.raw
+    }
 }
 
 /// Wraps an image view.
 #[derive(Debug)]
 pub struct ImageView {
-    /// The raw Vulkan image view.
-    pub raw: vk::ImageView,
+    raw: vk::ImageView,
     context: Arc<Context>,
 }
 
@@ -59,13 +63,18 @@ impl ImageView {
     pub(crate) fn new(raw: vk::ImageView, context: Arc<Context>) -> Self {
         Self { raw, context }
     }
+
+    /// The raw Vulkan image view handle.
+    #[inline]
+    pub fn raw(&self) -> vk::ImageView {
+        self.raw
+    }
 }
 
 /// Wraps a sampler.
 #[derive(Debug)]
 pub struct Sampler {
-    /// The raw Vulkan sampler.
-    pub raw: vk::Sampler,
+    raw: vk::Sampler,
     context: Arc<Context>,
 }
 
@@ -80,5 +89,11 @@ impl Drop for Sampler {
 impl Sampler {
     pub(crate) fn new(raw: vk::Sampler, context: Arc<Context>) -> Self {
         Self { raw, context }
+    }
+
+    /// The raw Vulkan sampler handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Sampler {
+        self.raw
     }
 }

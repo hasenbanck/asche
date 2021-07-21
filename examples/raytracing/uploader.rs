@@ -48,7 +48,6 @@ impl Uploader {
         let data_size = buffer_data.len();
         let staging_slice = self
             .staging_buffer
-            .allocation
             .mapped_slice_mut()?
             .expect("staging buffer allocation could not be not mapped");
         staging_slice[..data_size].clone_from_slice(buffer_data);
@@ -76,8 +75,8 @@ impl Uploader {
         {
             let encoder = transfer_buffer.record()?;
             encoder.copy_buffer(
-                self.staging_buffer.raw,
-                dst_buffer.raw,
+                self.staging_buffer.raw(),
+                dst_buffer.raw(),
                 0,
                 0,
                 buffer_data.len() as u64,

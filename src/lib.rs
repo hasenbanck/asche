@@ -79,9 +79,16 @@ impl std::fmt::Display for QueueType {
 /// Wraps a render pass.
 #[derive(Debug)]
 pub struct RenderPass {
-    /// The raw vk::RenderPass
-    pub raw: vk::RenderPass,
+    raw: vk::RenderPass,
     context: Arc<Context>,
+}
+
+impl RenderPass {
+    /// The raw Vulkan render pass handle.
+    #[inline]
+    pub fn raw(&self) -> vk::RenderPass {
+        self.raw
+    }
 }
 
 impl Drop for RenderPass {
@@ -97,9 +104,16 @@ impl Drop for RenderPass {
 /// Wraps a pipeline layout.
 #[derive(Debug)]
 pub struct PipelineLayout {
-    /// The raw vk::PipelineLayout
-    pub raw: vk::PipelineLayout,
+    raw: vk::PipelineLayout,
     context: Arc<Context>,
+}
+
+impl PipelineLayout {
+    /// The raw Vulkan pipeline layout handle.
+    #[inline]
+    pub fn raw(&self) -> vk::PipelineLayout {
+        self.raw
+    }
 }
 
 impl Drop for PipelineLayout {
@@ -115,9 +129,16 @@ impl Drop for PipelineLayout {
 /// Wraps a graphics pipeline.
 #[derive(Debug)]
 pub struct GraphicsPipeline {
-    /// The raw vk::Pipeline.
-    pub raw: vk::Pipeline,
+    raw: vk::Pipeline,
     context: Arc<Context>,
+}
+
+impl GraphicsPipeline {
+    /// The raw Vulkan pipeline handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Pipeline {
+        self.raw
+    }
 }
 
 impl Drop for GraphicsPipeline {
@@ -131,9 +152,16 @@ impl Drop for GraphicsPipeline {
 /// Wraps a compute pipeline.
 #[derive(Debug)]
 pub struct ComputePipeline {
-    /// The raw vk::Pipeline.
-    pub raw: vk::Pipeline,
+    raw: vk::Pipeline,
     context: Arc<Context>,
+}
+
+impl ComputePipeline {
+    /// The raw Vulkan pipeline handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Pipeline {
+        self.raw
+    }
 }
 
 impl Drop for ComputePipeline {
@@ -147,9 +175,16 @@ impl Drop for ComputePipeline {
 /// Wraps a raytracing pipeline.
 #[derive(Debug)]
 pub struct RayTracingPipeline {
-    /// The raw vk::Pipeline.
-    pub raw: vk::Pipeline,
+    raw: vk::Pipeline,
     context: Arc<Context>,
+}
+
+impl RayTracingPipeline {
+    /// The raw Vulkan pipeline handle.
+    #[inline]
+    pub fn raw(&self) -> vk::Pipeline {
+        self.raw
+    }
 }
 
 impl Drop for RayTracingPipeline {
@@ -163,9 +198,16 @@ impl Drop for RayTracingPipeline {
 /// Wraps a shader module.
 #[derive(Debug)]
 pub struct ShaderModule {
-    /// The raw vk::ShaderModule.
-    pub raw: vk::ShaderModule,
+    raw: vk::ShaderModule,
     context: Arc<Context>,
+}
+
+impl ShaderModule {
+    /// The raw Vulkan shader module handle.
+    #[inline]
+    pub fn raw(&self) -> vk::ShaderModule {
+        self.raw
+    }
 }
 
 impl Drop for ShaderModule {

@@ -19,9 +19,8 @@ macro_rules! impl_queue {
         #[doc = $doc]
         #[derive(Debug)]
         pub struct $queue_name {
-            /// The queue family index of this queue.
-            pub family_index: u32,
-            pub(crate) raw: vk::Queue,
+            raw: vk::Queue,
+            family_index: u32,
             command_pool_counter: u64,
             context: Arc<Context>,
         }
@@ -34,6 +33,17 @@ macro_rules! impl_queue {
                     command_pool_counter: 0,
                     context,
                 }
+            }
+
+            /// The raw Vulkan queue handle.
+            #[inline]
+            pub fn raw(&self) -> vk::Queue {
+                self.raw
+            }
+
+            /// The queue family index of this queue.
+            pub fn family_index(&self) -> u32 {
+                self.family_index
             }
 
             /// Creates a new command pool. Pools are not cached and are owned by the caller.
@@ -51,10 +61,10 @@ macro_rules! impl_queue {
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html)"]
             pub fn submit(&mut self, command_buffer: &$buffer_name, fence: Option<&Fence>) -> Result<()> {
                 let command_buffer_infos = [vk::CommandBufferSubmitInfoKHRBuilder::new()
-                    .command_buffer(command_buffer.raw)
+                    .command_buffer(command_buffer.raw())
                     .device_mask(1)];
 
-                let fence = fence.map(|fence| fence.raw);
+                let fence = fence.map(|fence| fence.raw());
 
                 let wait_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer.wait_semaphores.iter().map(|s| s.into()).collect();
                 let signal_semaphore_infos: Vec<vk::SemaphoreSubmitInfoKHRBuilder> = command_buffer.signal_semaphores.iter().map(|s| s.into()).collect();
@@ -83,7 +93,7 @@ macro_rules! impl_queue {
             pub fn submit_all(&mut self, command_buffer: &[$buffer_name], fence: Option<&Fence>) -> Result<()> {
                 let command_buffer_infos: Vec<vk::CommandBufferSubmitInfoKHRBuilder> = command_buffer.iter().map(|cb| {
                     vk::CommandBufferSubmitInfoKHRBuilder::new()
-                        .command_buffer(cb.raw)
+                        .command_buffer(cb.raw())
                         .device_mask(1)
                 })
                 .collect();
@@ -104,7 +114,7 @@ macro_rules! impl_queue {
                 })
                 .collect();
 
-                let fence = fence.map(|fence| fence.raw);
+                let fence = fence.map(|fence| fence.raw());
 
                 unsafe {
                     self.context
@@ -136,7 +146,7 @@ macro_rules! impl_queue {
                 let label = CString::new(label.to_owned())?;
                 unsafe {
                     self.context.device.queue_begin_debug_utils_label_ext(
-                        self.raw,
+                        self.raw(),
                         &vk::DebugUtilsLabelEXTBuilder::new()
                             .label_name(label.as_c_str())
                             .color(color),
@@ -148,7 +158,7 @@ macro_rules! impl_queue {
             /// Close a queue debug label region.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueEndDebugUtilsLabelEXT.html)"]
             pub fn end_debug_utils_label(&self) {
-                unsafe { self.context.device.queue_end_debug_utils_label_ext(self.raw) };
+                unsafe { self.context.device.queue_end_debug_utils_label_ext(self.raw()) };
             }
 
             /// Insert a label into a queue.
@@ -157,7 +167,7 @@ macro_rules! impl_queue {
                 let label = CString::new(label.to_owned())?;
                 unsafe {
                     self.context.device.queue_insert_debug_utils_label_ext(
-                        self.raw,
+                        self.raw(),
                         &vk::DebugUtilsLabelEXTBuilder::new()
                             .label_name(label.as_c_str())
                             .color(color),

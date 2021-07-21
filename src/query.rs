@@ -11,14 +11,19 @@ use crate::{AscheError, Result};
 /// Wraps a Query Pool.
 #[derive(Debug)]
 pub struct QueryPool {
-    /// The raw Vulkan query pool.
-    pub raw: vk::QueryPool,
+    raw: vk::QueryPool,
     context: Arc<Context>,
 }
 
 impl QueryPool {
     pub(crate) fn new(raw: vk::QueryPool, context: Arc<Context>) -> Self {
         Self { raw, context }
+    }
+
+    /// The raw Vulkan query pool handle.
+    #[inline]
+    pub fn raw(&self) -> vk::QueryPool {
+        self.raw
     }
 
     /// Copy results of queries in a query pool to a host memory region.

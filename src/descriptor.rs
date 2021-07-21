@@ -10,8 +10,7 @@ use crate::{AscheError, Result};
 /// Wraps a descriptor pool.
 #[derive(Debug)]
 pub struct DescriptorPool {
-    /// The raw Vulkan descriptor pool.
-    pub raw: vk::DescriptorPool,
+    raw: vk::DescriptorPool,
     context: Arc<Context>,
 }
 
@@ -28,6 +27,12 @@ impl Drop for DescriptorPool {
 impl DescriptorPool {
     pub(crate) fn new(context: Arc<Context>, pool: vk::DescriptorPool) -> Self {
         Self { context, raw: pool }
+    }
+
+    /// The raw Vulkan descriptor pool handle.
+    #[inline]
+    pub fn raw(&self) -> vk::DescriptorPool {
+        self.raw
     }
 
     /// Creates a new descriptor set with the given `DescriptorSetLayout``.
@@ -91,8 +96,7 @@ impl DescriptorPool {
 /// Wraps a descriptor set layout.
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
-    /// The raw Vulkan descriptor set layout.
-    pub raw: vk::DescriptorSetLayout,
+    raw: vk::DescriptorSetLayout,
     context: Arc<Context>,
 }
 
@@ -113,18 +117,29 @@ impl DescriptorSetLayout {
             raw: layout,
         }
     }
+
+    /// The raw Vulkan descriptor set layout handle.
+    #[inline]
+    pub fn raw(&self) -> vk::DescriptorSetLayout {
+        self.raw
+    }
 }
 
 /// Wraps a descriptor set.
 #[derive(Debug)]
 pub struct DescriptorSet {
-    /// The raw Vulkan descriptor pool.
-    pub raw: vk::DescriptorSet,
+    raw: vk::DescriptorSet,
     pool: vk::DescriptorPool,
     context: Arc<Context>,
 }
 
 impl DescriptorSet {
+    /// The raw Vulkan descriptor set handle.
+    #[inline]
+    pub fn raw(&self) -> vk::DescriptorSet {
+        self.raw
+    }
+
     /// Frees the descriptor set. Needs to be created from a pool with the
     /// `vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET` flag set.
     pub fn free(&mut self) -> Result<()> {

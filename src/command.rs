@@ -103,8 +103,7 @@ macro_rules! impl_command_pool {
         #[doc = $doc]
         #[derive(Debug)]
         pub struct $pool_name {
-            /// The raw Vulkan command pool.
-            pub raw: vk::CommandPool,
+            raw: vk::CommandPool,
             queue_type: QueueType,
             command_buffer_counter: u64,
             context: Arc<Context>,
@@ -145,6 +144,12 @@ macro_rules! impl_command_pool {
                     queue_type: $queue_type,
                     command_buffer_counter: 0,
                 })
+            }
+
+            /// The raw Vulkan command pool handle.
+            #[inline]
+            pub fn raw(&self) -> vk::CommandPool {
+                self.raw
             }
 
             /// Creates a new command buffer.
@@ -234,8 +239,7 @@ macro_rules! impl_command_buffer {
         #[doc = $doc]
         #[derive(Debug)]
         pub struct $buffer_name {
-            /// The raw Vulkan command buffer.
-            pub(crate) raw: vk::CommandBuffer,
+            raw: vk::CommandBuffer,
             pub(crate) wait_semaphores: Vec<CommandBufferSemaphoreInner>,
             pub(crate) signal_semaphores: Vec<CommandBufferSemaphoreInner>,
             pool: vk::CommandPool,
@@ -257,6 +261,12 @@ macro_rules! impl_command_buffer {
                     wait_semaphores,
                     signal_semaphores,
                 }
+            }
+
+            /// The raw Vulkan command buffer handle.
+            #[inline]
+            pub fn raw(&self) -> vk::CommandBuffer {
+                self.raw
             }
 
             /// Begins to record the command buffer. Encoder will finish recording on drop.
