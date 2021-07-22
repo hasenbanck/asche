@@ -8,8 +8,6 @@ use crate::{AscheError, Instance, Result};
 /// The internal context.
 #[derive(Debug)]
 pub(crate) struct Context {
-    /// The memory allocator.
-    pub(crate) allocator: vk_alloc::Allocator,
     /// The raw logical Vulkan device.
     pub(crate) device: erupt::DeviceLoader,
     /// The raw physical Vulkan device.
@@ -21,7 +19,6 @@ pub(crate) struct Context {
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
-            self.allocator.cleanup(&self.device);
             self.device.destroy_device(None);
         };
     }
@@ -33,10 +30,8 @@ impl Context {
         instance: Instance,
         device: erupt::DeviceLoader,
         physical_device: vk::PhysicalDevice,
-        allocator: vk_alloc::Allocator,
     ) -> Self {
         Self {
-            allocator,
             device,
             physical_device,
             instance,

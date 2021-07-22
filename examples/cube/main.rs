@@ -15,6 +15,13 @@ unsafe impl Pod for Vertex {}
 
 unsafe impl Zeroable for Vertex {}
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Lifetime {
+    Static,
+}
+
+impl asche::Lifetime for Lifetime {}
+
 fn main() -> Result<(), asche::AscheError> {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -116,15 +123,15 @@ struct Application {
     pipeline: asche::GraphicsPipeline,
     pipeline_layout: asche::PipelineLayout,
     render_pass: asche::RenderPass,
-    vertex_buffer: Vec<asche::Buffer>,
-    index_buffer: Vec<asche::Buffer>,
+    vertex_buffer: Vec<asche::Buffer<Lifetime>>,
+    index_buffer: Vec<asche::Buffer<Lifetime>>,
     sampler: asche::Sampler,
     depth_texture: Texture,
     textures: Vec<Texture>,
     graphics_queue: asche::GraphicsQueue,
     transfer_queue: asche::TransferQueue,
     swapchain: asche::Swapchain,
-    device: asche::Device,
+    device: asche::Device<Lifetime>,
 }
 
 impl Drop for Application {
@@ -137,7 +144,7 @@ impl Drop for Application {
 
 impl Application {
     fn new(
-        device: asche::Device,
+        device: asche::Device<Lifetime>,
         swapchain: asche::Swapchain,
         mut graphics_queue: asche::GraphicsQueue,
         transfer_queue: asche::TransferQueue,
@@ -169,10 +176,11 @@ impl Application {
             .name(&mainfunctionname);
 
         // Depth image
-        let depth_image = device.create_image(&asche::ImageDescriptor {
+        let depth_image = device.create_image(&asche::ImageDescriptor::<_> {
             name: "Depth Texture",
             usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Static,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::GRAPHICS,
             image_type: vk::ImageType::_2D,
@@ -457,10 +465,11 @@ impl Application {
     ) -> Result<Texture, asche::AscheError> {
         let dds = ddsfile::Dds::read(&mut std::io::Cursor::new(&image_data)).unwrap();
 
-        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor {
+        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "Staging Buffer",
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+            lifetime: Lifetime::Static,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
             size: dds.data.len() as u64,
@@ -479,10 +488,11 @@ impl Application {
             depth: 1,
         };
 
-        let image = self.device.create_image(&asche::ImageDescriptor {
+        let image = self.device.create_image(&asche::ImageDescriptor::<_> {
             name,
             usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Static,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
             image_type: vk::ImageType::_2D,
@@ -605,11 +615,12 @@ impl Application {
         name: &str,
         buffer_data: &[u8],
         buffer_type: vk::BufferUsageFlags,
-    ) -> Result<asche::Buffer, asche::AscheError> {
-        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor {
+    ) -> Result<asche::Buffer<Lifetime>, asche::AscheError> {
+        let mut stagging_buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "Staging Buffer",
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+            lifetime: Lifetime::Static,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
             size: buffer_data.len() as u64,
@@ -621,10 +632,11 @@ impl Application {
             .expect("staging buffer allocation was not mapped");
         stagging_slice[..buffer_data.len()].clone_from_slice(bytemuck::cast_slice(buffer_data));
 
-        let dst_buffer = self.device.create_buffer(&asche::BufferDescriptor {
+        let dst_buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name,
             usage: buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Static,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | vk::QueueFlags::GRAPHICS,
             size: buffer_data.len() as u64,
@@ -876,7 +888,7 @@ fn create_cube_data() -> (Vec<Vertex>, Vec<u32>) {
 
 struct Texture {
     view: asche::ImageView,
-    _image: asche::Image,
+    _image: asche::Image<Lifetime>,
 }
 
 /// Right-handed with the the x-axis pointing right, y-axis pointing up, and z-axis pointing out of the screen for Vulkan NDC.

@@ -82,6 +82,13 @@ fn main() -> Result<(), asche::AscheError> {
     });
 }
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Lifetime {
+    Static,
+}
+
+impl asche::Lifetime for Lifetime {}
+
 struct Application {
     extent: vk::Extent2D,
     _pipeline_layout: asche::PipelineLayout,
@@ -93,7 +100,7 @@ struct Application {
     command_pool: asche::GraphicsCommandPool,
     queue: asche::GraphicsQueue,
     swapchain: asche::Swapchain,
-    device: asche::Device,
+    device: asche::Device<Lifetime>,
 }
 
 impl Drop for Application {
@@ -106,7 +113,7 @@ impl Drop for Application {
 
 impl Application {
     fn new(
-        device: asche::Device,
+        device: asche::Device<Lifetime>,
         swapchain: asche::Swapchain,
         mut graphics_queue: asche::GraphicsQueue,
         window: &winit::window::Window,

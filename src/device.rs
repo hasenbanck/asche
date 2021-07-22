@@ -8,13 +8,14 @@ use tracing1::{error, info};
 
 use crate::context::Context;
 use crate::instance::Instance;
+use crate::memory_allocator::MemoryAllocator;
 use crate::query::QueryPool;
 use crate::semaphore::TimelineSemaphore;
 use crate::{
     AccelerationStructure, AscheError, BinarySemaphore, Buffer, BufferDescriptor, BufferView,
     BufferViewDescriptor, ComputePipeline, ComputeQueue, DeferredOperation, DescriptorPool,
     DescriptorPoolDescriptor, DescriptorSetLayout, Fence, GraphicsPipeline, GraphicsQueue, Image,
-    ImageDescriptor, ImageView, ImageViewDescriptor, PipelineLayout, RayTracingPipeline,
+    ImageDescriptor, ImageView, ImageViewDescriptor, Lifetime, PipelineLayout, RayTracingPipeline,
     RenderPass, Result, Sampler, SamplerDescriptor, ShaderModule, Swapchain, TransferQueue,
 };
 
@@ -119,16 +120,17 @@ pub struct Queues {
 /// Handles all resource creation. Command buffer and queue handling are handled by the `Queue`.
 /// Swapchain and framebuffer handling are handled by the `Swapchain`.
 #[derive(Debug)]
-pub struct Device {
+pub struct Device<LT: Lifetime> {
     compute_queue_family_index: u32,
     graphic_queue_family_index: u32,
     transfer_queue_family_index: u32,
     device_type: vk::PhysicalDeviceType,
     resizable_bar_support: BarSupport,
+    memory_allocator: Arc<MemoryAllocator<LT>>,
     context: Arc<Context>,
 }
 
-impl Device {
+impl<LT: Lifetime> Device<LT> {
     /// Creates a new device, a swapchain and multiple queues:
     ///  * Compute queues
     ///  * Graphics queues
@@ -202,7 +204,9 @@ impl Device {
         let graphic_queue_family_index = family_ids[1];
         let transfer_queue_family_index = family_ids[2];
 
-        let context = Arc::new(Context::new(instance, device, physical_device, allocator));
+        let context = Arc::new(Context::new(instance, device, physical_device));
+
+        let memory_allocator = Arc::new(MemoryAllocator::new(allocator, context.clone()));
 
         let swapchain = Swapchain::new(
             context.clone(),
@@ -272,6 +276,7 @@ impl Device {
         let device = Device {
             device_type: physical_device_properties.device_type,
             resizable_bar_support,
+            memory_allocator,
             context,
             compute_queue_family_index,
             graphic_queue_family_index,
@@ -511,7 +516,7 @@ impl Device {
     }
 
     /// Creates a new buffer.
-    pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> Result<Buffer> {
+    pub fn create_buffer(&self, descriptor: &BufferDescriptor<LT>) -> Result<Buffer<LT>> {
         if descriptor.size == 0 {
             return Err(AscheError::BufferZeroSize);
         }
@@ -555,10 +560,11 @@ impl Device {
         self.context
             .set_object_name(descriptor.name, vk::ObjectType::BUFFER, raw.0)?;
 
-        let allocation = self.context.allocator.allocate_memory_for_buffer(
+        let allocation = self.memory_allocator.allocator.allocate_memory_for_buffer(
             &self.context.device,
             raw,
             descriptor.memory_location,
+            descriptor.lifetime,
         )?;
 
         let bind_infos = vk::BindBufferMemoryInfoBuilder::new()
@@ -572,11 +578,16 @@ impl Device {
             AscheError::VkResult(err)
         })?;
 
-        Ok(Buffer::new(raw, allocation, self.context.clone()))
+        Ok(Buffer::new(
+            raw,
+            allocation,
+            self.memory_allocator.clone(),
+            self.context.clone(),
+        ))
     }
 
     /// Creates a new buffer view.
-    pub fn create_buffer_view(&self, descriptor: &BufferViewDescriptor) -> Result<BufferView> {
+    pub fn create_buffer_view(&self, descriptor: &BufferViewDescriptor<LT>) -> Result<BufferView> {
         let create_info = vk::BufferViewCreateInfoBuilder::new()
             .buffer(descriptor.buffer.raw())
             .format(descriptor.format)
@@ -605,7 +616,7 @@ impl Device {
     }
 
     /// Creates a new image.
-    pub fn create_image(&self, descriptor: &ImageDescriptor) -> Result<Image> {
+    pub fn create_image(&self, descriptor: &ImageDescriptor<LT>) -> Result<Image<LT>> {
         let mut families: Vec<u32> = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
@@ -652,10 +663,14 @@ impl Device {
         self.context
             .set_object_name(descriptor.name, vk::ObjectType::IMAGE, raw.0)?;
 
-        let allocation = self.context.allocator.allocate_memory_for_image(
+        let is_optimal = descriptor.tiling == vk::ImageTiling::OPTIMAL;
+
+        let allocation = self.memory_allocator.allocator.allocate_memory_for_image(
             &self.context.device,
             raw,
             descriptor.memory_location,
+            descriptor.lifetime,
+            is_optimal,
         )?;
 
         let bind_infos = vk::BindImageMemoryInfoBuilder::new()
@@ -669,11 +684,16 @@ impl Device {
             AscheError::VkResult(err)
         })?;
 
-        Ok(Image::new(raw, allocation, self.context.clone()))
+        Ok(Image::new(
+            raw,
+            allocation,
+            self.memory_allocator.clone(),
+            self.context.clone(),
+        ))
     }
 
     /// Creates a new image.
-    pub fn create_image_view(&self, descriptor: &ImageViewDescriptor) -> Result<ImageView> {
+    pub fn create_image_view(&self, descriptor: &ImageViewDescriptor<LT>) -> Result<ImageView> {
         let create_info = vk::ImageViewCreateInfoBuilder::new()
             .image(descriptor.image.raw())
             .view_type(descriptor.view_type)

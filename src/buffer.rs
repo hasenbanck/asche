@@ -4,21 +4,22 @@ use erupt::vk;
 #[cfg(feature = "tracing")]
 use tracing1::error;
 
-use crate::{context::Context, AscheError, Result};
+use crate::{context::Context, memory_allocator::MemoryAllocator, AscheError, Lifetime, Result};
 
 /// Wraps a buffer.
 #[derive(Debug)]
-pub struct Buffer {
+pub struct Buffer<LT: Lifetime> {
     raw: vk::Buffer,
-    allocation: vk_alloc::Allocation,
+    allocation: vk_alloc::Allocation<LT>,
+    memory_allocator: Arc<MemoryAllocator<LT>>,
     context: Arc<Context>,
 }
 
-impl Drop for Buffer {
+impl<LT: Lifetime> Drop for Buffer<LT> {
     fn drop(&mut self) {
         unsafe {
             self.context.device.destroy_buffer(Some(self.raw), None);
-            self.context
+            self.memory_allocator
                 .allocator
                 .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free buffer allocation");
@@ -26,15 +27,17 @@ impl Drop for Buffer {
     }
 }
 
-impl Buffer {
+impl<LT: Lifetime> Buffer<LT> {
     pub(crate) fn new(
         raw: vk::Buffer,
-        allocation: vk_alloc::Allocation,
+        allocation: vk_alloc::Allocation<LT>,
+        memory_allocator: Arc<MemoryAllocator<LT>>,
         context: Arc<Context>,
     ) -> Self {
         Self {
             raw,
             allocation,
+            memory_allocator,
             context,
         }
     }

@@ -58,8 +58,15 @@ fn main() -> Result<(), asche::AscheError> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Lifetime {
+    Buffer,
+}
+
+impl asche::Lifetime for Lifetime {}
+
 struct Application {
-    device: asche::Device,
+    device: asche::Device<Lifetime>,
     compute_queue: asche::ComputeQueue,
     compute_command_pool: asche::ComputeCommandPool,
     pipeline: asche::ComputePipeline,
@@ -80,7 +87,7 @@ impl Drop for Application {
 
 impl Application {
     fn new(
-        device: asche::Device,
+        device: asche::Device<Lifetime>,
         mut compute_queue: asche::ComputeQueue,
     ) -> Result<Self, asche::AscheError> {
         // Shader
@@ -158,10 +165,11 @@ impl Application {
             .enumerate()
             .for_each(|(id, x)| *x = id as u32);
 
-        let mut buffer = self.device.create_buffer(&asche::BufferDescriptor {
+        let mut buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "Input Buffer",
             usage: vk::BufferUsageFlags::STORAGE_BUFFER,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+            lifetime: Lifetime::Buffer,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::COMPUTE,
             size: DATA_SIZE,

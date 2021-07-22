@@ -17,6 +17,14 @@ type Result<T> = std::result::Result<T, asche::AscheError>;
 const SURFACE_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
 const OFFSCREEN_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Lifetime {
+    Buffer,
+    Image,
+}
+
+impl asche::Lifetime for Lifetime {}
+
 #[inline]
 fn align_up(offset: usize, alignment: usize) -> usize {
     (offset + (alignment - 1)) & !(alignment - 1)
@@ -142,9 +150,9 @@ fn main() -> Result<()> {
 }
 
 struct RayTracingApplication {
-    uniforms: Vec<asche::Buffer>,
+    uniforms: Vec<asche::Buffer<Lifetime>>,
     sbt_stride_addresses: Vec<vk::StridedDeviceAddressRegionKHR>,
-    _sbt: asche::Buffer,
+    _sbt: asche::Buffer<Lifetime>,
     tlas: Vec<Tlas>,
     blas: Vec<Blas>,
     models: Vec<Model>,
@@ -178,7 +186,7 @@ struct RayTracingApplication {
     graphics_queue: asche::GraphicsQueue,
     compute_queue: asche::ComputeQueue,
     swapchain: asche::Swapchain,
-    device: asche::Device,
+    device: asche::Device<Lifetime>,
 }
 
 impl Drop for RayTracingApplication {
@@ -191,7 +199,7 @@ impl Drop for RayTracingApplication {
 
 impl RayTracingApplication {
     fn new(
-        device: asche::Device,
+        device: asche::Device<Lifetime>,
         swapchain: asche::Swapchain,
         mut compute_queue: asche::ComputeQueue,
         mut graphics_queue: asche::GraphicsQueue,
@@ -298,7 +306,7 @@ impl RayTracingApplication {
 
     #[allow(clippy::type_complexity)]
     fn create_rt_pipeline(
-        device: &asche::Device,
+        device: &asche::Device<Lifetime>,
         uploader: &mut Uploader,
     ) -> Result<(
         asche::DescriptorPool,
@@ -311,7 +319,7 @@ impl RayTracingApplication {
         asche::DescriptorSet,
         asche::PipelineLayout,
         asche::RayTracingPipeline,
-        asche::Buffer,
+        asche::Buffer<Lifetime>,
         Vec<vk::StridedDeviceAddressRegionKHR>,
     )> {
         // Query for RT capabilities
@@ -563,12 +571,15 @@ impl RayTracingApplication {
     }
 
     fn create_sbt(
-        device: &asche::Device,
+        device: &asche::Device<Lifetime>,
         uploader: &mut Uploader,
         raytrace_properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHRBuilder,
         groups: &[vk::RayTracingShaderGroupCreateInfoKHRBuilder],
         raytracing_pipeline: &asche::RayTracingPipeline,
-    ) -> Result<(asche::Buffer, Vec<vk::StridedDeviceAddressRegionKHR>)> {
+    ) -> Result<(
+        asche::Buffer<Lifetime>,
+        Vec<vk::StridedDeviceAddressRegionKHR>,
+    )> {
         // A SBT orders the shaders in 4 groups:
         // 1. RG
         // 2. Miss
@@ -672,7 +683,7 @@ impl RayTracingApplication {
     }
 
     fn create_postprocess_pipeline(
-        device: &asche::Device,
+        device: &asche::Device<Lifetime>,
     ) -> Result<(
         asche::RenderPass,
         asche::DescriptorPool,
@@ -822,17 +833,18 @@ impl RayTracingApplication {
     }
 
     fn create_offscreen_image(
-        device: &asche::Device,
+        device: &asche::Device<Lifetime>,
         extent: vk::Extent2D,
         pool: &mut asche::GraphicsCommandPool,
         queue: &mut asche::GraphicsQueue,
         timeline: &asche::TimelineSemaphore,
         timeline_value: &mut u64,
     ) -> Result<Texture> {
-        let image = device.create_image(&asche::ImageDescriptor {
+        let image = device.create_image(&asche::ImageDescriptor::<_> {
             name: "Offscreen Image",
             usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Image,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::GRAPHICS,
             image_type: vk::ImageType::_2D,
@@ -1214,11 +1226,12 @@ impl RayTracingApplication {
         }
 
         // Create a scratch pad for the device to create the AS. We re-use it for each BLAS of a model.
-        let scratch_pad = self.device.create_buffer(&asche::BufferDescriptor {
+        let scratch_pad = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "AS Scratchpad",
             usage: vk::BufferUsageFlags::STORAGE_BUFFER
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Buffer,
             sharing_mode: Default::default(),
             queues: Default::default(),
             size: scratchpad_size,
@@ -1311,11 +1324,12 @@ impl RayTracingApplication {
     }
 
     fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<Blas> {
-        let buffer = self.device.create_buffer(&asche::BufferDescriptor {
+        let buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: &format!("Model {} BLAS Buffer", id),
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Buffer,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             size: compacted,
@@ -1467,22 +1481,24 @@ impl RayTracingApplication {
             &[instance_count],
         );
 
-        let buffer = self.device.create_buffer(&asche::BufferDescriptor {
+        let buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "Model TLAS Buffer",
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Buffer,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
             size: size_info.acceleration_structure_size,
             flags: None,
         })?;
 
-        let scratchpad = self.device.create_buffer(&asche::BufferDescriptor {
+        let scratchpad = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "Model TLAS Scratchpad",
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Buffer,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             queues: vk::QueueFlags::COMPUTE,
             size: size_info.build_scratch_size,
@@ -1683,27 +1699,27 @@ impl RayTracingApplication {
 
 struct Tlas {
     structure: asche::AccelerationStructure,
-    _buffer: asche::Buffer,
+    _buffer: asche::Buffer<Lifetime>,
 }
 
 struct Blas {
     structure: asche::AccelerationStructure,
-    _buffer: asche::Buffer,
+    _buffer: asche::Buffer<Lifetime>,
 }
 
 struct Texture {
     view: asche::ImageView,
-    image: asche::Image,
+    image: asche::Image<Lifetime>,
 }
 
 /// Each model has exactly one instance for this simple example.
 struct Model {
     index_count: u32,
     vertex_count: u32,
-    material_buffer: asche::Buffer,
-    vertex_buffer: asche::Buffer,
-    index_buffer: asche::Buffer,
-    transform_buffer: asche::Buffer,
+    material_buffer: asche::Buffer<Lifetime>,
+    vertex_buffer: asche::Buffer<Lifetime>,
+    index_buffer: asche::Buffer<Lifetime>,
+    transform_buffer: asche::Buffer<Lifetime>,
 }
 
 #[repr(C)]

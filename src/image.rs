@@ -2,21 +2,22 @@ use std::sync::Arc;
 
 use erupt::vk;
 
-use crate::context::Context;
+use crate::{context::Context, memory_allocator::MemoryAllocator, Lifetime};
 
 /// Wraps an image.
 #[derive(Debug)]
-pub struct Image {
+pub struct Image<LT: Lifetime> {
     raw: vk::Image,
-    allocation: vk_alloc::Allocation,
+    allocation: vk_alloc::Allocation<LT>,
+    memory_allocator: Arc<MemoryAllocator<LT>>,
     context: Arc<Context>,
 }
 
-impl Drop for Image {
+impl<LT: Lifetime> Drop for Image<LT> {
     fn drop(&mut self) {
         unsafe {
             self.context.device.destroy_image(Some(self.raw), None);
-            self.context
+            self.memory_allocator
                 .allocator
                 .deallocate(&self.context.device, &self.allocation)
                 .expect("can't free image allocation");
@@ -24,15 +25,17 @@ impl Drop for Image {
     }
 }
 
-impl Image {
+impl<LT: Lifetime> Image<LT> {
     pub(crate) fn new(
         raw: vk::Image,
-        allocation: vk_alloc::Allocation,
+        allocation: vk_alloc::Allocation<LT>,
+        memory_allocator: Arc<MemoryAllocator<LT>>,
         context: Arc<Context>,
     ) -> Self {
         Self {
             raw,
             allocation,
+            memory_allocator,
             context,
         }
     }

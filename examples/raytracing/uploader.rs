@@ -2,10 +2,10 @@ use erupt::vk;
 
 use asche::{CommandBufferSemaphore, CommonCommands};
 
-use crate::Result;
+use crate::{Lifetime, Result};
 
 pub struct Uploader {
-    staging_buffer: asche::Buffer,
+    staging_buffer: asche::Buffer<Lifetime>,
     timeline: asche::TimelineSemaphore,
     timeline_value: u64,
     transfer_pool: asche::TransferCommandPool,
@@ -13,15 +13,19 @@ pub struct Uploader {
 }
 
 impl Uploader {
-    pub fn new(device: &asche::Device, mut transfer_queue: asche::TransferQueue) -> Result<Self> {
+    pub fn new(
+        device: &asche::Device<Lifetime>,
+        mut transfer_queue: asche::TransferQueue,
+    ) -> Result<Self> {
         let timeline_value = 0;
         let timeline = device.create_timeline_semaphore("Upload Timeline", timeline_value)?;
         let transfer_pool = transfer_queue.create_command_pool()?;
 
-        let staging_buffer = device.create_buffer(&asche::BufferDescriptor {
+        let staging_buffer = device.create_buffer(&asche::BufferDescriptor::<_> {
             name: "Staging Buffer",
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+            lifetime: Lifetime::Buffer,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE | vk::QueueFlags::TRANSFER,
             size: 1024 * 1024, // Fixed 1 MB
@@ -39,12 +43,12 @@ impl Uploader {
 
     pub fn create_buffer_with_data(
         &mut self,
-        device: &asche::Device,
+        device: &asche::Device<Lifetime>,
         name: &str,
         buffer_data: &[u8],
         buffer_type: vk::BufferUsageFlags,
         queues: vk::QueueFlags,
-    ) -> Result<asche::Buffer> {
+    ) -> Result<asche::Buffer<Lifetime>> {
         let data_size = buffer_data.len();
         let staging_slice = self
             .staging_buffer
@@ -52,10 +56,11 @@ impl Uploader {
             .expect("staging buffer allocation could not be not mapped");
         staging_slice[..data_size].clone_from_slice(buffer_data);
 
-        let dst_buffer = device.create_buffer(&asche::BufferDescriptor {
+        let dst_buffer = device.create_buffer(&asche::BufferDescriptor::<_> {
             name,
             usage: buffer_type | vk::BufferUsageFlags::TRANSFER_DST,
             memory_location: vk_alloc::MemoryLocation::GpuOnly,
+            lifetime: Lifetime::Buffer,
             sharing_mode: vk::SharingMode::CONCURRENT,
             queues: vk::QueueFlags::TRANSFER | queues,
             size: data_size as u64,

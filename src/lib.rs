@@ -30,30 +30,31 @@ pub use {
         BinarySemaphore, BinarySemaphoreHandle, TimelineSemaphore, TimelineSemaphoreHandle,
     },
     swapchain::{Swapchain, SwapchainFrame},
-    vk_alloc::{AllocatorError, MemoryLocation},
+    vk_alloc::{AllocatorError, Lifetime, MemoryLocation},
 };
 
 use crate::context::Context;
 
-pub(crate) mod acceleration_structure;
-pub(crate) mod buffer;
-pub(crate) mod command;
-pub(crate) mod context;
-pub(crate) mod deferred_operation;
-pub(crate) mod descriptor;
-pub(crate) mod device;
-pub(crate) mod error;
-pub(crate) mod fence;
-pub(crate) mod image;
-pub(crate) mod instance;
-pub(crate) mod query;
-pub(crate) mod queue;
-pub(crate) mod semaphore;
-pub(crate) mod swapchain;
+mod acceleration_structure;
+mod buffer;
+mod command;
+mod context;
+mod deferred_operation;
+mod descriptor;
+mod device;
+mod error;
+mod fence;
+mod image;
+mod instance;
+mod memory_allocator;
+mod query;
+mod queue;
+mod semaphore;
+mod swapchain;
 #[cfg(debug_assertions)]
-pub(crate) mod vk_debug;
+mod vk_debug;
 
-pub(crate) type Result<T> = std::result::Result<T, AscheError>;
+type Result<T> = std::result::Result<T, AscheError>;
 
 /// Type of a queue.
 #[derive(Copy, Clone, Debug)]
@@ -222,13 +223,15 @@ impl Drop for ShaderModule {
 
 /// Describes how an image should be configured.
 #[derive(Clone, Debug)]
-pub struct BufferDescriptor<'a> {
+pub struct BufferDescriptor<'a, LT: Lifetime> {
     /// Name used for debugging.
     pub name: &'a str,
     /// What is the buffer used for.
     pub usage: vk::BufferUsageFlags,
     /// Where should the buffer reside.
     pub memory_location: vk_alloc::MemoryLocation,
+    /// The lifetime of an allocation. Used to pool allocations and reduce fragmentation.
+    pub lifetime: LT,
     /// The sharing mode between queues.
     pub sharing_mode: vk::SharingMode,
     /// Which queues should have access to it.
@@ -241,11 +244,11 @@ pub struct BufferDescriptor<'a> {
 
 /// Describes how an buffer view should be configured.
 #[derive(Clone, Debug)]
-pub struct BufferViewDescriptor<'a> {
+pub struct BufferViewDescriptor<'a, LT: Lifetime> {
     /// Name used for debugging.
     pub name: &'a str,
     /// The handle of the buffer.
-    pub buffer: &'a Buffer,
+    pub buffer: &'a Buffer<LT>,
     /// The format of the buffer view.
     pub format: vk::Format,
     /// Offset.
@@ -258,13 +261,15 @@ pub struct BufferViewDescriptor<'a> {
 
 /// Describes how an image should be configured.
 #[derive(Clone, Debug)]
-pub struct ImageDescriptor<'a> {
+pub struct ImageDescriptor<'a, LT: Lifetime> {
     /// Name used for debugging.
     pub name: &'a str,
     /// What is the image used for.
     pub usage: vk::ImageUsageFlags,
     /// Where should the image reside.
     pub memory_location: vk_alloc::MemoryLocation,
+    /// The lifetime of an allocation. Used to pool allocations and reduce fragmentation.
+    pub lifetime: LT,
     /// The sharing mode between queues.
     pub sharing_mode: vk::SharingMode,
     /// Which queues should have access to it.
@@ -291,11 +296,11 @@ pub struct ImageDescriptor<'a> {
 
 /// Describes how an image view should be configured.
 #[derive(Clone, Debug)]
-pub struct ImageViewDescriptor<'a> {
+pub struct ImageViewDescriptor<'a, LT: Lifetime> {
     /// Name used for debugging.
     pub name: &'a str,
     /// The handle of the image.
-    pub image: &'a Image,
+    pub image: &'a Image<LT>,
     /// The type of the image view.
     pub view_type: vk::ImageViewType,
     /// The format of the image view.

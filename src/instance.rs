@@ -10,7 +10,7 @@ use tracing1::{error, info, warn};
 use crate::device::Queues;
 #[cfg(debug_assertions)]
 use crate::vk_debug::debug_utils_callback;
-use crate::{AscheError, Device, DeviceConfiguration, Result, Swapchain};
+use crate::{AscheError, Device, DeviceConfiguration, Lifetime, Result, Swapchain};
 
 /// Describes how the instance should be configured.
 #[derive(Clone, Debug)]
@@ -135,10 +135,10 @@ impl Instance {
     }
 
     /// Requests a new Vulkan device. Returns a device, a swapchain and the queues created.
-    pub fn request_device(
+    pub fn request_device<LT: Lifetime>(
         self,
         device_configuration: DeviceConfiguration,
-    ) -> Result<(Device, Swapchain, Queues)> {
+    ) -> Result<(Device<LT>, Swapchain, Queues)> {
         Device::new(self, device_configuration)
     }
 
