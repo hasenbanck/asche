@@ -48,7 +48,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         context: Arc<Context>,
         graphic_queue_family_index: u32,
         presentation_mode: vk::PresentModeKHR,
@@ -72,7 +72,7 @@ impl Swapchain {
     }
 
     /// Recreates the swapchain. Needs to be called if the surface has changed.
-    pub fn recreate(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
+    pub unsafe fn recreate(&mut self, window_extend: Option<vk::Extent2D>) -> Result<()> {
         self.destroy_framebuffer();
 
         #[cfg(feature = "tracing")]
@@ -139,64 +139,58 @@ impl Swapchain {
         Ok(())
     }
 
-    fn query_formats(&self) -> Result<Vec<vk::SurfaceFormatKHR>> {
-        unsafe {
-            self.context
-                .instance
-                .raw()
-                .get_physical_device_surface_formats_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get the physical device surface formats: {}", err);
-            AscheError::VkResult(err)
-        })
+    unsafe fn query_formats(&self) -> Result<Vec<vk::SurfaceFormatKHR>> {
+        self.context
+            .instance
+            .raw()
+            .get_physical_device_surface_formats_khr(
+                self.context.physical_device,
+                self.context.instance.surface,
+                None,
+            )
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to get the physical device surface formats: {}", err);
+                AscheError::VkResult(err)
+            })
     }
 
-    fn query_surface_capabilities(&self) -> Result<vk::SurfaceCapabilitiesKHR> {
-        unsafe {
-            self.context
-                .instance
-                .raw()
-                .get_physical_device_surface_capabilities_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to get the physical device surface capabilities: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
+    unsafe fn query_surface_capabilities(&self) -> Result<vk::SurfaceCapabilitiesKHR> {
+        self.context
+            .instance
+            .raw()
+            .get_physical_device_surface_capabilities_khr(
+                self.context.physical_device,
+                self.context.instance.surface,
+            )
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to get the physical device surface capabilities: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })
     }
 
-    fn query_presentation_mode(&self) -> Result<Vec<vk::PresentModeKHR>> {
-        unsafe {
-            self.context
-                .instance
-                .raw()
-                .get_physical_device_surface_present_modes_khr(
-                    self.context.physical_device,
-                    self.context.instance.surface,
-                    None,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to get the physical device surface modes: {}", err);
-            AscheError::VkResult(err)
-        })
+    unsafe fn query_presentation_mode(&self) -> Result<Vec<vk::PresentModeKHR>> {
+        self.context
+            .instance
+            .raw()
+            .get_physical_device_surface_present_modes_khr(
+                self.context.physical_device,
+                self.context.instance.surface,
+                None,
+            )
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to get the physical device surface modes: {}", err);
+                AscheError::VkResult(err)
+            })
     }
 
     /// Returns the frame count of the swapchain.
-    pub fn frame_count(&self) -> Result<u32> {
+    pub unsafe fn frame_count(&self) -> Result<u32> {
         let capabilities = self.query_surface_capabilities()?;
 
         let mut image_count = capabilities.min_image_count + 1;
@@ -208,7 +202,7 @@ impl Swapchain {
     }
 
     /// Gets the next frame the program can render into.
-    pub fn next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
+    pub unsafe fn next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
         self.swapchain
             .as_ref()
             .ok_or(AscheError::SwapchainNotInitialized)?
@@ -216,7 +210,7 @@ impl Swapchain {
     }
 
     /// Queues the frame in the presentation queue.
-    pub fn queue_frame(
+    pub unsafe fn queue_frame(
         &self,
         graphics_queue: &GraphicsQueue,
         frame: SwapchainFrame,
@@ -229,7 +223,7 @@ impl Swapchain {
     }
 
     /// Re-uses a cached framebuffer or creates a new one.
-    pub(crate) fn next_framebuffer(
+    pub(crate) unsafe fn next_framebuffer(
         &mut self,
         render_pass: &RenderPass,
         color_attachments: &[RenderPassColorAttachmentDescriptor],
@@ -262,7 +256,7 @@ impl Swapchain {
         Ok(framebuffer)
     }
 
-    fn create_framebuffer(
+    unsafe fn create_framebuffer(
         &self,
         render_pass: &RenderPass,
         color_attachments: &[RenderPassColorAttachmentDescriptor],
@@ -282,34 +276,33 @@ impl Swapchain {
             .height(extent.height)
             .layers(1);
 
-        let framebuffer = unsafe {
-            self.context
-                .device
-                .create_framebuffer(&framebuffer_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a frame buffer: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let framebuffer = self
+            .context
+            .device
+            .create_framebuffer(&framebuffer_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a frame buffer: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(framebuffer)
     }
 
-    fn destroy_framebuffer(&mut self) {
+    unsafe fn destroy_framebuffer(&mut self) {
         for (_, framebuffer) in self.framebuffers.drain() {
-            unsafe {
-                self.context
-                    .device
-                    .destroy_framebuffer(Some(framebuffer), None);
-            }
+            self.context
+                .device
+                .destroy_framebuffer(Some(framebuffer), None);
         }
     }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        self.destroy_framebuffer();
+        unsafe {
+            self.destroy_framebuffer();
+        }
     }
 }
 
@@ -336,7 +329,7 @@ struct SwapchainDescriptor {
 
 impl SwapchainInner {
     /// Creates a new `Swapchain`.
-    fn new(
+    unsafe fn new(
         context: Arc<Context>,
         descriptor: SwapchainDescriptor,
         old_swapchain: Option<SwapchainInner>,
@@ -374,19 +367,19 @@ impl SwapchainInner {
             .old_swapchain(old_swapchain)
             .clipped(true);
 
-        let swapchain = unsafe {
-            context
-                .device
-                .create_swapchain_khr(&swapchain_create_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a swapchain: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let swapchain = context
+            .device
+            .create_swapchain_khr(&swapchain_create_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a swapchain: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
-        let images =
-            unsafe { context.device.get_swapchain_images_khr(swapchain, None) }.map_err(|err| {
+        let images = context
+            .device
+            .get_swapchain_images_khr(swapchain, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to get the swapchain images: {}", err);
                 AscheError::VkResult(err)
@@ -397,16 +390,14 @@ impl SwapchainInner {
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
-        let present_complete_semaphore = unsafe {
-            context
-                .device
-                .create_semaphore(&semaphore_create_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create the presentation semaphore: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let present_complete_semaphore = context
+            .device
+            .create_semaphore(&semaphore_create_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create the presentation semaphore: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(Self {
             context,
@@ -417,25 +408,29 @@ impl SwapchainInner {
     }
 
     /// Acquires the next frame that can be rendered into to being presented. Will block when no image in the swapchain is available.
-    fn get_next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
+    unsafe fn get_next_frame(&self, signal_semaphore: &BinarySemaphore) -> Result<SwapchainFrame> {
         let info = vk::AcquireNextImageInfoKHRBuilder::new()
             .semaphore(signal_semaphore.raw())
             .device_mask(1)
             .swapchain(self.raw)
             .timeout(u64::MAX);
 
-        let index =
-            unsafe { self.context.device.acquire_next_image2_khr(&info) }.map_err(|err| {
+        let index = self
+            .context
+            .device
+            .acquire_next_image2_khr(&info)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to acquire the next frame image: {}", err);
                 AscheError::VkResult(err)
             })?;
         let view = self.image_views[usize::try_from(index)?].raw();
+
         Ok(SwapchainFrame { index, view })
     }
 
     /// Queues the given frame into the graphic queue.
-    fn queue_frame(
+    unsafe fn queue_frame(
         &self,
         frame: SwapchainFrame,
         graphic_queue: vk::Queue,
@@ -453,21 +448,19 @@ impl SwapchainInner {
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        unsafe {
-            self.context
-                .device
-                .queue_present_khr(graphic_queue, &present_info)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to queue the next frame: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        self.context
+            .device
+            .queue_present_khr(graphic_queue, &present_info)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to queue the next frame: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(())
     }
 
-    fn create_image_views(
+    unsafe fn create_image_views(
         context: &Arc<Context>,
         images: &[vk::Image],
         format: vk::Format,
@@ -493,16 +486,14 @@ impl SwapchainInner {
                     layer_count: 1,
                 })
                 .image(*image);
-            let raw = unsafe {
-                context
-                    .device
-                    .create_image_view(&imageview_create_info, None)
-            }
-            .map_err(|err| {
-                #[cfg(feature = "tracing")]
-                error!("Unable to create a swapchain image view: {}", err);
-                AscheError::VkResult(err)
-            })?;
+            let raw = context
+                .device
+                .create_image_view(&imageview_create_info, None)
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to create a swapchain image view: {}", err);
+                    AscheError::VkResult(err)
+                })?;
 
             image_views.push(ImageView::new(raw, context.clone()));
         }
@@ -510,24 +501,22 @@ impl SwapchainInner {
         Ok(image_views)
     }
 
-    fn destroy_resources(
+    unsafe fn destroy_resources(
         device: &erupt::DeviceLoader,
         present_complete_semaphore: &mut vk::Semaphore,
     ) {
-        unsafe {
-            device.destroy_semaphore(Some(*present_complete_semaphore), None);
-            *present_complete_semaphore = vk::Semaphore::null();
-        };
+        device.destroy_semaphore(Some(*present_complete_semaphore), None);
+        *present_complete_semaphore = vk::Semaphore::null();
     }
 }
 
 impl Drop for SwapchainInner {
     fn drop(&mut self) {
-        Self::destroy_resources(&self.context.device, &mut self.present_complete_semaphore);
         unsafe {
+            Self::destroy_resources(&self.context.device, &mut self.present_complete_semaphore);
             self.context
                 .device
-                .destroy_swapchain_khr(Some(self.raw), None)
-        };
+                .destroy_swapchain_khr(Some(self.raw), None);
+        }
     }
 }

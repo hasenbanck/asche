@@ -50,46 +50,54 @@ impl<LT: Lifetime> Buffer<LT> {
 
     /// Returns a valid mapped slice if the buffer memory is host visible, otherwise it will return None.
     #[inline]
-    pub fn mapped_slice(&self) -> Result<Option<&[u8]>> {
+    pub unsafe fn mapped_slice(&self) -> Result<Option<&[u8]>> {
         let slice = self.allocation.mapped_slice()?;
         Ok(slice)
     }
 
     /// Returns a valid mapped mutable slice if the buffer memory is host visible, otherwise it will return None.
     #[inline]
-    pub fn mapped_slice_mut(&mut self) -> Result<Option<&mut [u8]>> {
+    pub unsafe fn mapped_slice_mut(&mut self) -> Result<Option<&mut [u8]>> {
         let slice = self.allocation.mapped_slice_mut()?;
         Ok(slice)
     }
 
     /// Flush the mapped memory of the buffer. Used for CPU->GPU transfers.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkFlushMappedMemoryRanges.html)"]
-    pub fn flush(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn flush(&self) -> Result<()> {
         let ranges = [vk::MappedMemoryRangeBuilder::new()
-            .memory(self.allocation.device_memory)
-            .size(self.allocation.size)
-            .offset(self.allocation.offset)];
-        unsafe { self.context.device.flush_mapped_memory_ranges(&ranges) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to flush a mapped memory range: {}", err);
-            AscheError::VkResult(err)
-        })?;
+            .memory(self.allocation.device_memory())
+            .size(self.allocation.size())
+            .offset(self.allocation.offset())];
+        self.context
+            .device
+            .flush_mapped_memory_ranges(&ranges)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to flush a mapped memory range: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(())
     }
 
     /// Invalidate the mapped memory of the buffer. Used for GPU->CPU transfers.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkInvalidateMappedMemoryRanges.html)"]
-    pub fn invalidate(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn invalidate(&self) -> Result<()> {
         let ranges = [vk::MappedMemoryRangeBuilder::new()
-            .memory(self.allocation.device_memory)
-            .size(self.allocation.size)
-            .offset(self.allocation.offset)];
-        unsafe { self.context.device.invalidate_mapped_memory_ranges(&ranges) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to invalidate a mapped memory range: {}", err);
-            AscheError::VkResult(err)
-        })?;
+            .memory(self.allocation.device_memory())
+            .size(self.allocation.size())
+            .offset(self.allocation.offset())];
+        self.context
+            .device
+            .invalidate_mapped_memory_ranges(&ranges)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to invalidate a mapped memory range: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(())
     }
@@ -97,9 +105,10 @@ impl<LT: Lifetime> Buffer<LT> {
     /// Query an address of a buffer.
     #[cfg(feature = "vk-buffer-device-address")]
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetBufferDeviceAddress.html)"]
-    pub fn device_address(&self) -> vk::DeviceAddress {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn device_address(&self) -> vk::DeviceAddress {
         let info = vk::BufferDeviceAddressInfoBuilder::new().buffer(self.raw);
-        unsafe { self.context.device.get_buffer_device_address(&info) }
+        self.context.device.get_buffer_device_address(&info)
     }
 }
 

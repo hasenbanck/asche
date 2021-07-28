@@ -121,16 +121,23 @@ macro_rules! impl_command_pool {
 
         impl $pool_name {
             /// Creates a new command pool.
-            pub(crate) fn new(context: Arc<Context>, family_index: u32, id: u64) -> Result<Self> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub(crate) unsafe fn new(
+                context: Arc<Context>,
+                family_index: u32,
+                id: u64,
+            ) -> Result<Self> {
                 let command_pool_info =
                     vk::CommandPoolCreateInfoBuilder::new().queue_family_index(family_index);
 
-                let raw = unsafe { context.device.create_command_pool(&command_pool_info, None) }
+                let raw = context
+                    .device
+                    .create_command_pool(&command_pool_info, None)
                     .map_err(|err| {
-                    #[cfg(feature = "tracing")]
-                    error!("Unable to create a command pool: {}", err);
-                    AscheError::VkResult(err)
-                })?;
+                        #[cfg(feature = "tracing")]
+                        error!("Unable to create a command pool: {}", err);
+                        AscheError::VkResult(err)
+                    })?;
 
                 context.set_object_name(
                     &format!("Command Pool {} {}", $queue_type, id),
@@ -153,7 +160,8 @@ macro_rules! impl_command_pool {
             }
 
             /// Creates a new command buffer.
-            pub fn create_command_buffer(
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn create_command_buffer(
                 &mut self,
                 wait_semaphores: &[CommandBufferSemaphore],
                 signal_semaphores: &[CommandBufferSemaphore],
@@ -163,14 +171,15 @@ macro_rules! impl_command_pool {
                     .level(vk::CommandBufferLevel::PRIMARY)
                     .command_buffer_count(1);
 
-                let command_buffers =
-                    unsafe { self.context.device.allocate_command_buffers(&info) }.map_err(
-                        |err| {
-                            #[cfg(feature = "tracing")]
-                            error!("Unable to allocate a command buffer: {}", err);
-                            AscheError::VkResult(err)
-                        },
-                    )?;
+                let command_buffers = self
+                    .context
+                    .device
+                    .allocate_command_buffers(&info)
+                    .map_err(|err| {
+                        #[cfg(feature = "tracing")]
+                        error!("Unable to allocate a command buffer: {}", err);
+                        AscheError::VkResult(err)
+                    })?;
 
                 #[allow(clippy::as_conversions)]
                 self.context.set_object_name(
@@ -201,14 +210,16 @@ macro_rules! impl_command_pool {
             }
 
             /// Resets a command pool.
-            pub fn reset(&self) -> Result<()> {
-                unsafe { self.context.device.reset_command_pool(self.raw, None) }.map_err(
-                    |err| {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn reset(&self) -> Result<()> {
+                self.context
+                    .device
+                    .reset_command_pool(self.raw, None)
+                    .map_err(|err| {
                         #[cfg(feature = "tracing")]
                         error!("Unable to reset a command pool: {}", err);
                         AscheError::VkResult(err)
-                    },
-                )?;
+                    })?;
 
                 Ok(())
             }
@@ -270,7 +281,8 @@ macro_rules! impl_command_buffer {
             }
 
             /// Begins to record the command buffer. Encoder will finish recording on drop.
-            pub fn record(&self) -> Result<$encoder_name> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn record(&self) -> Result<$encoder_name> {
                 let encoder = $encoder_name {
                     context: &self.context,
                     buffer: self.raw,
@@ -280,6 +292,7 @@ macro_rules! impl_command_buffer {
             }
 
             /// Sets the wait and signal semaphores of the command buffer.
+            #[cfg_attr(feature = "profiling", profiling::function)]
             pub fn set_semaphores(
                 &mut self,
                 wait_semaphores: &[CommandBufferSemaphore],
@@ -320,7 +333,7 @@ impl_command_buffer!(
 /// Implements common command between all queues.
 pub trait CommonCommands {
     /// Copies data between two buffer.
-    fn copy_buffer(
+    unsafe fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -330,7 +343,7 @@ pub trait CommonCommands {
     );
 
     /// Copies data from a buffer to an image.
-    fn copy_buffer_to_image(
+    unsafe fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -340,19 +353,19 @@ pub trait CommonCommands {
 
     /// Insert a memory dependency.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
-    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR);
+    unsafe fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR);
 
     /// Open a command buffer debug label region.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBeginDebugUtilsLabelEXT.html)"]
-    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()>;
+    unsafe fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()>;
 
     /// Close a command buffer label region.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdEndDebugUtilsLabelEXT.html)"]
-    fn end_debug_utils_label(&self);
+    unsafe fn end_debug_utils_label(&self);
 
     /// Insert a label into a command buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdInsertDebugUtilsLabelEXT.html)"]
-    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()>;
+    unsafe fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()>;
 }
 
 /// Used to encode command for a compute command buffer.
@@ -364,7 +377,8 @@ pub struct ComputeCommandEncoder<'a> {
 
 impl<'a> CommonCommands for ComputeCommandEncoder<'a> {
     /// Copies data between two buffer.
-    fn copy_buffer(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -384,7 +398,8 @@ impl<'a> CommonCommands for ComputeCommandEncoder<'a> {
     }
 
     /// Copies data from a buffer to an image.
-    fn copy_buffer_to_image(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -402,40 +417,47 @@ impl<'a> CommonCommands for ComputeCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Insert a memory dependency.
-    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
         begin_debug_utils_label(self.context, self.buffer, label, color)
     }
 
     /// Close a command buffer label region.
-    fn end_debug_utils_label(&self) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn end_debug_utils_label(&self) {
         end_debug_utils_label(self.context, self.buffer);
     }
 
     /// Insert a label into a command buffer.
-    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
         insert_debug_utils_label(self.context, self.buffer, label, color)
     }
 }
 
 impl<'a> ComputeCommandEncoder<'a> {
     /// Begins a command buffer.
-    fn begin(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin(&self) -> Result<()> {
         begin(self.context, self.buffer)
     }
 
     /// Ends a command buffer.
-    fn end(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn end(&self) -> Result<()> {
         end(self.context, self.buffer)
     }
 
     /// Binds a pipeline.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
-    pub fn bind_pipeline(&self, compute_pipeline: &ComputePipeline) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_pipeline(&self, compute_pipeline: &ComputePipeline) {
         bind_pipeline(
             self.context,
             self.buffer,
@@ -446,7 +468,8 @@ impl<'a> ComputeCommandEncoder<'a> {
 
     /// Binds descriptor sets.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html)"]
-    pub fn bind_descriptor_sets(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_descriptor_sets(
         &self,
         layout: vk::PipelineLayout,
         set: u32,
@@ -466,7 +489,8 @@ impl<'a> ComputeCommandEncoder<'a> {
 
     /// Update the values of push constants.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html)"]
-    pub fn push_constants(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn push_constants(
         &self,
         layout: vk::PipelineLayout,
         stage_flags: vk::ShaderStageFlags,
@@ -485,20 +509,17 @@ impl<'a> ComputeCommandEncoder<'a> {
 
     /// Dispatch compute work items.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatch.html)"]
-    pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
-        unsafe {
-            self.context.device.cmd_dispatch(
-                self.buffer,
-                group_count_x,
-                group_count_y,
-                group_count_z,
-            )
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        self.context
+            .device
+            .cmd_dispatch(self.buffer, group_count_x, group_count_y, group_count_z);
     }
 
     /// Dispatch compute work items.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchBase.html)"]
-    pub fn dispatch_base(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn dispatch_base(
         &self,
         base_group_x: u32,
         base_group_y: u32,
@@ -507,32 +528,30 @@ impl<'a> ComputeCommandEncoder<'a> {
         group_count_y: u32,
         group_count_z: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_dispatch_base(
-                self.buffer,
-                base_group_x,
-                base_group_y,
-                base_group_z,
-                group_count_x,
-                group_count_y,
-                group_count_z,
-            )
-        };
+        self.context.device.cmd_dispatch_base(
+            self.buffer,
+            base_group_x,
+            base_group_y,
+            base_group_z,
+            group_count_x,
+            group_count_y,
+            group_count_z,
+        );
     }
 
     /// Dispatch compute work items using indirect parameters.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDispatchIndirect.html)"]
-    pub fn dispatch_indirect(&self, buffer: vk::Buffer, offset: vk::DeviceSize) {
-        unsafe {
-            self.context
-                .device
-                .cmd_dispatch_indirect(self.buffer, buffer, offset)
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn dispatch_indirect(&self, buffer: vk::Buffer, offset: vk::DeviceSize) {
+        self.context
+            .device
+            .cmd_dispatch_indirect(self.buffer, buffer, offset);
     }
 
     /// Build acceleration structures with some parameters provided on the device.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html)"]
-    pub fn build_acceleration_structures(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
@@ -543,133 +562,124 @@ impl<'a> ComputeCommandEncoder<'a> {
             .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
             .collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
 
-        unsafe {
-            self.context.device.cmd_build_acceleration_structures_khr(
-                self.buffer,
-                infos,
-                &build_range_infos,
-            )
-        }
+        self.context.device.cmd_build_acceleration_structures_khr(
+            self.buffer,
+            infos,
+            &build_range_infos,
+        )
     }
 
     /// Build an acceleration structure with some parameters provided on the device.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructuresIndirectKHR.html)"]
-    pub fn build_acceleration_structures_indirect(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn build_acceleration_structures_indirect(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         indirect_device_addresses: &[vk::DeviceAddress],
         indirect_strides: &[u32],
         max_primitive_counts: &[*const u32],
     ) {
-        unsafe {
-            self.context
-                .device
-                .cmd_build_acceleration_structures_indirect_khr(
-                    self.buffer,
-                    infos,
-                    indirect_device_addresses,
-                    indirect_strides,
-                    max_primitive_counts,
-                )
-        };
+        self.context
+            .device
+            .cmd_build_acceleration_structures_indirect_khr(
+                self.buffer,
+                infos,
+                indirect_device_addresses,
+                indirect_strides,
+                max_primitive_counts,
+            );
     }
 
     /// Copy an acceleration structure.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureKHR.html)"]
-    pub fn copy_acceleration_structure(&self, info: &vk::CopyAccelerationStructureInfoKHR) {
-        unsafe {
-            self.context
-                .device
-                .cmd_copy_acceleration_structure_khr(self.buffer, info)
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn copy_acceleration_structure(&self, info: &vk::CopyAccelerationStructureInfoKHR) {
+        self.context
+            .device
+            .cmd_copy_acceleration_structure_khr(self.buffer, info);
     }
 
     /// Copy an acceleration structure to device memory.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureToMemoryKHR.html)"]
-    pub fn copy_acceleration_structure_to_memory(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn copy_acceleration_structure_to_memory(
         &self,
         info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
     ) {
-        unsafe {
-            self.context
-                .device
-                .cmd_copy_acceleration_structure_to_memory_khr(self.buffer, info)
-        };
+        self.context
+            .device
+            .cmd_copy_acceleration_structure_to_memory_khr(self.buffer, info);
     }
 
     /// Copy device memory to an acceleration structure.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyMemoryToAccelerationStructureKHR.html)"]
-    pub fn copy_memory_to_acceleration_structure(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn copy_memory_to_acceleration_structure(
         &self,
         info: &vk::CopyMemoryToAccelerationStructureInfoKHR,
     ) {
-        unsafe {
-            self.context
-                .device
-                .cmd_copy_memory_to_acceleration_structure_khr(self.buffer, info)
-        };
+        self.context
+            .device
+            .cmd_copy_memory_to_acceleration_structure_khr(self.buffer, info);
     }
 
     /// Write acceleration structure result parameters to query results.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdWriteAccelerationStructuresPropertiesKHR.html)"]
-    pub fn write_acceleration_structures_properties(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn write_acceleration_structures_properties(
         &self,
         acceleration_structures: &[vk::AccelerationStructureKHR],
         query_type: vk::QueryType,
         query_pool: vk::QueryPool,
         first_query: u32,
     ) {
-        unsafe {
-            self.context
-                .device
-                .cmd_write_acceleration_structures_properties_khr(
-                    self.buffer,
-                    acceleration_structures,
-                    query_type,
-                    query_pool,
-                    first_query,
-                )
-        };
+        self.context
+            .device
+            .cmd_write_acceleration_structures_properties_khr(
+                self.buffer,
+                acceleration_structures,
+                query_type,
+                query_pool,
+                first_query,
+            );
     }
 
     /// Reset queries in a query pool.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html)"]
-    pub fn reset_query_pool(&self, query_pool: vk::QueryPool, first_query: u32, query_count: u32) {
-        unsafe {
-            self.context.device.cmd_reset_query_pool(
-                self.buffer,
-                query_pool,
-                first_query,
-                query_count,
-            )
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn reset_query_pool(
+        &self,
+        query_pool: vk::QueryPool,
+        first_query: u32,
+        query_count: u32,
+    ) {
+        self.context
+            .device
+            .cmd_reset_query_pool(self.buffer, query_pool, first_query, query_count);
     }
 
     /// Clear regions of a color image.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html)"]
-    pub fn clear_color_image(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn clear_color_image(
         &self,
         image: vk::Image,
         image_layout: vk::ImageLayout,
         color: &vk::ClearColorValue,
         ranges: &[vk::ImageSubresourceRangeBuilder],
     ) {
-        unsafe {
-            self.context.device.cmd_clear_color_image(
-                self.buffer,
-                image,
-                image_layout,
-                color,
-                ranges,
-            )
-        };
+        self.context
+            .device
+            .cmd_clear_color_image(self.buffer, image, image_layout, color, ranges);
     }
 }
 
 impl<'a> Drop for ComputeCommandEncoder<'a> {
     fn drop(&mut self) {
-        self.end()
-            .expect("cant' finish recording the compute command buffer");
+        unsafe {
+            self.end()
+                .expect("cant' finish recording the compute command buffer");
+        }
     }
 }
 
@@ -682,7 +692,8 @@ pub struct GraphicsCommandEncoder<'a> {
 
 impl<'a> CommonCommands for GraphicsCommandEncoder<'a> {
     /// Copies data between two buffer.
-    fn copy_buffer(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -702,7 +713,8 @@ impl<'a> CommonCommands for GraphicsCommandEncoder<'a> {
     }
 
     /// Copies data from a buffer to an image.
-    fn copy_buffer_to_image(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -720,39 +732,46 @@ impl<'a> CommonCommands for GraphicsCommandEncoder<'a> {
     }
 
     /// Insert a memory dependency.
-    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Insert a memory dependency.
-    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
         begin_debug_utils_label(self.context, self.buffer, label, color)
     }
 
     /// Close a command buffer label region.
-    fn end_debug_utils_label(&self) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn end_debug_utils_label(&self) {
         end_debug_utils_label(self.context, self.buffer);
     }
 
     /// Insert a label into a command buffer.
-    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
         insert_debug_utils_label(self.context, self.buffer, label, color)
     }
 }
 
 impl<'a> GraphicsCommandEncoder<'a> {
     /// Begins a command buffer.
-    fn begin(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin(&self) -> Result<()> {
         begin(self.context, self.buffer)
     }
 
     /// Ends a command buffer.
-    fn end(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn end(&self) -> Result<()> {
         end(self.context, self.buffer)
     }
 
     /// Returns a render pass encoder. Drop once finished recording.
-    pub fn begin_render_pass(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn begin_render_pass(
         &self,
         swapchain: &mut Swapchain,
         render_pass: &RenderPass,
@@ -792,7 +811,8 @@ impl<'a> GraphicsCommandEncoder<'a> {
 
     /// Sets the viewport and the scissor rectangle.
     #[allow(clippy::as_conversions)]
-    pub fn set_viewport_and_scissor(&self, rect: vk::Rect2DBuilder) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn set_viewport_and_scissor(&self, rect: vk::Rect2DBuilder) {
         let viewport = vk::ViewportBuilder::new()
             .x(rect.offset.x as f32)
             .y(rect.offset.y as f32)
@@ -801,17 +821,16 @@ impl<'a> GraphicsCommandEncoder<'a> {
             .min_depth(0.0)
             .max_depth(1.0);
 
-        unsafe {
-            self.context
-                .device
-                .cmd_set_viewport(self.buffer, 0, &[viewport]);
-            self.context.device.cmd_set_scissor(self.buffer, 0, &[rect]);
-        };
+        self.context
+            .device
+            .cmd_set_viewport(self.buffer, 0, &[viewport]);
+        self.context.device.cmd_set_scissor(self.buffer, 0, &[rect]);
     }
 
     /// Binds a pipeline.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
-    pub fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
         bind_pipeline(
             self.context,
             self.buffer,
@@ -822,7 +841,8 @@ impl<'a> GraphicsCommandEncoder<'a> {
 
     /// Binds a raytracing pipeline.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
-    pub fn bind_raytrace_pipeline(&self, raytracing_pipeline: &RayTracingPipeline) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_raytrace_pipeline(&self, raytracing_pipeline: &RayTracingPipeline) {
         bind_pipeline(
             self.context,
             self.buffer,
@@ -833,7 +853,8 @@ impl<'a> GraphicsCommandEncoder<'a> {
 
     /// Binds descriptor sets.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html)"]
-    pub fn bind_descriptor_set(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_descriptor_set(
         &self,
         pipeline_bind_point: vk::PipelineBindPoint,
         layout: vk::PipelineLayout,
@@ -854,7 +875,8 @@ impl<'a> GraphicsCommandEncoder<'a> {
 
     /// Update the values of push constants.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html)"]
-    pub fn push_constants(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn push_constants(
         &self,
         layout: vk::PipelineLayout,
         stage_flags: vk::ShaderStageFlags,
@@ -873,17 +895,17 @@ impl<'a> GraphicsCommandEncoder<'a> {
 
     /// Set the dynamic stack size for a ray tracing pipeline
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html)"]
-    pub fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
-        unsafe {
-            self.context
-                .device
-                .cmd_set_ray_tracing_pipeline_stack_size_khr(self.buffer, stack_size)
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn set_ray_tracing_pipeline_stack_size(&self, stack_size: u32) {
+        self.context
+            .device
+            .cmd_set_ray_tracing_pipeline_stack_size_khr(self.buffer, stack_size);
     }
 
     /// Initialize an indirect ray tracing dispatch.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysIndirectKHR.html)"]
-    pub fn trace_rays_indirect_khr(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn trace_rays_indirect_khr(
         &self,
         raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
         miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
@@ -891,22 +913,21 @@ impl<'a> GraphicsCommandEncoder<'a> {
         callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
         indirect_device_address: vk::DeviceAddress,
     ) {
-        unsafe {
-            self.context.device.cmd_trace_rays_indirect_khr(
-                self.buffer,
-                raygen_shader_binding_table,
-                miss_shader_binding_table,
-                hit_shader_binding_table,
-                callable_shader_binding_table,
-                indirect_device_address,
-            )
-        };
+        self.context.device.cmd_trace_rays_indirect_khr(
+            self.buffer,
+            raygen_shader_binding_table,
+            miss_shader_binding_table,
+            hit_shader_binding_table,
+            callable_shader_binding_table,
+            indirect_device_address,
+        );
     }
 
     /// Initialize a ray tracing dispatch.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysKHR.html)"]
     #[allow(clippy::too_many_arguments)]
-    pub fn trace_rays_khr(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn trace_rays_khr(
         &self,
         raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
         miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
@@ -916,58 +937,54 @@ impl<'a> GraphicsCommandEncoder<'a> {
         height: u32,
         depth: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_trace_rays_khr(
-                self.buffer,
-                raygen_shader_binding_table,
-                miss_shader_binding_table,
-                hit_shader_binding_table,
-                callable_shader_binding_table,
-                width,
-                height,
-                depth,
-            )
-        };
+        self.context.device.cmd_trace_rays_khr(
+            self.buffer,
+            raygen_shader_binding_table,
+            miss_shader_binding_table,
+            hit_shader_binding_table,
+            callable_shader_binding_table,
+            width,
+            height,
+            depth,
+        );
     }
 
     /// Reset queries in a query pool.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdResetQueryPool.html)"]
-    pub fn reset_query_pool(&self, query_pool: vk::QueryPool, first_query: u32, query_count: u32) {
-        unsafe {
-            self.context.device.cmd_reset_query_pool(
-                self.buffer,
-                query_pool,
-                first_query,
-                query_count,
-            )
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn reset_query_pool(
+        &self,
+        query_pool: vk::QueryPool,
+        first_query: u32,
+        query_count: u32,
+    ) {
+        self.context
+            .device
+            .cmd_reset_query_pool(self.buffer, query_pool, first_query, query_count);
     }
 
     /// Clear regions of a color image.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdClearColorImage.html)"]
-    pub fn clear_color_image(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn clear_color_image(
         &self,
         image: vk::Image,
         image_layout: vk::ImageLayout,
         color: &vk::ClearColorValue,
         ranges: &[vk::ImageSubresourceRangeBuilder],
     ) {
-        unsafe {
-            self.context.device.cmd_clear_color_image(
-                self.buffer,
-                image,
-                image_layout,
-                color,
-                ranges,
-            )
-        };
+        self.context
+            .device
+            .cmd_clear_color_image(self.buffer, image, image_layout, color, ranges);
     }
 }
 
 impl<'a> Drop for GraphicsCommandEncoder<'a> {
     fn drop(&mut self) {
-        self.end()
-            .expect("cant' finish recording the graphics command buffer");
+        unsafe {
+            self.end()
+                .expect("cant' finish recording the graphics command buffer");
+        }
     }
 }
 
@@ -980,7 +997,8 @@ pub struct TransferCommandEncoder<'a> {
 
 impl<'a> CommonCommands for TransferCommandEncoder<'a> {
     /// Copies data between two buffer.
-    fn copy_buffer(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn copy_buffer(
         &self,
         src_buffer: vk::Buffer,
         dst_buffer: vk::Buffer,
@@ -1000,7 +1018,8 @@ impl<'a> CommonCommands for TransferCommandEncoder<'a> {
     }
 
     /// Copies data from a buffer to an image.
-    fn copy_buffer_to_image(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn copy_buffer_to_image(
         &self,
         src_buffer: vk::Buffer,
         dst_image: vk::Image,
@@ -1018,42 +1037,50 @@ impl<'a> CommonCommands for TransferCommandEncoder<'a> {
     }
 
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
-    fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Insert a memory dependency.
-    fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
         begin_debug_utils_label(self.context, self.buffer, label, color)
     }
 
     /// Close a command buffer label region.
-    fn end_debug_utils_label(&self) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn end_debug_utils_label(&self) {
         end_debug_utils_label(self.context, self.buffer);
     }
 
     /// Insert a label into a command buffer.
-    fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
         insert_debug_utils_label(self.context, self.buffer, label, color)
     }
 }
 
 impl<'a> TransferCommandEncoder<'a> {
     /// Begins a command buffer.
-    fn begin(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin(&self) -> Result<()> {
         begin(self.context, self.buffer)
     }
 
     /// Ends a command buffer.
-    fn end(&self) -> Result<()> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn end(&self) -> Result<()> {
         end(self.context, self.buffer)
     }
 }
 
 impl<'a> Drop for TransferCommandEncoder<'a> {
     fn drop(&mut self) {
-        self.end()
-            .expect("cant' finish recording the transfer command buffer");
+        unsafe {
+            self.end()
+                .expect("cant' finish recording the transfer command buffer");
+        }
     }
 }
 
@@ -1072,7 +1099,8 @@ impl<'a> Drop for RenderPassEncoder<'a> {
 
 impl<'a> RenderPassEncoder<'a> {
     /// Begins a render pass.
-    fn begin(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    unsafe fn begin(
         &self,
         render_pass: vk::RenderPass,
         framebuffer: vk::Framebuffer,
@@ -1089,16 +1117,15 @@ impl<'a> RenderPassEncoder<'a> {
             });
         let contents = vk::SubpassContents::INLINE;
 
-        unsafe {
-            self.context
-                .device
-                .cmd_begin_render_pass(self.buffer, &create_info, contents)
-        };
+        self.context
+            .device
+            .cmd_begin_render_pass(self.buffer, &create_info, contents);
     }
 
     /// Bind a pipeline object to a command buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindPipeline.html)"]
-    pub fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
         bind_pipeline(
             self.context,
             self.buffer,
@@ -1109,7 +1136,8 @@ impl<'a> RenderPassEncoder<'a> {
 
     /// Binds descriptor sets.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindDescriptorSets.html)"]
-    pub fn bind_descriptor_sets(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_descriptor_sets(
         &self,
         layout: vk::PipelineLayout,
         set: u32,
@@ -1129,35 +1157,36 @@ impl<'a> RenderPassEncoder<'a> {
 
     /// Bind an index buffer to a command buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindIndexBuffer.html)"]
-    pub fn bind_index_buffer(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_index_buffer(
         &self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
         index_type: vk::IndexType,
     ) {
-        unsafe {
-            self.context
-                .device
-                .cmd_bind_index_buffer(self.buffer, buffer, offset, index_type)
-        };
+        self.context
+            .device
+            .cmd_bind_index_buffer(self.buffer, buffer, offset, index_type);
     }
 
     /// Bind vertex buffers to a command buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBindVertexBuffers.html)"]
-    pub fn bind_vertex_buffers(&self, first_binding: u32, buffers: &[vk::Buffer], offsets: &[u64]) {
-        unsafe {
-            self.context.device.cmd_bind_vertex_buffers(
-                self.buffer,
-                first_binding,
-                buffers,
-                offsets,
-            )
-        };
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn bind_vertex_buffers(
+        &self,
+        first_binding: u32,
+        buffers: &[vk::Buffer],
+        offsets: &[u64],
+    ) {
+        self.context
+            .device
+            .cmd_bind_vertex_buffers(self.buffer, first_binding, buffers, offsets);
     }
 
     /// Update the values of push constants.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushConstants.html)"]
-    pub fn push_constants(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn push_constants(
         &self,
         layout: vk::PipelineLayout,
         stage_flags: vk::ShaderStageFlags,
@@ -1176,33 +1205,34 @@ impl<'a> RenderPassEncoder<'a> {
 
     /// Insert a memory dependency.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPipelineBarrier2KHR.html)"]
-    pub fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn pipeline_barrier2(&self, dependency_info: &vk::DependencyInfoKHR) {
         pipeline_barrier2(self.context, self.buffer, dependency_info);
     }
 
     /// Draws primitives.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDraw.html)"]
-    pub fn draw(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn draw(
         &self,
         vertex_count: u32,
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_draw(
-                self.buffer,
-                vertex_count,
-                instance_count,
-                first_vertex,
-                first_instance,
-            )
-        };
+        self.context.device.cmd_draw(
+            self.buffer,
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        );
     }
 
     /// Issue an indexed draw into a command buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexed.html)"]
-    pub fn draw_indexed(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn draw_indexed(
         &self,
         index_count: u32,
         instance_count: u32,
@@ -1210,41 +1240,39 @@ impl<'a> RenderPassEncoder<'a> {
         vertex_offset: i32,
         first_instance: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_draw_indexed(
-                self.buffer,
-                index_count,
-                instance_count,
-                first_index,
-                vertex_offset,
-                first_instance,
-            )
-        };
+        self.context.device.cmd_draw_indexed(
+            self.buffer,
+            index_count,
+            instance_count,
+            first_index,
+            vertex_offset,
+            first_instance,
+        );
     }
 
     /// Perform an indexed indirect draw.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html)"]
-    pub fn draw_indexed_indirect(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn draw_indexed_indirect(
         &self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_draw_indexed_indirect(
-                self.buffer,
-                buffer,
-                offset,
-                draw_count,
-                stride,
-            )
-        };
+        self.context.device.cmd_draw_indexed_indirect(
+            self.buffer,
+            buffer,
+            offset,
+            draw_count,
+            stride,
+        );
     }
 
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html)"]
-    pub fn draw_indexed_indirect_count(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn draw_indexed_indirect_count(
         &self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
@@ -1253,38 +1281,36 @@ impl<'a> RenderPassEncoder<'a> {
         max_draw_count: u32,
         stride: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_draw_indexed_indirect_count(
-                self.buffer,
-                buffer,
-                offset,
-                count_buffer,
-                count_buffer_offset,
-                max_draw_count,
-                stride,
-            )
-        };
+        self.context.device.cmd_draw_indexed_indirect_count(
+            self.buffer,
+            buffer,
+            offset,
+            count_buffer,
+            count_buffer_offset,
+            max_draw_count,
+            stride,
+        );
     }
 
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirect.html)"]
-    pub fn draw_indirect(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn draw_indirect(
         &self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
     ) {
-        unsafe {
-            self.context
-                .device
-                .cmd_draw_indirect(self.buffer, buffer, offset, draw_count, stride)
-        };
+        self.context
+            .device
+            .cmd_draw_indirect(self.buffer, buffer, offset, draw_count, stride);
     }
 
     /// Perform an indexed indirect draw with the draw count sourced from a buffer.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCount.html)"]
-    pub fn draw_indirect_count(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn draw_indirect_count(
         &self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
@@ -1293,36 +1319,37 @@ impl<'a> RenderPassEncoder<'a> {
         max_draw_count: u32,
         stride: u32,
     ) {
-        unsafe {
-            self.context.device.cmd_draw_indirect_count(
-                self.buffer,
-                buffer,
-                offset,
-                count_buffer,
-                count_buffer_offset,
-                max_draw_count,
-                stride,
-            )
-        };
+        self.context.device.cmd_draw_indirect_count(
+            self.buffer,
+            buffer,
+            offset,
+            count_buffer,
+            count_buffer_offset,
+            max_draw_count,
+            stride,
+        );
     }
 }
 
 #[inline]
-fn begin(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
+unsafe fn begin(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
     let info = vk::CommandBufferBeginInfoBuilder::new()
         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    unsafe { context.device.begin_command_buffer(buffer, &info) }.map_err(|err| {
-        #[cfg(feature = "tracing")]
-        error!("Unable to begin a command buffer: {}", err);
-        AscheError::VkResult(err)
-    })?;
+    context
+        .device
+        .begin_command_buffer(buffer, &info)
+        .map_err(|err| {
+            #[cfg(feature = "tracing")]
+            error!("Unable to begin a command buffer: {}", err);
+            AscheError::VkResult(err)
+        })?;
 
     Ok(())
 }
 
 #[inline]
-fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
-    unsafe { context.device.end_command_buffer(buffer) }.map_err(|err| {
+unsafe fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
+    context.device.end_command_buffer(buffer).map_err(|err| {
         #[cfg(feature = "tracing")]
         error!("Unable to end a command buffer: {}", err);
         AscheError::VkResult(err)
@@ -1332,21 +1359,19 @@ fn end(context: &Context, buffer: vk::CommandBuffer) -> Result<()> {
 }
 
 #[inline]
-fn bind_pipeline(
+unsafe fn bind_pipeline(
     context: &Context,
     buffer: vk::CommandBuffer,
     pipeline_bind_point: vk::PipelineBindPoint,
     pipeline: vk::Pipeline,
 ) {
-    unsafe {
-        context
-            .device
-            .cmd_bind_pipeline(buffer, pipeline_bind_point, pipeline)
-    };
+    context
+        .device
+        .cmd_bind_pipeline(buffer, pipeline_bind_point, pipeline)
 }
 
 #[inline]
-fn bind_descriptor_sets(
+unsafe fn bind_descriptor_sets(
     context: &Context,
     buffer: vk::CommandBuffer,
     pipeline_bind_point: vk::PipelineBindPoint,
@@ -1355,20 +1380,18 @@ fn bind_descriptor_sets(
     descriptor_sets: &[vk::DescriptorSet],
     dynamic_offsets: &[u32],
 ) {
-    unsafe {
-        context.device.cmd_bind_descriptor_sets(
-            buffer,
-            pipeline_bind_point,
-            layout,
-            set,
-            descriptor_sets,
-            dynamic_offsets,
-        )
-    };
+    context.device.cmd_bind_descriptor_sets(
+        buffer,
+        pipeline_bind_point,
+        layout,
+        set,
+        descriptor_sets,
+        dynamic_offsets,
+    )
 }
 
 #[inline]
-fn copy_buffer(
+unsafe fn copy_buffer(
     context: &Context,
     buffer: vk::CommandBuffer,
     src_buffer: vk::Buffer,
@@ -1381,15 +1404,13 @@ fn copy_buffer(
         .dst_offset(dst_offset)
         .src_offset(src_offset)
         .size(size);
-    unsafe {
-        context
-            .device
-            .cmd_copy_buffer(buffer, src_buffer, dst_buffer, &[region])
-    };
+    context
+        .device
+        .cmd_copy_buffer(buffer, src_buffer, dst_buffer, &[region]);
 }
 
 #[inline]
-fn copy_buffer_to_image(
+unsafe fn copy_buffer_to_image(
     context: &Context,
     buffer: vk::CommandBuffer,
     src_buffer: vk::Buffer,
@@ -1397,19 +1418,17 @@ fn copy_buffer_to_image(
     dst_image_layout: vk::ImageLayout,
     region: vk::BufferImageCopyBuilder,
 ) {
-    unsafe {
-        context.device.cmd_copy_buffer_to_image(
-            buffer,
-            src_buffer,
-            dst_image,
-            dst_image_layout,
-            &[region],
-        )
-    };
+    context.device.cmd_copy_buffer_to_image(
+        buffer,
+        src_buffer,
+        dst_image,
+        dst_image_layout,
+        &[region],
+    );
 }
 
 #[inline]
-fn push_constants(
+unsafe fn push_constants(
     context: &Context,
     buffer: vk::CommandBuffer,
     layout: vk::PipelineLayout,
@@ -1420,71 +1439,68 @@ fn push_constants(
     let size: u32 = constants.len().try_into()?;
 
     #[allow(clippy::as_conversions)]
-    unsafe {
-        context.device.cmd_push_constants(
-            buffer,
-            layout,
-            stage_flags,
-            offset,
-            size,
-            constants.as_ptr() as *mut c_void,
-        )
-    };
+    context.device.cmd_push_constants(
+        buffer,
+        layout,
+        stage_flags,
+        offset,
+        size,
+        constants.as_ptr() as *mut c_void,
+    );
+
     Ok(())
 }
 
 #[inline]
-fn pipeline_barrier2(
+unsafe fn pipeline_barrier2(
     context: &Context,
     command_buffer: vk::CommandBuffer,
     dependency_info: &vk::DependencyInfoKHR,
 ) {
-    unsafe {
-        context
-            .device
-            .cmd_pipeline_barrier2_khr(command_buffer, dependency_info)
-    };
+    context
+        .device
+        .cmd_pipeline_barrier2_khr(command_buffer, dependency_info);
 }
 
 #[inline]
-fn begin_debug_utils_label(
+unsafe fn begin_debug_utils_label(
     context: &Context,
     command_buffer: vk::CommandBuffer,
     label: &str,
     color: [f32; 4],
 ) -> Result<()> {
     let label = CString::new(label.to_string())?;
-    unsafe {
-        context.device.cmd_begin_debug_utils_label_ext(
-            command_buffer,
-            &vk::DebugUtilsLabelEXTBuilder::new()
-                .label_name(label.as_c_str())
-                .color(color),
-        )
-    }
+
+    context.device.cmd_begin_debug_utils_label_ext(
+        command_buffer,
+        &vk::DebugUtilsLabelEXTBuilder::new()
+            .label_name(label.as_c_str())
+            .color(color),
+    );
+
     Ok(())
 }
 
 #[inline]
-fn end_debug_utils_label(context: &Context, command_buffer: vk::CommandBuffer) {
-    unsafe { context.device.cmd_end_debug_utils_label_ext(command_buffer) };
+unsafe fn end_debug_utils_label(context: &Context, command_buffer: vk::CommandBuffer) {
+    context.device.cmd_end_debug_utils_label_ext(command_buffer);
 }
 
 #[inline]
-fn insert_debug_utils_label(
+unsafe fn insert_debug_utils_label(
     context: &Context,
     command_buffer: vk::CommandBuffer,
     label: &str,
     color: [f32; 4],
 ) -> Result<()> {
     let label = CString::new(label.to_string())?;
-    unsafe {
-        context.device.cmd_insert_debug_utils_label_ext(
-            command_buffer,
-            &vk::DebugUtilsLabelEXTBuilder::new()
-                .label_name(label.as_c_str())
-                .color(color),
-        )
-    }
+
+    context.device.cmd_insert_debug_utils_label_ext(
+        command_buffer,
+        &vk::DebugUtilsLabelEXTBuilder::new()
+            .label_name(label.as_c_str())
+            .color(color),
+    );
+
     Ok(())
 }

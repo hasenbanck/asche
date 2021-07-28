@@ -37,14 +37,16 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, _, queues) = instance.request_device(asche::DeviceConfiguration {
-        queue_configuration: QueueConfiguration {
-            compute_queues: vec![1.0],
-            graphics_queues: vec![],
-            transfer_queues: vec![],
-        },
-        ..Default::default()
-    })?;
+    let (device, _, queues) = unsafe {
+        instance.request_device(asche::DeviceConfiguration {
+            queue_configuration: QueueConfiguration {
+                compute_queues: vec![1.0],
+                graphics_queues: vec![],
+                transfer_queues: vec![],
+            },
+            ..Default::default()
+        })
+    }?;
 
     let Queues {
         mut compute_queues,
@@ -79,9 +81,11 @@ struct Application {
 
 impl Drop for Application {
     fn drop(&mut self) {
-        self.device
-            .wait_idle()
-            .expect("couldn't wait for device to become idle while dropping")
+        unsafe {
+            self.device
+                .wait_idle()
+                .expect("couldn't wait for device to become idle while dropping")
+        }
     }
 }
 
@@ -91,10 +95,12 @@ impl Application {
         mut compute_queue: asche::ComputeQueue,
     ) -> Result<Self, asche::AscheError> {
         // Shader
-        let comp_module = device.create_shader_module(
-            "Compute Shader Module",
-            include_bytes!("shader/compute.comp.spv"),
-        )?;
+        let comp_module = unsafe {
+            device.create_shader_module(
+                "Compute Shader Module",
+                include_bytes!("shader/compute.comp.spv"),
+            )
+        }?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
 
@@ -110,38 +116,43 @@ impl Application {
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE)];
         let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
-        let descriptor_set_layout =
-            device.create_descriptor_set_layout("Compute Descriptor Set Layout", layout_info)?;
+        let descriptor_set_layout = unsafe {
+            device.create_descriptor_set_layout("Compute Descriptor Set Layout", layout_info)
+        }?;
 
         // Descriptor pool
         let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
             .descriptor_count(1)
             ._type(vk::DescriptorType::STORAGE_BUFFER)];
 
-        let descriptor_pool = device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
-            name: "Compute Descriptor Pool",
-            max_sets: 16,
-            pool_sizes: &pool_sizes,
-            flags: None,
-        })?;
+        let descriptor_pool = unsafe {
+            device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
+                name: "Compute Descriptor Pool",
+                max_sets: 16,
+                pool_sizes: &pool_sizes,
+                flags: None,
+            })
+        }?;
 
         // Pipeline layout
         let layouts = [descriptor_set_layout.raw()];
         let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new().set_layouts(&layouts);
         let pipeline_layout =
-            device.create_pipeline_layout("Compute Pipeline Layout", pipeline_layout)?;
+            unsafe { device.create_pipeline_layout("Compute Pipeline Layout", pipeline_layout) }?;
 
         // Pipeline
         let pipeline_info = vk::ComputePipelineCreateInfoBuilder::new()
             .layout(pipeline_layout.raw())
             .stage(compute_shader_stage.build());
 
-        let pipeline = device.create_compute_pipeline("Compute Pipeline", pipeline_info)?;
+        let pipeline =
+            unsafe { device.create_compute_pipeline("Compute Pipeline", pipeline_info) }?;
 
-        let compute_command_pool = compute_queue.create_command_pool()?;
+        let compute_command_pool = unsafe { compute_queue.create_command_pool() }?;
 
         let timeline_value = 0;
-        let timeline = device.create_timeline_semaphore("Compute Timeline", timeline_value)?;
+        let timeline =
+            unsafe { device.create_timeline_semaphore("Compute Timeline", timeline_value) }?;
 
         Ok(Self {
             device,
@@ -165,18 +176,20 @@ impl Application {
             .enumerate()
             .for_each(|(id, x)| *x = id as u32);
 
-        let mut buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
-            name: "Input Buffer",
-            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-            memory_location: vk_alloc::MemoryLocation::CpuToGpu,
-            lifetime: Lifetime::Buffer,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            queues: vk::QueueFlags::COMPUTE,
-            size: DATA_SIZE,
-            flags: None,
-        })?;
+        let mut buffer = unsafe {
+            self.device.create_buffer(&asche::BufferDescriptor::<_> {
+                name: "Input Buffer",
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+                memory_location: vk_alloc::MemoryLocation::CpuToGpu,
+                lifetime: Lifetime::Buffer,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                queues: vk::QueueFlags::COMPUTE,
+                size: DATA_SIZE,
+                flags: None,
+            })
+        }?;
 
-        {
+        unsafe {
             let data_slice = buffer
                 .mapped_slice_mut()?
                 .expect("data buffer allocation was not mapped");
@@ -184,24 +197,28 @@ impl Application {
             buffer.flush()?;
         }
 
-        let compute_buffer = self.compute_command_pool.create_command_buffer(
-            &[CommandBufferSemaphore::Timeline {
-                semaphore: self.timeline.handle(),
-                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
-                value: self.timeline_value,
-            }],
-            &[CommandBufferSemaphore::Timeline {
-                semaphore: self.timeline.handle(),
-                stage: vk::PipelineStageFlags2KHR::NONE_KHR,
-                value: self.timeline_value + 1,
-            }],
-        )?;
+        let compute_buffer = unsafe {
+            self.compute_command_pool.create_command_buffer(
+                &[CommandBufferSemaphore::Timeline {
+                    semaphore: self.timeline.handle(),
+                    stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                    value: self.timeline_value,
+                }],
+                &[CommandBufferSemaphore::Timeline {
+                    semaphore: self.timeline.handle(),
+                    stage: vk::PipelineStageFlags2KHR::NONE_KHR,
+                    value: self.timeline_value + 1,
+                }],
+            )
+        }?;
 
-        let set = self.descriptor_pool.create_descriptor_set(
-            "Compute Descriptor Set",
-            &self.descriptor_set_layout,
-            None,
-        )?;
+        let set = unsafe {
+            self.descriptor_pool.create_descriptor_set(
+                "Compute Descriptor Set",
+                &self.descriptor_set_layout,
+                None,
+            )
+        }?;
 
         let buffer_info = [vk::DescriptorBufferInfoBuilder::new()
             .buffer(buffer.raw())
@@ -212,19 +229,21 @@ impl Application {
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .buffer_info(&buffer_info);
-        self.device.update_descriptor_sets(&[write], &[]);
+        unsafe { self.device.update_descriptor_sets(&[write], &[]) };
 
-        {
+        unsafe {
             let encoder = compute_buffer.record()?;
             encoder.bind_pipeline(&self.pipeline);
             encoder.bind_descriptor_sets(self.pipeline_layout.raw(), 0, &[set.raw()], &[]);
             encoder.dispatch(1024, 1, 1);
-        }
-        self.compute_queue.submit(&compute_buffer, None)?;
-        self.timeline_value += 1;
-        self.timeline.wait_for_value(self.timeline_value)?;
+            drop(encoder);
 
-        {
+            self.compute_queue.submit(&compute_buffer, None)?;
+            self.timeline_value += 1;
+            self.timeline.wait_for_value(self.timeline_value)?;
+        }
+
+        unsafe {
             let data_slice = buffer
                 .mapped_slice()
                 .expect("data buffer allocation was not mapped")

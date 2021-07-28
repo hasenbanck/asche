@@ -62,6 +62,7 @@ pub struct Instance {
 
 impl Instance {
     /// Creates a new `Instance`.
+    #[cfg_attr(feature = "profiling", profiling::function)]
     pub fn new(
         window_handle: &impl raw_window_handle::HasRawWindowHandle,
         configuration: InstanceConfiguration,
@@ -135,7 +136,8 @@ impl Instance {
     }
 
     /// Requests a new Vulkan device. Returns a device, a swapchain and the queues created.
-    pub fn request_device<LT: Lifetime>(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn request_device<LT: Lifetime>(
         self,
         device_configuration: DeviceConfiguration,
     ) -> Result<(Device<LT>, Swapchain, Queues)> {

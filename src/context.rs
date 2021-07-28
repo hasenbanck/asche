@@ -51,18 +51,22 @@ impl Context {
             .object_name(&name)
             .object_type(object_type)
             .object_handle(object_handle);
-        unsafe { self.device.set_debug_utils_object_name_ext(&info) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to set the debug object name: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        unsafe {
+            self.device
+                .set_debug_utils_object_name_ext(&info)
+                .map_err(|err| {
+                    #[cfg(feature = "tracing")]
+                    error!("Unable to set the debug object name: {}", err);
+                    AscheError::VkResult(err)
+                })
+        }?;
 
         Ok(())
     }
 
     /// Sets a debug name for an object.
     #[cfg(not(debug_assertions))]
-    pub(crate) fn set_object_name(
+    pub(crate) unsafe fn set_object_name(
         &self,
         _name: &str,
         _object_type: vk::ObjectType,

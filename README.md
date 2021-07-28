@@ -7,11 +7,13 @@
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
 Provides an abstraction layer above [erupt](https://crates.io/crates/erupt)
-to easier use Vulkan in Rust. Mainly handles the Vulkan busywork (device initialization, memory
-handling etc.) and the lifetimes of objects.
+to easier use Vulkan in Rust. Mainly handles the Vulkan busywork (device initialization, memory handling etc.) and the
+lifetimes of objects.
 
-No validation and a lot of pain. You most likely want to use
-[wgpu-rs](https://github.com/gfx-rs/wgpu-rs) instead!
+No validation and a lot of pain. Lifetimes are not fully tracked, so you need to pay attention when to drop which
+resource to avoid UB (check the validation layer).
+
+You most likely want to use [wgpu-rs](https://github.com/gfx-rs/wgpu-rs) instead!
 
 ## Requirements
 

@@ -4,6 +4,10 @@
 #![deny(clippy::unwrap_used)]
 
 //! Provides an abstraction layer above erupt to easier use Vulkan in Rust.
+//!
+//! No validation and a lot of pain. Lifetimes are not fully tracked, so you need to pay attention
+//! when to drop which resource to avoid UB (check the validation layer). In general resources
+//! should not be dropped while they are being used.
 
 use std::sync::Arc;
 

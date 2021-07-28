@@ -28,7 +28,8 @@ impl QueryPool {
 
     /// Copy results of queries in a query pool to a host memory region.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetQueryPoolResults.html)"]
-    pub fn results(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn results(
         &self,
         first_query: u32,
         query_count: u32,
@@ -37,8 +38,9 @@ impl QueryPool {
         flags: Option<vk::QueryResultFlags>,
     ) -> Result<()> {
         #[allow(clippy::as_conversions)]
-        unsafe {
-            self.context.device.get_query_pool_results(
+        self.context
+            .device
+            .get_query_pool_results(
                 self.raw,
                 first_query,
                 query_count,
@@ -47,15 +49,14 @@ impl QueryPool {
                 stride,
                 flags,
             )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to copy results of queries in a query pool to a host memory region: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to copy results of queries in a query pool to a host memory region: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })
     }
 }
 

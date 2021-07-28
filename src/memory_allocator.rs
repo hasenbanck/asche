@@ -19,6 +19,9 @@ impl<LT: Lifetime> MemoryAllocator<LT> {
 
 impl<LT: Lifetime> Drop for MemoryAllocator<LT> {
     fn drop(&mut self) {
-        self.allocator.cleanup(&self.context.device);
+        // All images & buffers have an Arc on the memory allocator, so this is safe.
+        unsafe {
+            self.allocator.cleanup(&self.context.device);
+        }
     }
 }

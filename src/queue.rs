@@ -47,7 +47,8 @@ macro_rules! impl_queue {
             }
 
             /// Creates a new command pool. Pools are not cached and are owned by the caller.
-            pub fn create_command_pool(&mut self) -> Result<$pool_name> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn create_command_pool(&mut self) -> Result<$pool_name> {
                 let counter = self.command_pool_counter;
                 let command_pool =
                     $pool_name::new(self.context.clone(), self.family_index, counter)?;
@@ -59,7 +60,8 @@ macro_rules! impl_queue {
 
             /// Submits a command buffer to a queue.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html)"]
-            pub fn submit(&mut self, command_buffer: &$buffer_name, fence: Option<&Fence>) -> Result<()> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn submit(&mut self, command_buffer: &$buffer_name, fence: Option<&Fence>) -> Result<()> {
                 let command_buffer_infos = [vk::CommandBufferSubmitInfoKHRBuilder::new()
                     .command_buffer(command_buffer.raw())
                     .device_mask(1)];
@@ -74,11 +76,9 @@ macro_rules! impl_queue {
                     .wait_semaphore_infos(wait_semaphore_infos.as_slice())
                     .signal_semaphore_infos(signal_semaphore_infos.as_slice());
 
-                unsafe {
-                    self.context
-                        .device
-                        .queue_submit2_khr(self.raw, &[submit_info], fence)
-                }
+                self.context
+                    .device
+                    .queue_submit2_khr(self.raw, &[submit_info], fence)
                 .map_err(|err| {
                     #[cfg(feature = "tracing")]
                     error!("Unable to queue and submit a command buffer: {}", err);
@@ -90,7 +90,8 @@ macro_rules! impl_queue {
 
             /// Submit command buffers to a queue.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueSubmit2KHR.html)"]
-            pub fn submit_all(&mut self, command_buffer: &[$buffer_name], fence: Option<&Fence>) -> Result<()> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn submit_all(&mut self, command_buffer: &[$buffer_name], fence: Option<&Fence>) -> Result<()> {
                 let command_buffer_infos: Vec<vk::CommandBufferSubmitInfoKHRBuilder> = command_buffer.iter().map(|cb| {
                     vk::CommandBufferSubmitInfoKHRBuilder::new()
                         .command_buffer(cb.raw())
@@ -116,11 +117,9 @@ macro_rules! impl_queue {
 
                 let fence = fence.map(|fence| fence.raw());
 
-                unsafe {
-                    self.context
-                        .device
-                        .queue_submit2_khr(self.raw, &submit_infos, fence)
-                }
+                self.context
+                    .device
+                    .queue_submit2_khr(self.raw, &submit_infos, fence)
                 .map_err(|err| {
                     #[cfg(feature = "tracing")]
                     error!("Unable to queue and submit command buffers: {}", err);
@@ -132,8 +131,9 @@ macro_rules! impl_queue {
 
             /// Wait for a queue to become idle.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueWaitIdle.html)"]
-            pub fn wait_idle(&self) -> Result<()> {
-                unsafe { self.context.device.queue_wait_idle(self.raw) }.map_err(|err| {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn wait_idle(&self) -> Result<()> {
+                self.context.device.queue_wait_idle(self.raw).map_err(|err| {
                     #[cfg(feature = "tracing")]
                     error!("Unable to wait for the queue to become idle: {}", err);
                     AscheError::VkResult(err)
@@ -142,37 +142,38 @@ macro_rules! impl_queue {
 
             /// Open a queue debug label region.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueBeginDebugUtilsLabelEXT.html)"]
-            pub fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn begin_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
                 let label = CString::new(label.to_owned())?;
-                unsafe {
-                    self.context.device.queue_begin_debug_utils_label_ext(
-                        self.raw(),
-                        &vk::DebugUtilsLabelEXTBuilder::new()
-                            .label_name(label.as_c_str())
-                            .color(color),
-                    )
-                }
+                self.context.device.queue_begin_debug_utils_label_ext(
+                    self.raw(),
+                    &vk::DebugUtilsLabelEXTBuilder::new()
+                        .label_name(label.as_c_str())
+                        .color(color),
+                );
+
                 Ok(())
             }
 
             /// Close a queue debug label region.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueEndDebugUtilsLabelEXT.html)"]
-            pub fn end_debug_utils_label(&self) {
-                unsafe { self.context.device.queue_end_debug_utils_label_ext(self.raw()) };
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn end_debug_utils_label(&self) {
+                self.context.device.queue_end_debug_utils_label_ext(self.raw());
             }
 
             /// Insert a label into a queue.
             #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkQueueInsertDebugUtilsLabelEXT.html)"]
-            pub fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
+            #[cfg_attr(feature = "profiling", profiling::function)]
+            pub unsafe fn insert_debug_utils_label(&self, label: &str, color: [f32; 4]) -> Result<()> {
                 let label = CString::new(label.to_owned())?;
-                unsafe {
-                    self.context.device.queue_insert_debug_utils_label_ext(
-                        self.raw(),
-                        &vk::DebugUtilsLabelEXTBuilder::new()
-                            .label_name(label.as_c_str())
-                            .color(color),
-                    )
-                }
+                self.context.device.queue_insert_debug_utils_label_ext(
+                    self.raw(),
+                    &vk::DebugUtilsLabelEXTBuilder::new()
+                        .label_name(label.as_c_str())
+                        .color(color),
+                );
+
                 Ok(())
             }
         }

@@ -139,7 +139,8 @@ impl<LT: Lifetime> Device<LT> {
     /// The compute and transfer queues use dedicated queue families if provided by the implementation.
     /// The graphics queues are guaranteed to be able to write the the surface.
     #[allow(unused_variables)]
-    pub(crate) fn new(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub(crate) unsafe fn new(
         instance: Instance,
         configuration: DeviceConfiguration,
     ) -> Result<(Self, Swapchain, Queues)> {
@@ -152,10 +153,8 @@ impl<LT: Lifetime> Device<LT> {
         #[cfg(feature = "tracing")]
         {
             let name = String::from(
-                unsafe {
-                    std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr())
-                }
-                .to_str()?,
+                std::ffi::CStr::from_ptr(physical_device_properties.device_name.as_ptr())
+                    .to_str()?,
             );
 
             info!(
@@ -164,17 +163,13 @@ impl<LT: Lifetime> Device<LT> {
             );
 
             let driver_name = String::from(
-                unsafe {
-                    std::ffi::CStr::from_ptr(physical_device_driver_properties.driver_name.as_ptr())
-                }
-                .to_str()?,
+                std::ffi::CStr::from_ptr(physical_device_driver_properties.driver_name.as_ptr())
+                    .to_str()?,
             );
 
             let driver_version = String::from(
-                unsafe {
-                    std::ffi::CStr::from_ptr(physical_device_driver_properties.driver_info.as_ptr())
-                }
-                .to_str()?,
+                std::ffi::CStr::from_ptr(physical_device_driver_properties.driver_info.as_ptr())
+                    .to_str()?,
             );
 
             info!(
@@ -305,21 +300,21 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new render pass.
-    pub fn create_render_pass(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_render_pass(
         &self,
         name: &str,
         renderpass_info: vk::RenderPassCreateInfo2Builder,
     ) -> Result<RenderPass> {
-        let renderpass = unsafe {
-            self.context
-                .device
-                .create_render_pass2(&renderpass_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a render pass: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let renderpass = self
+            .context
+            .device
+            .create_render_pass2(&renderpass_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a render pass: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::RENDER_PASS, renderpass.0)?;
@@ -331,21 +326,21 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new pipeline layout.
-    pub fn create_pipeline_layout(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_pipeline_layout(
         &self,
         name: &str,
         pipeline_layout_info: vk::PipelineLayoutCreateInfoBuilder,
     ) -> Result<PipelineLayout> {
-        let pipeline_layout = unsafe {
-            self.context
-                .device
-                .create_pipeline_layout(&pipeline_layout_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a pipeline layout: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let pipeline_layout = self
+            .context
+            .device
+            .create_pipeline_layout(&pipeline_layout_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a pipeline layout: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::PIPELINE_LAYOUT, pipeline_layout.0)?;
@@ -357,21 +352,21 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new graphics pipeline.
-    pub fn create_graphics_pipeline(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_graphics_pipeline(
         &self,
         name: &str,
         pipeline_info: vk::GraphicsPipelineCreateInfoBuilder,
     ) -> Result<GraphicsPipeline> {
-        let pipelines = unsafe {
-            self.context
-                .device
-                .create_graphics_pipelines(None, &[pipeline_info], None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a graphic pipeline: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let pipelines = self
+            .context
+            .device
+            .create_graphics_pipelines(None, &[pipeline_info], None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a graphic pipeline: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         assert_eq!(pipelines.len(), 1);
         let pipeline = pipelines[0];
@@ -385,25 +380,22 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new raytracing pipeline.
-    pub fn create_raytracing_pipeline(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_raytracing_pipeline(
         &self,
         name: &str,
         deferred_operation: Option<vk::DeferredOperationKHR>,
         pipeline_info: vk::RayTracingPipelineCreateInfoKHRBuilder,
     ) -> Result<RayTracingPipeline> {
-        let pipelines = unsafe {
-            self.context.device.create_ray_tracing_pipelines_khr(
-                deferred_operation,
-                None,
-                &[pipeline_info],
-                None,
-            )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a ray tracing pipeline: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let pipelines = self
+            .context
+            .device
+            .create_ray_tracing_pipelines_khr(deferred_operation, None, &[pipeline_info], None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a ray tracing pipeline: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         assert_eq!(pipelines.len(), 1);
         let pipeline = pipelines[0];
@@ -417,21 +409,21 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new compute pipeline.
-    pub fn create_compute_pipeline(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_compute_pipeline(
         &self,
         name: &str,
         pipeline_info: vk::ComputePipelineCreateInfoBuilder,
     ) -> Result<ComputePipeline> {
-        let pipelines = unsafe {
-            self.context
-                .device
-                .create_compute_pipelines(None, &[pipeline_info], None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a compute pipeline: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let pipelines = self
+            .context
+            .device
+            .create_compute_pipelines(None, &[pipeline_info], None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a compute pipeline: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         assert_eq!(pipelines.len(), 1);
         let pipeline = pipelines[0];
@@ -445,7 +437,8 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a descriptor pool.
-    pub fn create_descriptor_pool(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_descriptor_pool(
         &self,
         descriptor: &DescriptorPoolDescriptor,
     ) -> Result<DescriptorPool> {
@@ -459,7 +452,10 @@ impl<LT: Lifetime> Device<LT> {
             pool_info
         };
 
-        let pool = unsafe { self.context.device.create_descriptor_pool(&pool_info, None) }
+        let pool = self
+            .context
+            .device
+            .create_descriptor_pool(&pool_info, None)
             .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a descriptor pool: {}", err);
@@ -473,21 +469,21 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a descriptor set layout.
-    pub fn create_descriptor_set_layout(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_descriptor_set_layout(
         &self,
         name: &str,
         layout_info: vk::DescriptorSetLayoutCreateInfoBuilder,
     ) -> Result<DescriptorSetLayout> {
-        let layout = unsafe {
-            self.context
-                .device
-                .create_descriptor_set_layout(&layout_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to create a descriptor set layout: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        let layout = self
+            .context
+            .device
+            .create_descriptor_set_layout(&layout_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to create a descriptor set layout: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::DESCRIPTOR_SET_LAYOUT, layout.0)?;
@@ -496,10 +492,18 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new shader module using the provided SPIR-V code.
-    pub fn create_shader_module(&self, name: &str, shader_data: &[u8]) -> Result<ShaderModule> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_shader_module(
+        &self,
+        name: &str,
+        shader_data: &[u8],
+    ) -> Result<ShaderModule> {
         let code = erupt::utils::decode_spv(shader_data)?;
         let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(&code);
-        let module = unsafe { self.context.device.create_shader_module(&create_info, None) }
+        let module = self
+            .context
+            .device
+            .create_shader_module(&create_info, None)
             .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a shader module: {}", err);
@@ -516,7 +520,8 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new buffer.
-    pub fn create_buffer(&self, descriptor: &BufferDescriptor<LT>) -> Result<Buffer<LT>> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_buffer(&self, descriptor: &BufferDescriptor<LT>) -> Result<Buffer<LT>> {
         if descriptor.size == 0 {
             return Err(AscheError::BufferZeroSize);
         }
@@ -549,8 +554,11 @@ impl<LT: Lifetime> Device<LT> {
             create_info
         };
 
-        let raw =
-            unsafe { self.context.device.create_buffer(&create_info, None) }.map_err(|err| {
+        let raw = self
+            .context
+            .device
+            .create_buffer(&create_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a buffer: {}", err);
                 AscheError::VkResult(err)
@@ -569,14 +577,17 @@ impl<LT: Lifetime> Device<LT> {
 
         let bind_infos = vk::BindBufferMemoryInfoBuilder::new()
             .buffer(raw)
-            .memory(allocation.device_memory)
-            .memory_offset(allocation.offset);
+            .memory(allocation.device_memory())
+            .memory_offset(allocation.offset());
 
-        unsafe { self.context.device.bind_buffer_memory2(&[bind_infos]) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to bind buffer memory: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        self.context
+            .device
+            .bind_buffer_memory2(&[bind_infos])
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to bind buffer memory: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(Buffer::new(
             raw,
@@ -587,7 +598,11 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new buffer view.
-    pub fn create_buffer_view(&self, descriptor: &BufferViewDescriptor<LT>) -> Result<BufferView> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_buffer_view(
+        &self,
+        descriptor: &BufferViewDescriptor<LT>,
+    ) -> Result<BufferView> {
         let create_info = vk::BufferViewCreateInfoBuilder::new()
             .buffer(descriptor.buffer.raw())
             .format(descriptor.format)
@@ -600,13 +615,15 @@ impl<LT: Lifetime> Device<LT> {
             create_info
         };
 
-        let raw = unsafe { self.context.device.create_buffer_view(&create_info, None) }.map_err(
-            |err| {
+        let raw = self
+            .context
+            .device
+            .create_buffer_view(&create_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create an buffer view: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -616,7 +633,8 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new image.
-    pub fn create_image(&self, descriptor: &ImageDescriptor<LT>) -> Result<Image<LT>> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_image(&self, descriptor: &ImageDescriptor<LT>) -> Result<Image<LT>> {
         let mut families: Vec<u32> = Vec::with_capacity(3);
 
         if descriptor.queues.contains(vk::QueueFlags::COMPUTE) {
@@ -652,8 +670,11 @@ impl<LT: Lifetime> Device<LT> {
             create_info
         };
 
-        let raw =
-            unsafe { self.context.device.create_image(&create_info, None) }.map_err(|err| {
+        let raw = self
+            .context
+            .device
+            .create_image(&create_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create an image: {}", err);
                 AscheError::VkResult(err)
@@ -675,14 +696,17 @@ impl<LT: Lifetime> Device<LT> {
 
         let bind_infos = vk::BindImageMemoryInfoBuilder::new()
             .image(raw)
-            .memory(allocation.device_memory)
-            .memory_offset(allocation.offset);
+            .memory(allocation.device_memory())
+            .memory_offset(allocation.offset());
 
-        unsafe { self.context.device.bind_image_memory2(&[bind_infos]) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to bind image memory: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        self.context
+            .device
+            .bind_image_memory2(&[bind_infos])
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to bind image memory: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(Image::new(
             raw,
@@ -693,7 +717,11 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new image.
-    pub fn create_image_view(&self, descriptor: &ImageViewDescriptor<LT>) -> Result<ImageView> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_image_view(
+        &self,
+        descriptor: &ImageViewDescriptor<LT>,
+    ) -> Result<ImageView> {
         let create_info = vk::ImageViewCreateInfoBuilder::new()
             .image(descriptor.image.raw())
             .view_type(descriptor.view_type)
@@ -707,13 +735,15 @@ impl<LT: Lifetime> Device<LT> {
             create_info
         };
 
-        let raw = unsafe { self.context.device.create_image_view(&create_info, None) }.map_err(
-            |err| {
+        let raw = self
+            .context
+            .device
+            .create_image_view(&create_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create an image view: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         #[cfg(debug_assertions)]
         self.context
@@ -723,7 +753,8 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a sampler.
-    pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Result<Sampler> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Result<Sampler> {
         let create_info = vk::SamplerCreateInfoBuilder::new()
             .mag_filter(descriptor.mag_filter)
             .min_filter(descriptor.min_filter)
@@ -756,8 +787,11 @@ impl<LT: Lifetime> Device<LT> {
             create_info
         };
 
-        let raw =
-            unsafe { self.context.device.create_sampler(&create_info, None) }.map_err(|err| {
+        let raw = self
+            .context
+            .device
+            .create_sampler(&create_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a sampler: {}", err);
                 AscheError::VkResult(err)
@@ -771,10 +805,14 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a fence.
-    pub fn create_fence(&self, name: &str) -> Result<Fence> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_fence(&self, name: &str) -> Result<Fence> {
         let fence_info = vk::FenceCreateInfoBuilder::new();
-        let raw =
-            unsafe { self.context.device.create_fence(&fence_info, None) }.map_err(|err| {
+        let raw = self
+            .context
+            .device
+            .create_fence(&fence_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a fence: {}", err);
                 AscheError::VkResult(err)
@@ -787,17 +825,20 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new binary semaphore.
-    pub fn create_binary_semaphore(&self, name: &str) -> Result<BinarySemaphore> {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_binary_semaphore(&self, name: &str) -> Result<BinarySemaphore> {
         let create_info =
             vk::SemaphoreTypeCreateInfoBuilder::new().semaphore_type(vk::SemaphoreType::BINARY);
         let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&create_info);
-        let raw = unsafe { self.context.device.create_semaphore(&semaphore_info, None) }.map_err(
-            |err| {
+        let raw = self
+            .context
+            .device
+            .create_semaphore(&semaphore_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a binary semaphore: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
@@ -806,7 +847,8 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new timeline semaphore.
-    pub fn create_timeline_semaphore(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_timeline_semaphore(
         &self,
         name: &str,
         initial_value: u64,
@@ -815,13 +857,15 @@ impl<LT: Lifetime> Device<LT> {
             .semaphore_type(vk::SemaphoreType::TIMELINE)
             .initial_value(initial_value);
         let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&create_info);
-        let raw = unsafe { self.context.device.create_semaphore(&semaphore_info, None) }.map_err(
-            |err| {
+        let raw = self
+            .context
+            .device
+            .create_semaphore(&semaphore_info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a timeline semaphore: {}", err);
                 AscheError::VkResult(err)
-            },
-        )?;
+            })?;
 
         self.context
             .set_object_name(name, vk::ObjectType::SEMAPHORE, raw.0)?;
@@ -830,14 +874,18 @@ impl<LT: Lifetime> Device<LT> {
     }
 
     /// Creates a new query pool.
-    pub fn create_query_pool(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_query_pool(
         &self,
         name: &str,
         query_pool_info: vk::QueryPoolCreateInfoBuilder,
     ) -> Result<QueryPool> {
         let info = query_pool_info.build();
-        let query_pool =
-            unsafe { self.context.device.create_query_pool(&info, None) }.map_err(|err| {
+        let query_pool = self
+            .context
+            .device
+            .create_query_pool(&info, None)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a query pool: {}", err);
                 AscheError::VkResult(err)
@@ -851,7 +899,8 @@ impl<LT: Lifetime> Device<LT> {
 
     /// Query ray tracing capture replay pipeline shader group handles.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.html)"]
-    pub fn ray_tracing_capture_replay_shader_group_handles(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn ray_tracing_capture_replay_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,
         first_group: u32,
@@ -859,32 +908,31 @@ impl<LT: Lifetime> Device<LT> {
         data: &[u8],
     ) -> Result<()> {
         #[allow(clippy::as_conversions)]
-        unsafe {
-            self.context
-                .device
-                .get_ray_tracing_capture_replay_shader_group_handles_khr(
-                    pipeline,
-                    first_group,
-                    group_count,
-                    data.len(),
-                    data.as_ptr() as *mut c_void,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to query ray tracing capture replay pipeline shader group handles: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })?;
+        self.context
+            .device
+            .get_ray_tracing_capture_replay_shader_group_handles_khr(
+                pipeline,
+                first_group,
+                group_count,
+                data.len(),
+                data.as_ptr() as *mut c_void,
+            )
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to query ray tracing capture replay pipeline shader group handles: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })?;
 
         Ok(())
     }
 
     /// Query ray tracing pipeline shader group handles.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)"]
-    pub fn ray_tracing_shader_group_handles(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn ray_tracing_shader_group_handles(
         &self,
         pipeline: vk::Pipeline,
         first_group: u32,
@@ -892,62 +940,62 @@ impl<LT: Lifetime> Device<LT> {
         data: &[u8],
     ) -> Result<()> {
         #[allow(clippy::as_conversions)]
-        unsafe {
-            self.context
-                .device
-                .get_ray_tracing_shader_group_handles_khr(
-                    pipeline,
-                    first_group,
-                    group_count,
-                    data.len(),
-                    data.as_ptr() as *mut c_void,
-                )
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to query ray tracing pipeline shader group handles: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })?;
+        self.context
+            .device
+            .get_ray_tracing_shader_group_handles_khr(
+                pipeline,
+                first_group,
+                group_count,
+                data.len(),
+                data.as_ptr() as *mut c_void,
+            )
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to query ray tracing pipeline shader group handles: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })?;
 
         Ok(())
     }
 
     /// Query ray tracing pipeline shader group shader stack size.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupStackSizeKHR.html)"]
-    pub fn ray_tracing_shader_group_stack_size(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn ray_tracing_shader_group_stack_size(
         &self,
         pipeline: vk::Pipeline,
         group: u32,
         group_shader: vk::ShaderGroupShaderKHR,
     ) -> u64 {
-        unsafe {
-            self.context
-                .device
-                .get_ray_tracing_shader_group_stack_size_khr(pipeline, group, group_shader)
-        }
+        self.context
+            .device
+            .get_ray_tracing_shader_group_stack_size_khr(pipeline, group, group_shader)
     }
 
     /// Returns properties of a physical device.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetPhysicalDeviceProperties2.html)"]
-    pub fn physical_device_properties(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn physical_device_properties(
         &self,
         properties: vk::PhysicalDeviceProperties2Builder,
     ) -> vk::PhysicalDeviceProperties2 {
-        unsafe {
-            self.context.instance.raw().get_physical_device_properties2(
-                self.context.physical_device,
-                Some(properties.build()),
-            )
-        }
+        self.context
+            .instance
+            .raw()
+            .get_physical_device_properties2(self.context.physical_device, Some(properties.build()))
     }
 
     /// Create a deferred operation handle.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateDeferredOperationKHR.html)"]
-    pub fn create_deferred_operation(&self, name: &str) -> Result<DeferredOperation> {
-        let operation = unsafe { self.context.device.create_deferred_operation_khr(None) }
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_deferred_operation(&self, name: &str) -> Result<DeferredOperation> {
+        let operation = self
+            .context
+            .device
+            .create_deferred_operation_khr(None)
             .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to create a deferred operation handle: {}", err);
@@ -962,7 +1010,8 @@ impl<LT: Lifetime> Device<LT> {
 
     /// Build an acceleration structure on the host.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBuildAccelerationStructuresKHR.html)"]
-    pub fn build_acceleration_structures(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn build_acceleration_structures(
         &self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
@@ -973,41 +1022,39 @@ impl<LT: Lifetime> Device<LT> {
             .map(|r| r as *const vk::AccelerationStructureBuildRangeInfoKHR)
             .collect::<Vec<*const vk::AccelerationStructureBuildRangeInfoKHR>>();
 
-        unsafe {
-            self.context
-                .device
-                .build_acceleration_structures_khr(None, infos, &build_range_infos)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to build an acceleration structure on the host: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
+        self.context
+            .device
+            .build_acceleration_structures_khr(None, infos, &build_range_infos)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to build an acceleration structure on the host: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })
     }
 
     /// Create a new acceleration structure object.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateAccelerationStructureKHR.html)"]
-    pub fn create_acceleration_structure(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_acceleration_structure(
         &self,
         name: &str,
         create_info: &vk::AccelerationStructureCreateInfoKHR,
     ) -> Result<AccelerationStructure> {
-        let structure = unsafe {
-            self.context
-                .device
-                .create_acceleration_structure_khr(create_info, None)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to create a new acceleration structure object: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })?;
+        let structure = self
+            .context
+            .device
+            .create_acceleration_structure_khr(create_info, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to create a new acceleration structure object: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })?;
 
         self.context.set_object_name(
             name,
@@ -1020,117 +1067,112 @@ impl<LT: Lifetime> Device<LT> {
 
     /// Retrieve the required size for an acceleration structure.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html)"]
-    pub fn acceleration_structure_build_sizes(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn acceleration_structure_build_sizes(
         &self,
         build_type: vk::AccelerationStructureBuildTypeKHR,
         build_info: &vk::AccelerationStructureBuildGeometryInfoKHR,
         max_primitive_counts: &[u32],
     ) -> vk::AccelerationStructureBuildSizesInfoKHR {
-        unsafe {
-            self.context
-                .device
-                .get_acceleration_structure_build_sizes_khr(
-                    build_type,
-                    build_info,
-                    max_primitive_counts,
-                )
-        }
+        self.context
+            .device
+            .get_acceleration_structure_build_sizes_khr(
+                build_type,
+                build_info,
+                max_primitive_counts,
+            )
     }
 
     ///  Check if a serialized acceleration structure is compatible with the current device.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetDeviceAccelerationStructureCompatibilityKHR.html)"]
-    pub fn device_acceleration_structure_compatibility(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn device_acceleration_structure_compatibility(
         &self,
         version_info: &vk::AccelerationStructureVersionInfoKHR,
     ) -> vk::AccelerationStructureCompatibilityKHR {
-        unsafe {
-            self.context
-                .device
-                .get_device_acceleration_structure_compatibility_khr(version_info)
-        }
+        self.context
+            .device
+            .get_device_acceleration_structure_compatibility_khr(version_info)
     }
 
     /// Copy an acceleration structure on the host.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureKHR.html)"]
-    pub fn copy_acceleration_structure(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn copy_acceleration_structure(
         &self,
         info: &vk::CopyAccelerationStructureInfoKHRBuilder,
     ) -> Result<()> {
-        unsafe {
-            self.context
-                .device
-                .copy_acceleration_structure_khr(None, info)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to copy an acceleration structure on the host: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
+        self.context
+            .device
+            .copy_acceleration_structure_khr(None, info)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to copy an acceleration structure on the host: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })
     }
 
     /// Serialize an acceleration structure on the host.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyAccelerationStructureToMemoryKHR.html)"]
-    pub fn copy_acceleration_structure_to_memory(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn copy_acceleration_structure_to_memory(
         &self,
         info: &vk::CopyAccelerationStructureToMemoryInfoKHR,
     ) -> Result<()> {
-        unsafe {
-            self.context
-                .device
-                .copy_acceleration_structure_to_memory_khr(None, info)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to serialize an acceleration structure on the host: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
+        self.context
+            .device
+            .copy_acceleration_structure_to_memory_khr(None, info)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to serialize an acceleration structure on the host: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })
     }
 
     /// Deserialize an acceleration structure on the host.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCopyMemoryToAccelerationStructureKHR.html)"]
-    pub fn copy_memory_to_acceleration_structure(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn copy_memory_to_acceleration_structure(
         &self,
         info: &vk::CopyMemoryToAccelerationStructureInfoKHR,
     ) -> Result<()> {
-        unsafe {
-            self.context
-                .device
-                .copy_memory_to_acceleration_structure_khr(None, info)
-        }
-        .map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!(
-                "Unable to deserialize an acceleration structure on the host: {}",
-                err
-            );
-            AscheError::VkResult(err)
-        })
+        self.context
+            .device
+            .copy_memory_to_acceleration_structure_khr(None, info)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!(
+                    "Unable to deserialize an acceleration structure on the host: {}",
+                    err
+                );
+                AscheError::VkResult(err)
+            })
     }
 
     /// Update the contents of a descriptor set object.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkUpdateDescriptorSets.html)"]
-    pub fn update_descriptor_sets(
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn update_descriptor_sets(
         &self,
         descriptor_writes: &[vk::WriteDescriptorSetBuilder],
         descriptor_copies: &[vk::CopyDescriptorSetBuilder],
     ) {
-        unsafe {
-            self.context
-                .device
-                .update_descriptor_sets(descriptor_writes, descriptor_copies)
-        }
+        self.context
+            .device
+            .update_descriptor_sets(descriptor_writes, descriptor_copies)
     }
 
     /// Wait for a device to become idle.
     #[doc = "[Vulkan Manual Page](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeviceWaitIdle.html)"]
-    pub fn wait_idle(&self) -> Result<()> {
-        unsafe { self.context.device.device_wait_idle() }.map_err(|err| {
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn wait_idle(&self) -> Result<()> {
+        self.context.device.device_wait_idle().map_err(|err| {
             #[cfg(feature = "tracing")]
             error!("Unable to wait for the device to become idle: {}", err);
             AscheError::VkResult(err)
@@ -1138,18 +1180,16 @@ impl<LT: Lifetime> Device<LT> {
     }
 }
 
-fn query_support_resizable_bar(
+unsafe fn query_support_resizable_bar(
     instance: &Instance,
     device: vk::PhysicalDevice,
     device_properties: &vk::PhysicalDeviceProperties,
 ) -> BarSupport {
     if device_properties.device_type != vk::PhysicalDeviceType::INTEGRATED_GPU {
         let memory_properties = vk::PhysicalDeviceMemoryProperties2Builder::new().build();
-        let memory_properties = unsafe {
-            instance
-                .raw()
-                .get_physical_device_memory_properties2(device, Some(memory_properties))
-        };
+        let memory_properties = instance
+            .raw()
+            .get_physical_device_memory_properties2(device, Some(memory_properties));
 
         let heap_indices: Vec<u32> = memory_properties
             .memory_properties

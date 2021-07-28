@@ -13,7 +13,7 @@ pub struct Uploader {
 }
 
 impl Uploader {
-    pub fn new(
+    pub unsafe fn new(
         device: &asche::Device<Lifetime>,
         mut transfer_queue: asche::TransferQueue,
     ) -> Result<Self> {
@@ -41,7 +41,7 @@ impl Uploader {
         })
     }
 
-    pub fn create_buffer_with_data(
+    pub unsafe fn create_buffer_with_data(
         &mut self,
         device: &asche::Device<Lifetime>,
         name: &str,

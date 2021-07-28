@@ -64,39 +64,41 @@ fn main() -> Result<()> {
         },
     )?;
 
-    let (device, swapchain, queues) = instance.request_device(asche::DeviceConfiguration {
-        swapchain_format: SURFACE_FORMAT,
-        extensions: vec![
-            // For RT support
-            vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-            vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-            vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
-            vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-            // For GLSL_EXT_debug_printf support
-            vk::KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
-        ],
-        features_v1_2: Some(
-            vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
-                .timeline_semaphore(true)
-                .buffer_device_address(true)
-                .scalar_block_layout(true)
-                .uniform_buffer_standard_layout(true)
-                .descriptor_indexing(true)
-                .descriptor_binding_partially_bound(true)
-                .descriptor_binding_variable_descriptor_count(true)
-                .runtime_descriptor_array(true)
-                .shader_storage_buffer_array_non_uniform_indexing(true),
-        ),
-        features_raytracing: Some(
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
-                .ray_tracing_pipeline(true),
-        ),
-        features_acceleration_structure: Some(
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
-                .acceleration_structure(true),
-        ),
-        ..Default::default()
-    })?;
+    let (device, swapchain, queues) = unsafe {
+        instance.request_device(asche::DeviceConfiguration {
+            swapchain_format: SURFACE_FORMAT,
+            extensions: vec![
+                // For RT support
+                vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+                vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+                vk::KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+                vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+                // For GLSL_EXT_debug_printf support
+                vk::KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
+            ],
+            features_v1_2: Some(
+                vk::PhysicalDeviceVulkan12FeaturesBuilder::new()
+                    .timeline_semaphore(true)
+                    .buffer_device_address(true)
+                    .scalar_block_layout(true)
+                    .uniform_buffer_standard_layout(true)
+                    .descriptor_indexing(true)
+                    .descriptor_binding_partially_bound(true)
+                    .descriptor_binding_variable_descriptor_count(true)
+                    .runtime_descriptor_array(true)
+                    .shader_storage_buffer_array_non_uniform_indexing(true),
+            ),
+            features_raytracing: Some(
+                vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
+                    .ray_tracing_pipeline(true),
+            ),
+            features_acceleration_structure: Some(
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
+                    .acceleration_structure(true),
+            ),
+            ..Default::default()
+        })
+    }?;
 
     let Queues {
         mut compute_queues,
@@ -104,21 +106,26 @@ fn main() -> Result<()> {
         mut transfer_queues,
     } = queues;
 
-    let mut app = RayTracingApplication::new(
-        device,
-        swapchain,
-        compute_queues.pop().unwrap(),
-        graphics_queues.pop().unwrap(),
-        transfer_queues.pop().unwrap(),
-        window.inner_size().width,
-        window.inner_size().height,
-    )
+    let mut app = unsafe {
+        RayTracingApplication::new(
+            device,
+            swapchain,
+            compute_queues.pop().unwrap(),
+            graphics_queues.pop().unwrap(),
+            transfer_queues.pop().unwrap(),
+            window.inner_size().width,
+            window.inner_size().height,
+        )
+    }
     .unwrap();
 
     let (materials, meshes) = gltf::load_models(include_bytes!("model.glb"));
-    app.upload_uniforms()?;
-    app.upload_model(&materials, &meshes)?;
-    app.update_descriptor_sets();
+
+    unsafe {
+        app.upload_uniforms()?;
+        app.upload_model(&materials, &meshes)?;
+        app.update_descriptor_sets();
+    }
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -142,7 +149,7 @@ fn main() -> Result<()> {
                 window_id,
             } if window_id == window.id() => *control_flow = winit::event_loop::ControlFlow::Exit,
             winit::event::Event::MainEventsCleared => {
-                app.render().unwrap();
+                unsafe { app.render().unwrap() };
             }
             _ => (),
         }
@@ -191,14 +198,16 @@ struct RayTracingApplication {
 
 impl Drop for RayTracingApplication {
     fn drop(&mut self) {
-        self.device
-            .wait_idle()
-            .expect("couldn't wait for device to become idle while dropping")
+        unsafe {
+            self.device
+                .wait_idle()
+                .expect("couldn't wait for device to become idle while dropping");
+        }
     }
 }
 
 impl RayTracingApplication {
-    fn new(
+    unsafe fn new(
         device: asche::Device<Lifetime>,
         swapchain: asche::Swapchain,
         mut compute_queue: asche::ComputeQueue,
@@ -305,7 +314,7 @@ impl RayTracingApplication {
     }
 
     #[allow(clippy::type_complexity)]
-    fn create_rt_pipeline(
+    unsafe fn create_rt_pipeline(
         device: &asche::Device<Lifetime>,
         uploader: &mut Uploader,
     ) -> Result<(
@@ -608,12 +617,14 @@ impl RayTracingApplication {
         let handle_data_size = shader_group_handle_size * group_count;
 
         let mut handle_data: Vec<u8> = vec![0; handle_data_size as usize];
-        device.ray_tracing_shader_group_handles(
-            raytracing_pipeline.raw(),
-            0,
-            group_count,
-            handle_data.as_mut_slice(),
-        )?;
+        unsafe {
+            device.ray_tracing_shader_group_handles(
+                raytracing_pipeline.raw(),
+                0,
+                group_count,
+                handle_data.as_mut_slice(),
+            )
+        }?;
 
         // We only have one shader in the first three groups.
         let rg_group_size = shader_group_handle_size as usize;
@@ -642,16 +653,18 @@ impl RayTracingApplication {
                 ..(rg_group_size + miss_group_size + hg_group_size)],
         );
 
-        let sbt = uploader.create_buffer_with_data(
-            device,
-            "SBT Buffer",
-            cast_slice(sbt_data.as_slice()),
-            vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
-        )?;
+        let sbt = unsafe {
+            uploader.create_buffer_with_data(
+                device,
+                "SBT Buffer",
+                cast_slice(sbt_data.as_slice()),
+                vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk::QueueFlags::COMPUTE | vk::QueueFlags::GRAPHICS,
+            )
+        }?;
 
-        let sbt_address = sbt.device_address();
+        let sbt_address = unsafe { sbt.device_address() };
         let sbt_stride_addresses = vec![
             // RG
             vk::StridedDeviceAddressRegionKHR {
@@ -682,7 +695,7 @@ impl RayTracingApplication {
         Ok((sbt, sbt_stride_addresses))
     }
 
-    fn create_postprocess_pipeline(
+    unsafe fn create_postprocess_pipeline(
         device: &asche::Device<Lifetime>,
     ) -> Result<(
         asche::RenderPass,
@@ -832,7 +845,7 @@ impl RayTracingApplication {
         ))
     }
 
-    fn create_offscreen_image(
+    unsafe fn create_offscreen_image(
         device: &asche::Device<Lifetime>,
         extent: vk::Extent2D,
         pool: &mut asche::GraphicsCommandPool,
@@ -920,7 +933,7 @@ impl RayTracingApplication {
         Ok(Texture { view, image })
     }
 
-    pub fn upload_uniforms(&mut self) -> Result<()> {
+    pub unsafe fn upload_uniforms(&mut self) -> Result<()> {
         let projection_matrix = perspective_infinite_reverse_rh_yup(
             (90.0f32).to_radians(),
             self.extent.width as f32 / self.extent.height as f32,
@@ -969,7 +982,7 @@ impl RayTracingApplication {
         Ok(())
     }
 
-    pub fn update_descriptor_sets(&self) {
+    pub unsafe fn update_descriptor_sets(&self) {
         // Postprocessing Renderpass
         // Offscreen Image
         let image_info = [vk::DescriptorImageInfoBuilder::new()
@@ -1090,7 +1103,7 @@ impl RayTracingApplication {
         );
     }
     /// Upload vertex data and prepares the TLAS and BLAS structures.
-    pub fn upload_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Result<()> {
+    pub unsafe fn upload_model(&mut self, materials: &[Material], meshes: &[Mesh]) -> Result<()> {
         for (id, mesh) in meshes.iter().enumerate() {
             let material = &materials[mesh.material];
 
@@ -1161,7 +1174,7 @@ impl RayTracingApplication {
         Ok(())
     }
 
-    fn init_blas(&mut self) -> Result<()> {
+    unsafe fn init_blas(&mut self) -> Result<()> {
         // We need to assemble all information that is needed to build the AS so that it outlives the loop were we assemble the command buffers.
         let mut scratchpad_size: u64 = 0;
         let mut max_sizes: Vec<u64> = Vec::with_capacity(self.models.len());
@@ -1277,7 +1290,11 @@ impl RayTracingApplication {
     }
 
     #[allow(unused_variables)]
-    fn compact_blas(&mut self, max_sizes: &mut [u64], compacted_sizes: &[u64]) -> Result<()> {
+    unsafe fn compact_blas(
+        &mut self,
+        max_sizes: &mut [u64],
+        compacted_sizes: &[u64],
+    ) -> Result<()> {
         self.transfer_timeline_value += 1;
         let command_buffer = self.compute_pool.create_command_buffer(
             &[],
@@ -1323,7 +1340,7 @@ impl RayTracingApplication {
         Ok(())
     }
 
-    fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<Blas> {
+    unsafe fn create_new_blas(&self, id: &usize, compacted: u64) -> Result<Blas> {
         let buffer = self.device.create_buffer(&asche::BufferDescriptor::<_> {
             name: &format!("Model {} BLAS Buffer", id),
             usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
@@ -1352,7 +1369,7 @@ impl RayTracingApplication {
     }
 
     // Returns a query pool with the compacted sized.
-    fn create_as_on_device(
+    unsafe fn create_as_on_device(
         &mut self,
         infos: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
         ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
@@ -1415,7 +1432,7 @@ impl RayTracingApplication {
         Ok(compact_sizes)
     }
 
-    fn init_tlas(&mut self) -> Result<()> {
+    unsafe fn init_tlas(&mut self) -> Result<()> {
         let instance_data: Vec<vk::AccelerationStructureInstanceKHR> = self
             .blas
             .iter()
@@ -1561,7 +1578,7 @@ impl RayTracingApplication {
         Ok(())
     }
 
-    pub fn render(&mut self) -> Result<()> {
+    pub unsafe fn render(&mut self) -> Result<()> {
         let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let command_buffer = self.graphics_pool.create_command_buffer(

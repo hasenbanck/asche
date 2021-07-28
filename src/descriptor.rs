@@ -35,8 +35,9 @@ impl DescriptorPool {
         self.raw
     }
 
-    /// Creates a new descriptor set with the given `DescriptorSetLayout``.
-    pub fn create_descriptor_set(
+    /// Creates a new descriptor set with the given `DescriptorSetLayout`.
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn create_descriptor_set(
         &self,
         name: &str,
         layout: &DescriptorSetLayout,
@@ -62,8 +63,11 @@ impl DescriptorPool {
             info
         };
 
-        let sets =
-            unsafe { self.context.device.allocate_descriptor_sets(&info) }.map_err(|err| {
+        let sets = self
+            .context
+            .device
+            .allocate_descriptor_sets(&info)
+            .map_err(|err| {
                 #[cfg(feature = "tracing")]
                 error!("Unable to allocate a descriptor set: {}", err);
                 AscheError::VkResult(err)
@@ -83,12 +87,16 @@ impl DescriptorPool {
     }
 
     /// Frees all descriptor sets allocated from the pool. Invalidates all descriptor sets from the pool.
-    pub fn free_sets(&self) -> Result<()> {
-        unsafe { self.context.device.reset_descriptor_pool(self.raw, None) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable reset a descriptor pool: {}", err);
-            AscheError::VkResult(err)
-        })?;
+    #[cfg_attr(feature = "profiling", profiling::function)]
+    pub unsafe fn free_sets(&self) -> Result<()> {
+        self.context
+            .device
+            .reset_descriptor_pool(self.raw, None)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable reset a descriptor pool: {}", err);
+                AscheError::VkResult(err)
+            })?;
         Ok(())
     }
 }
@@ -142,13 +150,16 @@ impl DescriptorSet {
 
     /// Frees the descriptor set. Needs to be created from a pool with the
     /// `vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET` flag set.
-    pub fn free(&mut self) -> Result<()> {
+    pub unsafe fn free(&mut self) -> Result<()> {
         let sets = [self.raw];
-        unsafe { self.context.device.free_descriptor_sets(self.pool, &sets) }.map_err(|err| {
-            #[cfg(feature = "tracing")]
-            error!("Unable to free a descriptor set: {}", err);
-            AscheError::VkResult(err)
-        })?;
+        self.context
+            .device
+            .free_descriptor_sets(self.pool, &sets)
+            .map_err(|err| {
+                #[cfg(feature = "tracing")]
+                error!("Unable to free a descriptor set: {}", err);
+                AscheError::VkResult(err)
+            })?;
 
         Ok(())
     }

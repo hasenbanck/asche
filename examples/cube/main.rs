@@ -56,14 +56,16 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, swapchain, queues) = instance.request_device(asche::DeviceConfiguration {
-        queue_configuration: QueueConfiguration {
-            compute_queues: vec![],
-            graphics_queues: vec![1.0],
-            transfer_queues: vec![1.0],
-        },
-        ..Default::default()
-    })?;
+    let (device, swapchain, queues) = unsafe {
+        instance.request_device(asche::DeviceConfiguration {
+            queue_configuration: QueueConfiguration {
+                compute_queues: vec![],
+                graphics_queues: vec![1.0],
+                transfer_queues: vec![1.0],
+            },
+            ..Default::default()
+        })
+    }?;
 
     let Queues {
         compute_queues: _compute_queues,
@@ -101,7 +103,7 @@ fn main() -> Result<(), asche::AscheError> {
                 window_id,
             } if window_id == window.id() => *control_flow = winit::event_loop::ControlFlow::Exit,
             winit::event::Event::MainEventsCleared => {
-                app.render().unwrap();
+                unsafe { app.render().unwrap() };
             }
             _ => (),
         }
@@ -136,9 +138,11 @@ struct Application {
 
 impl Drop for Application {
     fn drop(&mut self) {
-        self.device
-            .wait_idle()
-            .expect("couldn't wait for device to become idle while dropping")
+        unsafe {
+            self.device
+                .wait_idle()
+                .expect("couldn't wait for device to become idle while dropping");
+        }
     }
 }
 
@@ -156,14 +160,18 @@ impl Application {
         };
 
         // Shader
-        let vert_module = device.create_shader_module(
-            "Vertex Shader Module",
-            include_bytes!("shader/cube.vert.spv"),
-        )?;
-        let frag_module = device.create_shader_module(
-            "Fragment Shader Module",
-            include_bytes!("shader/cube.frag.spv"),
-        )?;
+        let vert_module = unsafe {
+            device.create_shader_module(
+                "Vertex Shader Module",
+                include_bytes!("shader/cube.vert.spv"),
+            )
+        }?;
+        let frag_module = unsafe {
+            device.create_shader_module(
+                "Fragment Shader Module",
+                include_bytes!("shader/cube.frag.spv"),
+            )
+        }?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let vertexshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
@@ -176,48 +184,52 @@ impl Application {
             .name(&mainfunctionname);
 
         // Depth image
-        let depth_image = device.create_image(&asche::ImageDescriptor::<_> {
-            name: "Depth Texture",
-            usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-            memory_location: vk_alloc::MemoryLocation::GpuOnly,
-            lifetime: Lifetime::Static,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            queues: vk::QueueFlags::GRAPHICS,
-            image_type: vk::ImageType::_2D,
-            format: vk::Format::D32_SFLOAT,
-            extent: vk::Extent3D {
-                width: extent.width,
-                height: extent.height,
-                depth: 1,
-            },
-            mip_levels: 1,
-            array_layers: 1,
-            samples: vk::SampleCountFlagBits::_1,
-            tiling: vk::ImageTiling::OPTIMAL,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            flags: None,
-        })?;
+        let depth_image = unsafe {
+            device.create_image(&asche::ImageDescriptor::<_> {
+                name: "Depth Texture",
+                usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                memory_location: vk_alloc::MemoryLocation::GpuOnly,
+                lifetime: Lifetime::Static,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                queues: vk::QueueFlags::GRAPHICS,
+                image_type: vk::ImageType::_2D,
+                format: vk::Format::D32_SFLOAT,
+                extent: vk::Extent3D {
+                    width: extent.width,
+                    height: extent.height,
+                    depth: 1,
+                },
+                mip_levels: 1,
+                array_layers: 1,
+                samples: vk::SampleCountFlagBits::_1,
+                tiling: vk::ImageTiling::OPTIMAL,
+                initial_layout: vk::ImageLayout::UNDEFINED,
+                flags: None,
+            })
+        }?;
 
-        let depth_image_view = device.create_image_view(&asche::ImageViewDescriptor {
-            name: "Depth Texture View",
-            image: &depth_image,
-            view_type: vk::ImageViewType::_2D,
-            format: vk::Format::D32_SFLOAT,
-            components: vk::ComponentMapping {
-                r: vk::ComponentSwizzle::R,
-                g: vk::ComponentSwizzle::G,
-                b: vk::ComponentSwizzle::B,
-                a: vk::ComponentSwizzle::A,
-            },
-            subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::DEPTH,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            },
-            flags: None,
-        })?;
+        let depth_image_view = unsafe {
+            device.create_image_view(&asche::ImageViewDescriptor {
+                name: "Depth Texture View",
+                image: &depth_image,
+                view_type: vk::ImageViewType::_2D,
+                format: vk::Format::D32_SFLOAT,
+                components: vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::R,
+                    g: vk::ComponentSwizzle::G,
+                    b: vk::ComponentSwizzle::B,
+                    a: vk::ComponentSwizzle::A,
+                },
+                subresource_range: vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::DEPTH,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                flags: None,
+            })
+        }?;
 
         let depth_texture = Texture {
             view: depth_image_view,
@@ -225,10 +237,12 @@ impl Application {
         };
 
         // Sampler
-        let sampler = device.create_sampler(&asche::SamplerDescriptor {
-            name: "Cube Texture Sampler",
-            ..Default::default()
-        })?;
+        let sampler = unsafe {
+            device.create_sampler(&asche::SamplerDescriptor {
+                name: "Cube Texture Sampler",
+                ..Default::default()
+            })
+        }?;
 
         // Renderpass
         let attachments = [
@@ -272,7 +286,7 @@ impl Application {
             .subpasses(&subpasses);
 
         let render_pass =
-            device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
+            unsafe { device.create_render_pass("Graphics Render Pass Simple", renderpass_info) }?;
 
         // Descriptor set layout
         let bindings = [vk::DescriptorSetLayoutBindingBuilder::new()
@@ -281,20 +295,23 @@ impl Application {
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
-        let descriptor_set_layout =
-            device.create_descriptor_set_layout("Cube Descriptor Set Layout", layout_info)?;
+        let descriptor_set_layout = unsafe {
+            device.create_descriptor_set_layout("Cube Descriptor Set Layout", layout_info)
+        }?;
 
         // Descriptor pool
         let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
             .descriptor_count(1)
             ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)];
 
-        let descriptor_pool = device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
-            name: "Cube Descriptor Pool",
-            max_sets: 16,
-            pool_sizes: &pool_sizes,
-            flags: None,
-        })?;
+        let descriptor_pool = unsafe {
+            device.create_descriptor_pool(&asche::DescriptorPoolDescriptor {
+                name: "Cube Descriptor Pool",
+                max_sets: 16,
+                pool_sizes: &pool_sizes,
+                flags: None,
+            })
+        }?;
 
         // Pipeline layout
         let push_constants_ranges = [vk::PushConstantRangeBuilder::new()
@@ -307,7 +324,7 @@ impl Application {
             .push_constant_ranges(&push_constants_ranges)
             .set_layouts(&layouts);
         let pipeline_layout =
-            device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
+            unsafe { device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout) }?;
 
         // Pipeline
         let vertex_binding_descriptions = [vk::VertexInputBindingDescriptionBuilder::new()
@@ -387,9 +404,9 @@ impl Application {
             .render_pass(render_pass.raw())
             .subpass(0);
 
-        let pipeline = device.create_graphics_pipeline("Cube Pipeline", pipeline_info)?;
+        let pipeline = unsafe { device.create_graphics_pipeline("Cube Pipeline", pipeline_info) }?;
 
-        let graphics_command_pool = graphics_queue.create_command_pool()?;
+        let graphics_command_pool = unsafe { graphics_queue.create_command_pool() }?;
 
         let p_matrix = perspective_infinite_reverse_rh_yup(
             (70.0f32).to_radians(),
@@ -399,13 +416,15 @@ impl Application {
         let v_matrix = Mat4::look_at_rh(Vec3::new(0.0, 2.0, 3.0), Vec3::ZERO, Vec3::Y);
         let vp_matrix = p_matrix * v_matrix;
 
-        let render_fence = device.create_fence("Render Fence")?;
-        let presentation_semaphore = device.create_binary_semaphore("Presentation Semaphore")?;
-        let render_semaphore = device.create_binary_semaphore("Render Semaphore")?;
+        let render_fence = unsafe { device.create_fence("Render Fence") }?;
+        let presentation_semaphore =
+            unsafe { device.create_binary_semaphore("Presentation Semaphore") }?;
+        let render_semaphore = unsafe { device.create_binary_semaphore("Render Semaphore") }?;
 
         let transfer_timeline_value = 0;
-        let transfer_timeline =
-            device.create_timeline_semaphore("Transfer Timeline", transfer_timeline_value)?;
+        let transfer_timeline = unsafe {
+            device.create_timeline_semaphore("Transfer Timeline", transfer_timeline_value)
+        }?;
 
         let mut app = Self {
             frame_counter: 0,
@@ -435,30 +454,34 @@ impl Application {
 
         // Upload the model data
         let (vertex_data, index_data) = create_cube_data();
-        let index_buffer = app.create_buffer(
-            "Index Buffer",
-            bytemuck::cast_slice(&index_data),
-            vk::BufferUsageFlags::INDEX_BUFFER,
-        )?;
+        let index_buffer = unsafe {
+            app.create_buffer(
+                "Index Buffer",
+                bytemuck::cast_slice(&index_data),
+                vk::BufferUsageFlags::INDEX_BUFFER,
+            )
+        }?;
 
-        let vertex_buffer = app.create_buffer(
-            "Vertex Buffer",
-            bytemuck::cast_slice(&vertex_data),
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-        )?;
+        let vertex_buffer = unsafe {
+            app.create_buffer(
+                "Vertex Buffer",
+                bytemuck::cast_slice(&vertex_data),
+                vk::BufferUsageFlags::VERTEX_BUFFER,
+            )
+        }?;
 
         app.vertex_buffer.push(vertex_buffer);
         app.index_buffer.push(index_buffer);
 
         // Upload the model texture
         let texture_data = include_bytes!("fractal.dds");
-        let texture = app.create_texture("Cube Texture", texture_data)?;
+        let texture = unsafe { app.create_texture("Cube Texture", texture_data) }?;
         app.textures.push(texture);
 
         Ok(app)
     }
 
-    fn create_texture(
+    unsafe fn create_texture(
         &mut self,
         name: &str,
         image_data: &[u8],
@@ -599,6 +622,7 @@ impl Application {
 
             encoder.pipeline_barrier2(&dependency_info);
         }
+
         self.transfer_timeline_value += 1;
         self.transfer_queue.submit(&transfer_buffer, None)?;
         self.transfer_timeline
@@ -610,7 +634,7 @@ impl Application {
         })
     }
 
-    fn create_buffer(
+    unsafe fn create_buffer(
         &mut self,
         name: &str,
         buffer_data: &[u8],
@@ -679,7 +703,7 @@ impl Application {
         Ok(dst_buffer)
     }
 
-    fn render(&mut self) -> Result<(), asche::AscheError> {
+    unsafe fn render(&mut self) -> Result<(), asche::AscheError> {
         let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let graphics_buffer = self.graphics_command_pool.create_command_buffer(

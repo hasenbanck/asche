@@ -36,14 +36,16 @@ fn main() -> Result<(), asche::AscheError> {
         },
     )?;
 
-    let (device, swapchain, queues) = instance.request_device(asche::DeviceConfiguration {
-        queue_configuration: QueueConfiguration {
-            compute_queues: vec![],
-            graphics_queues: vec![1.0],
-            transfer_queues: vec![],
-        },
-        ..Default::default()
-    })?;
+    let (device, swapchain, queues) = unsafe {
+        instance.request_device(asche::DeviceConfiguration {
+            queue_configuration: QueueConfiguration {
+                compute_queues: vec![],
+                graphics_queues: vec![1.0],
+                transfer_queues: vec![],
+            },
+            ..Default::default()
+        })
+    }?;
 
     let Queues {
         compute_queues: _compute_queues,
@@ -75,7 +77,7 @@ fn main() -> Result<(), asche::AscheError> {
                 window_id,
             } if window_id == window.id() => *control_flow = winit::event_loop::ControlFlow::Exit,
             winit::event::Event::MainEventsCleared => {
-                app.render().unwrap();
+                unsafe { app.render().unwrap() };
             }
             _ => (),
         }
@@ -105,9 +107,11 @@ struct Application {
 
 impl Drop for Application {
     fn drop(&mut self) {
-        self.device
-            .wait_idle()
-            .expect("couldn't wait for device to become idle while dropping")
+        unsafe {
+            self.device
+                .wait_idle()
+                .expect("couldn't wait for device to become idle while dropping")
+        }
     }
 }
 
@@ -124,14 +128,18 @@ impl Application {
         };
 
         // Shader
-        let vert_module = device.create_shader_module(
-            "Vertex Shader Module",
-            include_bytes!("shader/triangle.vert.spv"),
-        )?;
-        let frag_module = device.create_shader_module(
-            "Fragment Shader Module",
-            include_bytes!("shader/triangle.frag.spv"),
-        )?;
+        let vert_module = unsafe {
+            device.create_shader_module(
+                "Vertex Shader Module",
+                include_bytes!("shader/triangle.vert.spv"),
+            )
+        }?;
+        let frag_module = unsafe {
+            device.create_shader_module(
+                "Fragment Shader Module",
+                include_bytes!("shader/triangle.frag.spv"),
+            )
+        }?;
 
         let mainfunctionname = std::ffi::CString::new("main").unwrap();
         let vertexshader_stage = vk::PipelineShaderStageCreateInfoBuilder::new()
@@ -167,12 +175,12 @@ impl Application {
             .subpasses(&subpasses);
 
         let render_pass =
-            device.create_render_pass("Graphics Render Pass Simple", renderpass_info)?;
+            unsafe { device.create_render_pass("Graphics Render Pass Simple", renderpass_info) }?;
 
         // Pipeline layout
         let pipeline_layout = vk::PipelineLayoutCreateInfoBuilder::new();
         let pipeline_layout =
-            device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout)?;
+            unsafe { device.create_pipeline_layout("Pipeline Layout Simple", pipeline_layout) }?;
 
         // Pipeline
         let shader_stages = vec![vertexshader_stage, fragmentshader_stage];
@@ -220,13 +228,15 @@ impl Application {
             .layout(pipeline_layout.raw())
             .render_pass(render_pass.raw())
             .subpass(0);
-        let pipeline = device.create_graphics_pipeline("Triangle Pipeline", pipeline_info)?;
+        let pipeline =
+            unsafe { device.create_graphics_pipeline("Triangle Pipeline", pipeline_info) }?;
 
-        let graphics_command_pool = graphics_queue.create_command_pool()?;
+        let graphics_command_pool = unsafe { graphics_queue.create_command_pool() }?;
 
-        let render_fence = device.create_fence("Render fence")?;
-        let presentation_semaphore = device.create_binary_semaphore("Presentation Semaphore")?;
-        let render_semaphore = device.create_binary_semaphore("Render Semaphore")?;
+        let render_fence = unsafe { device.create_fence("Render fence") }?;
+        let presentation_semaphore =
+            unsafe { device.create_binary_semaphore("Presentation Semaphore") }?;
+        let render_semaphore = unsafe { device.create_binary_semaphore("Render Semaphore") }?;
 
         Ok(Self {
             device,
@@ -243,7 +253,7 @@ impl Application {
         })
     }
 
-    fn render(&mut self) -> Result<(), asche::AscheError> {
+    unsafe fn render(&mut self) -> Result<(), asche::AscheError> {
         let frame = self.swapchain.next_frame(&self.presentation_semaphore)?;
 
         let graphics_buffer = self.command_pool.create_command_buffer(
@@ -290,10 +300,8 @@ impl Application {
             frame,
             &[&self.presentation_semaphore, &self.render_semaphore],
         )?;
-
         self.render_fence.wait()?;
         self.render_fence.reset()?;
-
         self.command_pool.reset()?;
 
         Ok(())
