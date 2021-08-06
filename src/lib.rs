@@ -335,7 +335,7 @@ pub struct SamplerDescriptor<'a> {
     /// Address mode W.
     pub address_mode_w: vk::SamplerAddressMode,
     /// Mipmap load bias.
-    pub mip_lod_bias: vk::SamplerMipmapMode,
+    pub mip_lod_bias: f32,
     /// Anisotropy filtering enabled.
     pub anisotropy_enable: bool,
     /// The anisotropy filter rate.
@@ -364,7 +364,7 @@ impl<'a> Default for SamplerDescriptor<'a> {
             address_mode_u: vk::SamplerAddressMode::REPEAT,
             address_mode_v: vk::SamplerAddressMode::REPEAT,
             address_mode_w: vk::SamplerAddressMode::REPEAT,
-            mip_lod_bias: vk::SamplerMipmapMode::NEAREST,
+            mip_lod_bias: 0.0,
             anisotropy_enable: false,
             max_anisotropy: 0.0,
             compare_op: None,

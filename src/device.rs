@@ -762,11 +762,11 @@ impl<LT: Lifetime> Device<LT> {
             .address_mode_u(descriptor.address_mode_u)
             .address_mode_v(descriptor.address_mode_v)
             .address_mode_w(descriptor.address_mode_w)
-            .mipmap_mode(descriptor.mip_lod_bias)
+            .mip_lod_bias(descriptor.mip_lod_bias)
             .anisotropy_enable(descriptor.anisotropy_enable)
             .max_anisotropy(descriptor.max_anisotropy)
             .min_lod(descriptor.min_lod)
-            .max_lod(descriptor.min_lod)
+            .max_lod(descriptor.max_lod)
             .unnormalized_coordinates(descriptor.unnormalized_coordinates);
 
         let create_info = if let Some(flags) = descriptor.flags {
